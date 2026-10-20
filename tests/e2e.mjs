@@ -48,7 +48,16 @@ try {
   await step('home lists the sample pack', async () => {
     await page.goto(URL_);
     await page.getByRole('button', { name: 'Start Synthetic Physics (sample)' }).waitFor();
-    assert.equal(await page.evaluate(() => { try { eval('1'); return 'allowed'; } catch { return 'blocked'; } }), 'blocked', 'CSP active');
+    const before = problems.length;
+    const inline = await page.evaluate(() => {
+      const s = document.createElement('script');
+      s.textContent = 'window.inlineRan = true';
+      document.head.append(s);
+      return window.inlineRan === true;
+    });
+    assert.equal(inline, false, 'CSP blocks inline scripts');
+    await page.waitForTimeout(100);
+    problems.splice(before); // the violation report from this probe is expected
   });
 
   await step('exam mode: answer by keyboard, question 2 snapshot shows its diagram only', async () => {
