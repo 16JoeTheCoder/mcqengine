@@ -1,5 +1,4 @@
 # Static site: no build command. Publish this folder; functions live in netlify/functions.
-# If this folder is not the repository root, set Netlify's "Base directory" to it.
 [build]
   publish = "."
   functions = "netlify/functions"

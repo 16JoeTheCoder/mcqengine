@@ -3,7 +3,7 @@
 One line each: what was decided and why. Newest at the bottom.
 
 1. The toolkit zip (PACK_FORMAT.md, schema, mcqpack.py, profile, make_fixture.py) was not in the repo or on the machine, so all of it was written from the build brief; drop the original files in and run `npm test`: the parity test will show any difference from `js/validator.js`.
-2. The app lives in `mcq-engine/` inside the `16JoeTheCoder/16JoeTheCoder` profile repo so the profile README is untouched; set Netlify's base directory to `mcq-engine`, or move the folder to its own repo with `git subtree split -P mcq-engine`.
+2. The app was first built in a `mcq-engine/` folder of the profile repo, then moved here with its history (`git subtree split`); the repository root is the site.
 3. Spec choices made in the reconstruction: question type `"single"` is the only supported type; `rev` is a required integer; `options` must list every option key in `optionKeys` order; `fig` provenance is `crop` or `redraw`.
 4. Validation errors carry a code; parity is checked on `(code, where)` pairs, not on message wording.
 5. Overlays apply in a fixed order (listed in `pack.overlays`, then unlisted root `*.json` overlays by name); bad overlay contents are warnings, a missing listed overlay is an error.

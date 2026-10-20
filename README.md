@@ -10,7 +10,6 @@ calls: this folder is the website. Two vendored libraries: KaTeX (maths) and ffl
 ## Run locally
 
 ```
-cd mcq-engine
 python3 -m http.server 8000
 ```
 
@@ -30,7 +29,7 @@ There are no npm dependencies; `package.json` only holds scripts. The parity tes
 ## Deploy to Netlify
 
 1. Connect the repository in Netlify.
-2. Base directory: `mcq-engine` (this folder). Publish directory: `.`. Build command: leave empty.
+2. Publish directory: `.` (the repository root). Build command: leave empty.
 3. Done. `netlify.toml` sets the security headers and the functions folder.
 
 For the optional leaderboard, also:
