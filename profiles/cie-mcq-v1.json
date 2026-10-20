@@ -1,0 +1,17 @@
+{
+  "profile": "cie-mcq-v1",
+  "description": "Cambridge International AS & A Level multiple-choice papers (A4, question numbers in the left margin, options A-D).",
+  "dpi": 110,
+  "optionKeys": ["A", "B", "C", "D"],
+  "secondsPerQuestion": 112.5,
+  "skipPages": [1],
+  "skipPagesContaining": ["BLANK PAGE"],
+  "numberPattern": "^[1-9][0-9]?$",
+  "numberMaxX": 70,
+  "contentTop": 50,
+  "contentBottom": 790,
+  "clipLeft": 30,
+  "clipRight": 30,
+  "padAbove": 8,
+  "answerPattern": "^\\s*([1-9][0-9]?)\\s+([A-D])\\b"
+}
