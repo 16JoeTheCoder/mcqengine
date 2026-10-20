@@ -54,3 +54,14 @@ test('assemble without asset checks (built-in packs)', () => {
   assert.deepEqual(assemble(files, false).errors, []);
   assert.equal(assemble(files, true).errors[0].code, 'asset-missing');
 });
+
+test('the built-in sample pack passes full validation including assets, and is listed in packs/index.json', async () => {
+  const root = new URL('../packs/', import.meta.url).pathname;
+  const { packs } = JSON.parse(await (await import('node:fs/promises')).readFile(join(root, 'index.json'), 'utf8'));
+  for (const entry of packs) {
+    const { pack, errors, warnings } = fromBytes(readDir(join(root, entry.dir)));
+    assert.deepEqual([...errors, ...warnings], []);
+    assert.equal(pack.id, entry.id);
+    assert.equal(pack.questions.length, entry.questions);
+  }
+});

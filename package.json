@@ -8,6 +8,6 @@
     "test": "node --test \"tests/*.test.js\"",
     "e2e": "node tests/e2e.mjs",
     "serve": "python3 -m http.server 8000",
-    "sample": "python3 tests/make_fixture.py build/fixture && python3 tools/mcqpack.py extract --profile profiles/cie-mcq-v1.json --paper build/fixture/paper.pdf --scheme build/fixture/scheme.pdf --id sample-physics --title \"Synthetic Physics (sample)\" --out packs/sample-physics && python3 tools/mcqpack.py merge packs/sample-physics/pack.json packs/sample-physics-structured.json && python3 tools/mcqpack.py validate packs/sample-physics"
+    "sample": "python3 tests/make_fixture.py build/fixture && python3 tools/mcqpack.py extract --profile profiles/cie-mcq-v1.json --paper build/fixture/paper.pdf --scheme build/fixture/scheme.pdf --id sample-physics --title \"Synthetic Physics (sample)\" --out packs/sample-physics && python3 tools/mcqpack.py merge packs/sample-physics/pack.json tests/sample/structured.json && python3 tools/mcqpack.py validate packs/sample-physics"
   }
 }

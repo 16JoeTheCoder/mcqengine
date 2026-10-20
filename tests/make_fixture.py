@@ -112,7 +112,7 @@ def paper(path):
     p.y -= 22
     p.options(["10 N", "17 N", "20 N", "40 N"])
     p.y -= 26
-    p.question(3, ["A car accelerates uniformly from rest to 20 m s⁻¹ in 5.0 s.",
+    p.question(3, ["A car accelerates uniformly from rest to 20 m/s in 5.0 s.",
                    "How far does it travel in this time?"], ["4.0 m", "50 m", "100 m", "200 m"])
     p.new_page()
     p.question(4, ["A 12 V supply of negligible internal resistance is connected to two resistors",
@@ -125,7 +125,7 @@ def paper(path):
     p.y -= 22
     p.options(["4.0 V", "6.0 V", "8.0 V", "12 V"])
     p.y -= 26
-    p.question(5, ["A sound wave has speed 340 m s⁻¹ and frequency 170 Hz.",
+    p.question(5, ["A sound wave has speed 340 m/s and frequency 170 Hz.",
                    "What is its wavelength?"], ["0.50 m", "2.0 m", "170 m", "57 800 m"])
     c.setFont("Helvetica-Bold", 11)
     c.drawString(NUM_X, p.y, "6")
@@ -136,7 +136,7 @@ def paper(path):
                           ["C", "vector", "scalar"], ["D", "vector", "vector"]])
     p.y -= 5 * 18 + 30
     p.question(7, ["An object of mass 2.0 kg has a volume of 0.50 m³. What is its density?"],
-               ["0.25 kg m⁻³", "1.0 kg m⁻³", "2.5 kg m⁻³", "4.0 kg m⁻³"])
+               ["0.25 kg/m³", "1.0 kg/m³", "2.5 kg/m³", "4.0 kg/m³"])
     p.question(8, ["A steady current of 0.20 A flows for 60 s.", "How much charge passes?"],
                ["3.0 C", "12 C", "300 C", "0.0033 C"])
     p.new_page()
