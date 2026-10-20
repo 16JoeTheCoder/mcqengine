@@ -13,7 +13,7 @@ const engine = createEngine();
 const MILESTONES = [600, 300, 60]; // seconds remaining that get announced
 let pack = null, ref = null, timer = 0, announced = new Set();
 
-export function show(id) {
+function show(id) {
   for (const s of document.querySelectorAll('main > section')) s.hidden = s.id !== id;
   $(id).querySelector('h1')?.setAttribute('tabindex', '-1');
   $(id).querySelector('h1')?.focus();

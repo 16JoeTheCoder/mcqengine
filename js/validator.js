@@ -2,7 +2,7 @@
 // validate(pack, assets) -> {errors, warnings}, each [{code, where, message}].
 // assets: Map(path -> SVG text, or null for other files), or null to skip asset checks.
 
-export const PACK_ID = /^[a-z0-9][a-z0-9-]{1,63}$/;
+const PACK_ID = /^[a-z0-9][a-z0-9-]{1,63}$/;
 const QUESTION_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$/;
 const SVG_UNSAFE = /<script|\son[a-z]+\s*=|<foreignObject|href\s*=\s*(?!["']#)/i;
 export const SUPPORTED_TYPES = ['single'];

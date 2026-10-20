@@ -14,7 +14,7 @@ const placeholder = (what) => el('p', { className: 'unsupported' }, `Unsupported
 
 // Shows the [x, y, w, h] window of an image: the wrapper keeps the clip's aspect ratio and the
 // image is scaled and offset inside it once its natural size is known.
-export function image(pack, item, alt) {
+function image(pack, item, alt) {
   const img = el('img', { alt, decoding: 'async' });
   img.addEventListener('error', () => img.replaceWith(placeholder('missing image')));
   if (!Array.isArray(item.clip)) {
@@ -57,8 +57,8 @@ function block(pack, b) {
   }
 }
 
-export const blocks = (pack, list) => el('div', { className: 'blocks' }, (list || []).map((b) => block(pack, b)));
-export const isTyped = (q) => Array.isArray(q.stem) && Array.isArray(q.options);
+const blocks = (pack, list) => el('div', { className: 'blocks' }, (list || []).map((b) => block(pack, b)));
+const isTyped = (q) => Array.isArray(q.stem) && Array.isArray(q.options);
 
 // The question body (without answer buttons).
 export function question(pack, q) {

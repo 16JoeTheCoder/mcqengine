@@ -2,7 +2,7 @@
 // Events: question {index, question}, answered {questionId, key, correct}, tick {elapsedMs, remainingMs}, ended (result).
 import { SUPPORTED_TYPES } from './validator.js';
 
-export const DEFAULT_SECONDS_PER_QUESTION = 90;
+const DEFAULT_SECONDS_PER_QUESTION = 90;
 const scorable = (q) => SUPPORTED_TYPES.includes(q.type);
 
 export function createEngine({ now = () => performance.now(), random = Math.random } = {}) {
