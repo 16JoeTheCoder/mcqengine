@@ -185,6 +185,28 @@ try {
     await phone.close();
   });
 
+  await step('leaderboard appears and posts when the functions answer (mocked)', async () => {
+    const posted = [];
+    await page.route('**/.netlify/functions/**', async (route) => {
+      const req = route.request();
+      if (req.method() === 'POST') { posted.push(JSON.parse(req.postData())); return route.fulfill({ status: 201, json: { ok: true } }); }
+      return route.fulfill({ json: { pack: 'sample-physics', scores: posted.map((b) => ({ ...b, at: 'now' })) } });
+    });
+    await page.goto(URL_);
+    await page.check('input[value=exam]');
+    await page.getByRole('button', { name: 'Start Synthetic Physics (sample)' }).click();
+    await page.locator('#play').waitFor();
+    await page.click('#end-btn');
+    await page.locator('#board').waitFor();
+    await page.fill('#nickname', 'Tester');
+    await page.getByRole('button', { name: 'Post score' }).click();
+    await page.getByText('Score posted.').waitFor();
+    assert.equal(posted[0].mode, 'exam');
+    assert.equal(posted[0].total, 8);
+    assert.match(await page.textContent('#board-list'), /Tester 0\/8/);
+    await page.unroute('**/.netlify/functions/**');
+  });
+
   assert.deepEqual(problems, [], 'no page errors or CSP/console errors');
   console.log(`\n${steps.length} e2e steps passed. Screenshots in ${SHOTS}`);
 } finally {
