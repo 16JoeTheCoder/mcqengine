@@ -1,0 +1,78 @@
+{
+ "format": "mcqpack",
+ "formatVersion": "1.0",
+ "id": "fixture-pack",
+ "version": "1.0.0",
+ "title": "Fixture",
+ "optionKeys": [
+  "A",
+  "B",
+  "C",
+  "D",
+  "A"
+ ],
+ "questions": [
+  {
+   "id": "q1",
+   "type": "single",
+   "rev": 1,
+   "answer": "B",
+   "snapshot": [
+    {
+     "src": "assets/p.png",
+     "clip": [
+      0,
+      0,
+      1,
+      1
+     ]
+    }
+   ]
+  },
+  {
+   "id": "q2",
+   "type": "single",
+   "rev": 1,
+   "answer": "A",
+   "stem": [
+    {
+     "type": "text",
+     "text": "What is **2+2**?"
+    },
+    {
+     "type": "math",
+     "tex": "x^2"
+    }
+   ],
+   "options": [
+    {
+     "key": "A",
+     "blocks": [
+      {
+       "type": "text",
+       "text": "4"
+      }
+     ]
+    },
+    {
+     "key": "B",
+     "blocks": [
+      {
+       "type": "text",
+       "text": "5"
+      }
+     ]
+    },
+    {
+     "key": "C",
+     "blocks": [
+      {
+       "type": "text",
+       "text": "6"
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}
