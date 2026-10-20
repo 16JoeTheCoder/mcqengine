@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>MCQ Engine</title>
+  <link rel="stylesheet" href="vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="css/style.css">
+  <script type="module" src="js/app.js"></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="bar">
+    <a href="./" class="brand">MCQ Engine</a>
+    <p id="notice" class="notice" role="status" hidden></p>
+  </header>
+
+  <main id="main" tabindex="-1">
+    <noscript><p>This app needs JavaScript.</p></noscript>
+
+    <section id="home" hidden aria-labelledby="home-h">
+      <h1 id="home-h">Practise multiple-choice papers</h1>
+      <div id="resume" class="card" hidden>
+        <p id="resume-text"></p>
+        <div class="row"><button id="resume-btn" class="primary">Resume</button><button id="discard-btn">Discard</button></div>
+      </div>
+
+      <fieldset class="settings">
+        <legend>How do you want to play?</legend>
+        <label><input type="radio" name="mode" value="exam"> Exam: timed, results at the end</label>
+        <label><input type="radio" name="mode" value="practice"> Practice: no timer, feedback after each answer</label>
+        <label><input type="checkbox" id="shuffle"> Shuffle question order</label>
+      </fieldset>
+
+      <h2>Packs</h2>
+      <ul id="pack-list" class="packs" aria-live="polite"></ul>
+
+      <h2>Load your own pack</h2>
+      <p>Packs stay in this browser. Choose a <code>.zip</code>, a folder, or a single <code>pack.json</code>.</p>
+      <div class="row">
+        <label class="button">Zip file<input type="file" id="up-zip" accept=".zip,application/zip" class="visually-hidden"></label>
+        <label class="button">Folder<input type="file" id="up-dir" webkitdirectory multiple class="visually-hidden"></label>
+        <label class="button">pack.json<input type="file" id="up-json" accept=".json,application/json" class="visually-hidden"></label>
+      </div>
+      <div id="upload-msg" role="alert"></div>
+
+      <details class="data">
+        <summary>Your data</summary>
+        <p>Scores and mistakes are saved in this browser only. Export them to move to another device.</p>
+        <div class="row">
+          <button id="export-btn">Export data</button>
+          <label class="button">Import data<input type="file" id="import-file" accept=".json,application/json" class="visually-hidden"></label>
+        </div>
+        <p id="data-msg" role="status"></p>
+      </details>
+    </section>
+
+    <section id="play" hidden aria-labelledby="play-h">
+      <div class="play-head">
+        <h1 id="play-h" class="progress"></h1>
+        <p id="timer" class="timer" role="timer"></p>
+        <button id="flag-btn" aria-pressed="false">Flag</button>
+        <button id="end-btn">End session</button>
+      </div>
+      <p id="live" class="visually-hidden" aria-live="polite"></p>
+      <div id="q-area"></div>
+      <div id="options" class="options" role="group" aria-label="Answer options"></div>
+      <div id="feedback" class="feedback" aria-live="polite"></div>
+      <nav class="qnav" aria-label="Question navigation">
+        <button id="prev-btn">&larr; Previous</button>
+        <button id="next-btn" class="primary">Next &rarr;</button>
+      </nav>
+      <nav id="palette" class="palette" aria-label="All questions"></nav>
+      <p class="hint">Keys: A–D or 1–4 to answer, arrows to move, Enter for next.</p>
+    </section>
+
+    <section id="results" hidden aria-labelledby="results-h">
+      <h1 id="results-h">Results</h1>
+      <p id="score" class="score" aria-live="polite"></p>
+      <div class="row">
+        <button id="retry-btn" class="primary">Retry mistakes</button>
+        <button id="again-btn">Play again</button>
+        <button id="home-btn">All packs</button>
+      </div>
+      <section id="board" class="card" hidden aria-labelledby="board-h">
+        <h2 id="board-h">Leaderboard</h2>
+        <form id="post-form" class="row" hidden>
+          <label>Nickname <input id="nickname" maxlength="20" minlength="2" required autocomplete="nickname"></label>
+          <button class="primary">Post score</button>
+        </form>
+        <p id="board-msg" role="status"></p>
+        <ol id="board-list" class="board"></ol>
+      </section>
+      <h2 id="mistakes-h">Mistakes</h2>
+      <label class="toggle"><input type="checkbox" id="alltime"> All-time mistakes in this pack</label>
+      <ol id="mistakes" class="mistakes" aria-labelledby="mistakes-h"></ol>
+    </section>
+  </main>
+
+  <dialog id="explain" aria-labelledby="explain-h">
+    <h2 id="explain-h"></h2>
+    <div id="explain-body"></div>
+    <fieldset class="causes">
+      <legend>Why did you get it wrong?</legend>
+      <div class="row" id="cause-buttons"></div>
+    </fieldset>
+    <div id="explain-original"></div>
+    <form method="dialog"><button class="primary">Close</button></form>
+  </dialog>
+</body>
+</html>

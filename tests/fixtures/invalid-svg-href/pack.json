@@ -1,0 +1,26 @@
+{
+ "format": "mcqpack",
+ "formatVersion": "1.0",
+ "id": "fixture-pack",
+ "version": "1.0.0",
+ "title": "Fixture",
+ "optionKeys": [
+  "A",
+  "B",
+  "C",
+  "D"
+ ],
+ "questions": [
+  {
+   "id": "q1",
+   "type": "single",
+   "rev": 1,
+   "answer": "B",
+   "snapshot": [
+    {
+     "src": "assets/bad.svg"
+    }
+   ]
+  }
+ ]
+}

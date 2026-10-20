@@ -1,0 +1,10 @@
+{
+ "format": "mcqpack-overlay",
+ "formatVersion": "1.0",
+ "pack": "fixture-pack",
+ "layer": "explanations",
+ "items": {
+  "q1": "Because.",
+  "nope": "x"
+ }
+}
