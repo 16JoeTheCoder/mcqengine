@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import * as store from '../lib/data/db';
 import { Countdown, crossedThreshold, formatClock, sanitizeTimer } from '../lib/engine/timer';
 import { loadSessionQuestions, submitSession } from '../lib/engine/session';
@@ -117,8 +117,20 @@ function Runner({ initial }: { initial: Loaded }) {
 
   // ----- persistence: answers on every change (debounced < 200 ms) -----
   const pending = useRef<number | null>(null);
+  const chain = useRef<Promise<void>>(Promise.resolve());
+  /**
+   * Writes are serialised so a late autosave can never land after Save or Submit. Once the
+   * session has ended only the final write (final = true) goes through.
+   */
   const persist = useCallback(
-    async (status: SessionSummary['status'] = 'active') => {
+    (status: SessionSummary['status'] = 'active', final = false): Promise<void> => {
+      if (ended.current && !final) return chain.current;
+      chain.current = chain.current.then(() => write(status));
+      return chain.current;
+    },
+    [],
+  );
+  const write = async (status: SessionSummary['status']) => {
       const det = detailRef.current;
       if (countdown.current && det.timer) {
         const r = countdown.current.remaining(Date.now(), performance.now());
@@ -134,9 +146,7 @@ function Runner({ initial }: { initial: Loaded }) {
       } catch {
         toast('Could not save your answers. Storage may be full: free some space or export a backup.');
       }
-    },
-    [summary],
-  );
+  };
   const schedule = useCallback(() => {
     if (pending.current) clearTimeout(pending.current);
     pending.current = window.setTimeout(() => {
@@ -158,7 +168,7 @@ function Runner({ initial }: { initial: Loaded }) {
       ended.current = true;
       setBusy(true);
       attribute();
-      await persist();
+      await persist('active', true);
       const r = await submitSession(summary.id, auto);
       bump();
       broadcastChange();
@@ -172,7 +182,7 @@ function Runner({ initial }: { initial: Loaded }) {
     if (ended.current) return;
     ended.current = true;
     attribute();
-    await persist('saved');
+    await persist('saved', true);
     bump();
     broadcastChange();
     toast('Session saved. Resume it from the pack page or when you next open DMC.');
@@ -259,7 +269,7 @@ function Runner({ initial }: { initial: Loaded }) {
       if (!ended.current) {
         ended.current = true;
         attribute();
-        void persist('saved').then(() => {
+        void persist('saved', true).then(() => {
           bump();
           toast('Session saved. Resume it from the pack page.');
         });
@@ -296,8 +306,8 @@ function Runner({ initial }: { initial: Loaded }) {
     [schedule],
   );
 
-  // Keyboard.
-  useEffect(() => {
+  // Keyboard (layout effect: listening from the first paint).
+  useLayoutEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (endOpen || gridOpen || fixOpen || document.querySelector('.backdrop')) return;
       const t = e.target as HTMLElement;

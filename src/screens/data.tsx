@@ -58,7 +58,7 @@ export function BackupPanel() {
           <div class="jy-panel stack-s" key={t}>
             <h3>{title}</h3>
             <p class="small muted" style={{ flex: 1 }}>{text}</p>
-            <Button variant={t === 'everything' ? 'primary' : 'default'} onClick={() => run(t)} disabled={!!busy}>
+            <Button variant={t === "everything" ? "primary" : "default"} onClick={() => run(t)} disabled={!!busy} aria-label={`Export ${title.toLowerCase()}`}>
               <Icon name="download" size={18} /> {busy === t ? 'Preparing…' : 'Export'}
             </Button>
           </div>

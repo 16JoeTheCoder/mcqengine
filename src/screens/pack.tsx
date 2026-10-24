@@ -14,7 +14,9 @@ import { Icon } from '../ui/icons';
 import { Bars, LineChart, Scatter } from '../ui/charts';
 import { StartDialog, type StartRequest } from './start';
 import { PapersBrowser } from './papers';
-import { Insights } from './insights';
+import { lazy } from '../ui/lazy';
+
+const Insights = lazy(() => import('./insights').then((m) => m.Insights), <div class="skel" style={{ height: '400px' }} />);
 import { BackupPanel } from './data';
 import { FixQuestion } from './fix';
 

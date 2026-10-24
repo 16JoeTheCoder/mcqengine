@@ -13,4 +13,5 @@ export default tseslint.config(
       'no-restricted-properties': ['error', { property: 'innerHTML', message: 'Untrusted content must go through text nodes or the SVG sanitiser.' }],
     },
   },
+  { files: ['src/sw-template.js'], languageOptions: { globals: { ...globals.serviceworker, __PRECACHE__: 'readonly' } } },
 );

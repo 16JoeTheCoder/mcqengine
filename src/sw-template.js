@@ -1,5 +1,4 @@
 /* DMC service worker. Generated at build time: version and precache list are injected. */
-/* global __PRECACHE__ */
 const VERSION = '__VERSION__';
 const CACHE = `dmc-${VERSION}`;
 const PRECACHE = __PRECACHE__;
@@ -29,11 +28,11 @@ self.addEventListener('fetch', (event) => {
     // New versions arrive through the service worker update and the in-app prompt.
     event.respondWith(
       caches
-        .match('./', { ignoreSearch: true })
+        .match('./', { ignoreSearch: true, ignoreVary: true })
         .then((hit) => hit || caches.match('./index.html'))
         .then((hit) => hit || fetch(req)),
     );
     return;
   }
-  event.respondWith(caches.match(req).then((hit) => hit || fetch(req)));
+  event.respondWith(caches.match(req, { ignoreVary: true }).then((hit) => hit || fetch(req)));
 });

@@ -12,10 +12,13 @@ import { DmcMark, Signature } from './ui/brand';
 import { Library } from './screens/library';
 import { PackScreen } from './screens/pack';
 import { SessionScreen } from './screens/session';
-import { Results } from './screens/results';
-import { AboutDialog, SettingsScreen } from './screens/settings';
-import { ImportWizard } from './screens/import';
-import { PromptDialog } from './screens/prompt';
+import { lazy } from './ui/lazy';
+
+const Results = lazy(() => import('./screens/results').then((m) => m.Results));
+const SettingsScreen = lazy(() => import('./screens/settings').then((m) => m.SettingsScreen));
+const AboutDialog = lazy(() => import('./screens/settings').then((m) => m.AboutDialog));
+const ImportWizard = lazy(() => import('./screens/import').then((m) => m.ImportWizard));
+const PromptDialog = lazy(() => import('./screens/prompt').then((m) => m.PromptDialog));
 
 /** Set by main.tsx when a new service worker is waiting. */
 export const updateReady = createStore<(() => void) | null>(null);
