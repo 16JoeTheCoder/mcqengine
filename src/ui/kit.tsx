@@ -148,7 +148,7 @@ export function Ring({ value, size = 56, label, stroke = 5, text }: { value: num
       />
       <text x="50%" y="50%" dominant-baseline="central" text-anchor="middle" font-size={Math.max(12, size * (text ? 0.22 : 0.26))}>
         {text ?? (value === null ? '—' : Math.round(v * 100))}
-        {!text && value !== null && <tspan font-size={Math.max(10, size * 0.14)} fill="var(--ink-muted)">%</tspan>}
+        {!text && value !== null && <tspan font-size={Math.max(12, size * 0.14)} fill="var(--ink-muted)">%</tspan>}
       </text>
     </svg>
   );
@@ -209,6 +209,13 @@ export function Field({ label, hint, children }: { label: string; hint?: string;
 
 export function Skeleton({ h = 120 }: { h?: number }) {
   return <div class="skel" style={{ height: `${h}px` }} aria-hidden="true" />;
+}
+
+/** Lazily loaded pages call this once rendered, so focus does not stay on <body>. */
+export function focusMainIfLost() {
+  requestAnimationFrame(() => {
+    if (document.activeElement === document.body) document.getElementById('main')?.focus({ preventScroll: true });
+  });
 }
 
 export const pct = (v: number | null | undefined, digits = 0) => (v === null || v === undefined || !Number.isFinite(v) ? '—' : `${(v * 100).toFixed(digits)}`);

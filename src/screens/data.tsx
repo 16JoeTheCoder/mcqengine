@@ -55,11 +55,11 @@ export function BackupPanel() {
             ['everything', 'Everything', 'Packs, images, progress and settings in one zip. Use this to move devices.'],
           ] as [Tier, string, string][]
         ).map(([t, title, text]) => (
-          <div class="jy-panel stack-s" key={t}>
+          <div class="jy-panel backup-card stack-s" key={t}>
             <h3>{title}</h3>
-            <p class="small muted" style={{ flex: 1 }}>{text}</p>
-            <Button variant={t === "everything" ? "primary" : "default"} onClick={() => run(t)} disabled={!!busy} aria-label={`Export ${title.toLowerCase()}`}>
-              <Icon name="download" size={18} /> {busy === t ? 'Preparing…' : 'Export'}
+            <p class="small muted grow">{text}</p>
+            <Button variant={t === 'everything' ? 'primary' : 'default'} onClick={() => run(t)} disabled={!!busy}>
+              <Icon name="download" size={18} /> {busy === t ? 'Preparing…' : `Export ${title.toLowerCase()}`}
             </Button>
           </div>
         ))}

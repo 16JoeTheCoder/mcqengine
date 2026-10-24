@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { Analytics } from '../lib/stats/dashboard';
-import { trend } from '../lib/stats/dashboard';
 import { paperScore, secPerQ } from '../lib/stats/core';
 import { fmtMinSec } from '../lib/stats/kpi';
 import * as store from '../lib/data/db';
@@ -13,7 +12,7 @@ type Tab = 'trend' | 'pace' | 'papers' | 'questions' | 'calibration';
 
 export function Insights({ pack, a, sessions, stats, calibration }: { pack: Pack; a: Analytics; sessions: SessionSummary[]; stats: QuestionStat[]; calibration: boolean }) {
   const tabs: [Tab, string][] = [
-    ['trend', 'Trend'],
+    ['trend', 'History'],
     ['pace', 'Pace'],
     ['papers', 'Papers'],
     ['questions', 'Questions'],
@@ -31,7 +30,7 @@ export function Insights({ pack, a, sessions, stats, calibration }: { pack: Pack
   };
   return (
     <div>
-      <div class="tabs" role="tablist" aria-label="Insights" onKeyDown={onKey}>
+      <div class="seg" role="tablist" aria-label="Insights" onKeyDown={onKey} style={{ marginBottom: 'var(--space-5)' }}>
         {tabs.map(([t, l]) => (
           <button role="tab" id={`tab-${t}`} aria-selected={tab === t} aria-controls={`panel-${t}`} tabIndex={tab === t ? 0 : -1} onClick={() => setTab(t)} key={t}>
             {l}
@@ -53,21 +52,9 @@ export function Insights({ pack, a, sessions, stats, calibration }: { pack: Pack
 }
 
 function TrendTab({ a }: { a: Analytics }) {
-  const t = a.q.length >= 3 ? trend(a.q, 'score') : null;
   const recent = a.q.slice(-8).reverse();
   return (
     <div class="stack" style={{ gap: 'var(--space-5)' }}>
-      <div class="jy-panel">
-        <h3 style={{ marginBottom: 'var(--space-3)' }}>Paper score, true scale</h3>
-        <div style={{ height: '300px' }}>
-          {t ? (
-            <LineChart label="Paper score trend, 0 to 100%" series={[{ label: 'session', kind: 'raw', points: t.raw }, { label: 'avg of 3', kind: 'main', points: t.rolling }]} band={t.band} yFormat={(x) => `${Math.round(x * 100)}`} xLabel="session (n)" yLabel="score (%)" trueScale height={300} />
-          ) : (
-            <div class="locked"><b>Complete 3 sessions to unlock your trend</b></div>
-          )}
-        </div>
-        <p class="chart-sentence">On the full 0 to 100% scale, small changes look as small as they are.</p>
-      </div>
       <div class="grid-even">
         <div class="jy-panel">
           <h3 style={{ marginBottom: 'var(--space-3)' }}>Activity</h3>

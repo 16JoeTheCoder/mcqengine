@@ -121,6 +121,22 @@ export function metaOf(p: Paper): PaperMeta {
   };
 }
 
+/**
+ * Question-level merge of two copies of the same paper. `base` wins for paper fields and for
+ * questions both copies have, except that a known answer is never replaced by null. Questions
+ * only `other` has are kept. Nothing is ever dropped.
+ */
+export function mergePaperCopies(base: Paper, other: Paper): Paper {
+  const byN = new Map(other.questions.map((q) => [q.n, q] as const));
+  const questions = base.questions.map((q) => {
+    const o = byN.get(q.n);
+    byN.delete(q.n);
+    return q.answer === null && o && o.answer !== null && o.hash === q.hash ? { ...q, answer: o.answer } : q;
+  });
+  const merged: Paper = { ...base, questions: [...questions, ...byN.values()].sort((a, b) => a.n - b.n) };
+  return { ...merged, ...metaOf(merged) };
+}
+
 /** A paper can be started only when every question is present and keyed. */
 export const paperReady = (m: PaperMeta) => m.present >= m.questionCount && m.keyed >= m.questionCount;
 

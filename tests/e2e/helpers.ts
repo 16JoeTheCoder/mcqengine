@@ -39,7 +39,7 @@ export async function startPaper(page: Page, index = 0, opts: { practice?: boole
   const dlg = page.getByRole('dialog');
   if (opts.practice) await dlg.getByRole('button', { name: 'Practice' }).click();
   if (opts.total) {
-    await dlg.getByRole('button', { name: 'Fixed total' }).click();
+    await dlg.getByRole('button', { name: 'Total', exact: true }).click();
     await dlg.getByLabel('Minutes').fill(String(opts.total));
     await dlg.getByLabel('Minutes').press('Tab');
   }

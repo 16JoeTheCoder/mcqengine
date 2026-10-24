@@ -122,3 +122,15 @@ One line each: what was decided and why. Grouped by area.
 89. A session whose save is refused (submitted or discarded elsewhere) leaves its screen with a message instead of going silent. Deleting a pack is refused while a session runs in another tab. A failing auto-submit is not retried every tick.
 90. Random and drill sessions keep the cap fixed at creation; only paper sessions re-clamp to the paper's current cap on resume.
 91. Known limits, kept: boot recovery is skipped entirely while any tab runs a session (stale sessions are recovered on the next open). A key fixed after a session does not rewrite that session's question stats or mistakes-bank entries; the next attempt corrects them.
+
+## Changes after the logic audit (round 3) and review round 2
+
+92. One question-level paper merge (`mergePaperCopies`) serves both import commits and restores, in both directions: questions either copy has are kept, and a known answer key is never replaced by null.
+93. Restore validation now covers pack paper lists, question shapes and ids (`<paper id>#<n>`), timer fields (finite and positive) and settings ranges; `sanitizeTimer` also treats non-finite values as invalid.
+94. At time zero, answering is locked, and any later submit is recorded as auto-submitted.
+95. This tab's own session lock never counts as "another tab".
+96. Sessions submitted before the key snapshot existed fall back to the current key. No such sessions exist in a released build, so there is no backfill.
+97. Import review number fields can be emptied while typing; an empty time cap blocks import with a stated reason.
+98. The Insights "Trend" tab is now "History" (activity and recent sessions), since the overview already shows the trend chart. Insights tabs use the segmented control, so two underline navs never stack.
+99. The timer bar is the ok colour above half, shades from amber to red down to 10%, then is red with stripes, a pulse and a visible "Low" word (on phones too).
+100. Known minor items kept after review round 2: chart data tables (charts have an aria label plus a sentence each), heatmap month labels, and the import error list being readable but not announced item by item (only the count is announced).

@@ -429,3 +429,42 @@ html.reduce-motion *, html.reduce-motion *::before, html.reduce-motion *::after 
   .qcard { padding: var(--space-4); }
   .qs-head .bar-row { gap: var(--space-2); }
 }
+
+/* ---- review round 2 ---- */
+#app { min-height: 100vh; display: flex; flex-direction: column; }
+#app > .footer { margin-top: auto; }
+.jy-btn--inverse { background: var(--inverse); color: var(--on-inverse); border-color: var(--inverse); }
+.opt:active:not(:disabled) { transform: translateY(1px); }
+.qs-head .bar-row { max-width: 1440px; margin: 0 auto; }
+.qs-side { padding: 4px; }
+@media (pointer: coarse) { .kbd { display: none; } }
+.check { align-items: flex-start; }
+.check > input { margin-top: 3px; }
+.qgrid, .chips { gap: var(--space-2); }
+.jy-badge { gap: var(--space-2); }
+.qgrid { grid-template-columns: repeat(5, var(--grid-cell)); }
+.modal .qgrid { justify-content: center; }
+.secnav a { min-width: var(--hit-min); justify-content: center; }
+.chip { min-width: var(--hit-min); justify-content: center; }
+.paper.fig { width: fit-content; max-width: 100%; align-self: flex-start; }
+.qimage { flex: none; }
+.qimage img { width: 100%; height: auto; max-height: none; }
+.paper-card .m.meta1 { flex-wrap: nowrap; white-space: nowrap; overflow: hidden; }
+td .apply-all { font-family: var(--font-sans); }
+.backup-card { display: flex; flex-direction: column; }
+.backup-card .grow { flex: 1; }
+.pack-card { grid-template-rows: auto auto auto; align-content: start; }
+.pack-card .meta { flex-wrap: nowrap; white-space: nowrap; overflow: hidden; font-family: var(--font-sans); }
+.pack-card .status { min-height: 24px; }
+.jy-stat .value { display: flex; align-items: baseline; height: 48px; }
+.jy-stat .delta { align-items: flex-start; }
+.jy-stat .delta svg { margin-top: 3px; flex: none; }
+@media (max-width: 480px) { .kpis .jy-panel { padding: var(--space-4); } }
+@media (max-width: 640px) {
+  .score-hero { grid-template-columns: auto 1fr; align-items: center; gap: var(--space-4); }
+  .score-hero .stack-s .row { display: grid; grid-template-columns: 1fr 1fr; }
+}
+.prompt-actions { display: flex; gap: var(--space-3); flex-wrap: wrap; align-items: center; }
+@media (max-width: 899px) {
+  .prompt-actions { position: sticky; bottom: calc(-1 * var(--space-5)); z-index: 2; background: var(--surface-raised); border-top: 1px solid var(--line); margin: 0 calc(-1 * var(--space-5)) calc(-1 * var(--space-5)); padding: var(--space-3) var(--space-5); }
+}

@@ -65,7 +65,7 @@ function fromEntries(name: string, list: (readonly [string, Uint8Array | Blob])[
       }),
     );
   } else {
-    const jsons = items.filter(([p]) => /\.(json|txt)$/i.test(p));
+    const jsons = items.filter(([p]) => /\.json$/i.test(p));
     const main = jsons.find(([p]) => /(^|\/)pack\.json$/i.test(p)) ?? jsons[0];
     if (main) pending.push(decode(main[1]).then((t) => void (src.text = t)));
     for (const [p, b] of items) {

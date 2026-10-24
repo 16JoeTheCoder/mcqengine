@@ -35,7 +35,7 @@ const niceTicks = (lo: number, hi: number, n = 4) => {
   const mag = Math.pow(10, Math.floor(Math.log10(step0)));
   const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s >= step0) ?? step0;
   const out: number[] = [];
-  for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) out.push(+v.toFixed(10));
+  for (let v = Math.ceil(lo / step - 1e-9) * step; v <= hi + 1e-9; v += step) out.push(+v.toFixed(10));
   return out;
 };
 
@@ -245,9 +245,9 @@ export function ActivityHeatmap({ days, weeks = 18, label }: { days: Map<string,
     cells.push({ x: Math.floor(i / 7), y: (d.getDay() + 6) % 7, v: days.get(key) ?? 0, d: key });
   }
   return (
-    <Frame height={7 * 14 + 4} label={label}>
+    <Frame height={7 * 20 + 4} label={label}>
       {(w) => {
-        const size = Math.min(14, Math.floor((w - 4) / weeks));
+        const size = Math.min(20, Math.floor((w - 4) / weeks));
         return (
           <g class="heat">
             {cells.map((c) => (
@@ -279,7 +279,7 @@ export function QuestionHeat({ cells, label }: { cells: { id: string; label: str
               border: c.attempts ? '0' : '1px dashed var(--line)',
               display: 'grid',
               placeItems: 'center',
-              fontSize: '11px',
+              fontSize: '12px',
               fontFamily: 'var(--font-mono)',
               color: t > 0.6 ? 'var(--surface)' : 'var(--ink-muted)',
             }}

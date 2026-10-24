@@ -9,6 +9,7 @@ import { href, navigate, settingsStore, updateSettings, useStore } from '../lib/
 import { LETTERS, type Question, type SessionDetail, type SessionSummary } from '../lib/types';
 import { Badge, Button, fmtDate, Ring, Skeleton } from '../ui/kit';
 import { Icon } from '../ui/icons';
+import { focusMainIfLost } from '../ui/kit';
 import { FigureView, OptionBody, QuestionImage, Rich } from '../ui/content';
 import { doBackup } from './data';
 import { FixQuestion } from './fix';
@@ -29,6 +30,7 @@ export function Results({ id }: { id: string }) {
       const [q, history, all] = await Promise.all([loadSessionQuestions(d), store.getSessions(s.packId), store.getAllSessions()]);
       setData({ s, d, q, history, completed: all.filter((x) => x.status === 'submitted' || x.status === 'auto-submitted').length });
       window.scrollTo(0, 0);
+      focusMainIfLost();
     })();
   }, [id]);
 
@@ -119,7 +121,7 @@ export function Results({ id }: { id: string }) {
             <Stat label="On the paper" value={`${r.minLessOnPaper.toFixed(1)} min`} ctx="less than your median" />
             <Stat label="Your typical pace" value={`${r.trimmedMeanT.toFixed(0)} s/q`} ctx={r.baselineCount >= 5 ? 'trimmed mean' : 'mean'} />
             <Stat label="Finishing time" value={formatClock(r.finishMs)} ctx={`median ${formatClock(r.medianT * 1000 * s.total)}`} />
-            <Stat label="Accuracy drop" value={`${r.dropQuestions.toFixed(1)}`} ctx={`questions, ${r.dropPoints.toFixed(1)} points below your median`} />
+            <Stat label="Accuracy drop" value={`${Math.round(r.dropQuestions * 10) / 10} Q`} ctx={`questions, ${r.dropPoints.toFixed(1)} points below your median`} />
           </div>
           {r.rushedErrors.length > 0 && (
             <div class="stack-s">
@@ -128,7 +130,18 @@ export function Results({ id }: { id: string }) {
                 {r.rushedErrors.map((e, k) => (
                   <span key={e.qid}>
                     {k > 0 && ', '}
-                    <a href={`#q-${e.index}`} onClick={() => setFilter('all')}>
+                    <a
+                      href={location.hash}
+                      onClick={(ev) => {
+                        ev.preventDefault();
+                        setFilter('all');
+                        requestAnimationFrame(() => {
+                          const el = document.getElementById(`q-${e.index}`);
+                          el?.scrollIntoView({ block: 'start' });
+                          el?.focus({ preventScroll: true });
+                        });
+                      }}
+                    >
                       Q{e.index + 1} ({Math.round(e.timeMs / 1000)} s)
                     </a>
                   </span>
@@ -174,7 +187,7 @@ export function Results({ id }: { id: string }) {
           const k = keyOf(a.qid);
           const status = a.choice === null ? 'neutral' : a.choice === k ? 'ok' : 'bad';
           return (
-            <article class="review-item" id={`q-${i}`} key={a.qid}>
+            <article class="review-item" id={`q-${i}`} key={a.qid} tabIndex={-1}>
               <div class="row" style={{ gap: 'var(--space-3)' }}>
                 <b class="num" style={{ color: 'var(--ink)' }}>Q{i + 1}</b>
                 <Badge status={status}>{a.choice === null ? 'Not answered' : a.choice === k ? 'Correct' : 'Wrong'}</Badge>

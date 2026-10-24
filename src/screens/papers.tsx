@@ -98,7 +98,7 @@ export function PapersBrowser({ rows, inProgress, onPick }: { rows: LadderRow[];
       <button type="button" class="jy-panel jy-panel--link paper-card" key={p.id} onClick={() => onPick(p)}>
         <span class="t">{p.title}</span>
         <Ring value={r.best} size={44} stroke={4} label={r.best === null ? 'No attempts yet' : `Best ${Math.round(r.best * 100)}%`} />
-        <span class="m">
+        <span class="m meta1">
           <span><span class="num">{p.questionCount}</span> Q</span>
           <span><span class="num">{p.timeLimitMin}</span> min</span>
           <span><span class="num">{r.attempts}</span> attempt{r.attempts === 1 ? '' : 's'}</span>

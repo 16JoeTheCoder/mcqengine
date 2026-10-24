@@ -44,11 +44,12 @@ export function buildTimer(opts: {
 
 /** Re-applies the clamp to a stored config (defends against tampered or stale data). */
 export function sanitizeTimer(c: TimerConfig, questions: number): TimerConfig {
-  const capMs = Math.max(60_000, c.capMs);
-  const totalMs = Math.min(capMs, Math.max(1000, c.totalMs));
+  const fin = (v: number, d: number) => (Number.isFinite(v) ? v : d);
+  const capMs = Math.min(600 * 60_000, Math.max(60_000, fin(c.capMs, 60_000)));
+  const totalMs = Math.min(capMs, Math.max(1000, fin(c.totalMs, capMs)));
   if (c.kind === 'perq' && c.perQMs) {
     // At least one second per question, unless the cap itself allows less.
-    const perQMs = Math.min(Math.floor(capMs / Math.max(1, questions)), Math.max(1000, c.perQMs));
+    const perQMs = Math.min(Math.floor(capMs / Math.max(1, questions)), Math.max(1000, fin(c.perQMs, 1000)));
     return { ...c, capMs, perQMs, totalMs: Math.min(totalMs, perQMs * questions) };
   }
   return { ...c, capMs, totalMs };

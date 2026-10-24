@@ -8,7 +8,9 @@ import { Icon } from '../ui/icons';
 
 /** Form values survive closing the dialog, so an accidental Esc never loses the details. */
 const drafts = new Map<string, unknown>();
+let draftScope = 'new';
 function useDraft<T>(key: string, init: T): [T, (v: T) => void] {
+  key = `${draftScope}:${key}`;
   const [v, setV] = useState<T>(drafts.has(key) ? (drafts.get(key) as T) : init);
   return [
     v,
@@ -23,8 +25,10 @@ const splitGroup = (s: string) => s.split('>').map((x) => x.trim()).filter(Boole
 
 /** "Make a pack with AI" / "Add papers": builds a complete, tailored prompt for any AI chat. */
 export function PromptDialog({ pack, onClose, onImport }: { pack?: Pack; onClose: () => void; onImport: () => void }) {
+  // Drafts are kept per pack, so details typed for one pack never reappear in another.
+  draftScope = pack?.id ?? 'new';
   const [tab, setTab] = useState<'paper' | 'key'>('paper');
-  const [subject, setSubject] = useDraft(`subject:${pack?.id ?? 'new'}`, pack?.subject ?? '');
+  const [subject, setSubject] = useDraft('subject', pack?.subject ?? '');
   const [packTitle, setPackTitle] = useDraft('packTitle', '');
   const [paperTitle, setPaperTitle] = useDraft('paperTitle', '');
   const [paperId, setPaperId] = useDraft('paperId', '');
@@ -81,10 +85,7 @@ export function PromptDialog({ pack, onClose, onImport }: { pack?: Pack; onClose
           <li><span>Copy the JSON it replies with and import it here. DMC checks it and tells you exactly what to fix.</span></li>
         </ol>
         {pack && (
-          <div class="tabs" role="tablist" aria-label="Prompt type">
-            <button role="tab" aria-selected={tab === 'paper'} onClick={() => setTab('paper')}>New paper</button>
-            <button role="tab" aria-selected={tab === 'key'} onClick={() => setTab('key')}>Answer key for a paper</button>
-          </div>
+          <Seg label="Prompt type" value={tab} onChange={setTab} options={[{ value: 'paper', label: 'New paper' }, { value: 'key', label: 'Answer key for a paper' }]} />
         )}
         <div class="start-row">
           {tab === 'paper' ? (
@@ -182,16 +183,16 @@ export function PromptDialog({ pack, onClose, onImport }: { pack?: Pack; onClose
               </div>
               <pre tabIndex={0} aria-label="Generated prompt">{ready ? prompt : tab === 'paper' ? 'Enter a pack name and paper title to build the prompt.' : 'Choose a paper.'}</pre>
             </div>
-            <div class="row sticky-actions">
-              <Button variant="accent" size="lg" onClick={copy} disabled={!ready}>
-                <Icon name={copied ? 'check' : 'copy'} size={18} /> {copied ? 'Copied' : 'Copy prompt'}
-              </Button>
-              <Button size="lg" onClick={onImport}>
-                <Icon name="upload" size={18} /> Import the reply
-              </Button>
-            </div>
             <p class="small subtle">Nothing leaves your device from here. You choose which AI to use; DMC never reads PDFs itself.</p>
           </div>
+        </div>
+        <div class="prompt-actions">
+          <Button variant="accent" onClick={copy} disabled={!ready}>
+            <Icon name={copied ? 'check' : 'copy'} size={18} /> {copied ? 'Copied' : 'Copy prompt'}
+          </Button>
+          <Button onClick={onImport}>
+            <Icon name="upload" size={18} /> Import the reply
+          </Button>
         </div>
       </div>
     </Modal>

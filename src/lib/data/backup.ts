@@ -1,7 +1,7 @@
 import { FORMAT_ID } from '../format/validate';
 import { DEFAULT_SETTINGS, LETTERS, type Figure, type Pack, type Paper, type QuestionOverride, type Settings, type TimerConfig, type TimerState } from '../types';
 import { sanitizeTimer } from '../engine/timer';
-import { applyOverride, metaOf } from '../format/merge';
+import { applyOverride, mergePaperCopies, metaOf } from '../format/merge';
 import * as store from './db';
 import { sha256Hex } from './files';
 
@@ -74,24 +74,43 @@ export interface RestorePlan {
 export class BackupError extends Error {}
 
 const str = (v: unknown) => typeof v === 'string' && v.length > 0 && v.length < 300;
+const int = (v: unknown, lo: number, hi: number) => typeof v === 'number' && Number.isInteger(v) && v >= lo && v <= hi;
+const timerOk = (t: unknown): boolean => {
+  if (t === undefined) return true;
+  const c = (t as { config?: unknown }).config ?? t;
+  const x = c as Record<string, unknown>;
+  const fin = (v: unknown) => typeof v === 'number' && Number.isFinite(v) && v > 0;
+  const rem = (t as { remainingMs?: unknown }).remainingMs;
+  return !!c && typeof c === 'object' && ['none', 'total', 'perq'].includes(x.kind as string) && fin(x.capMs) && fin(x.totalMs) && (x.perQMs === undefined || fin(x.perQMs)) && (rem === undefined || (typeof rem === 'number' && Number.isFinite(rem) && rem >= 0));
+};
 const num = (v: unknown) => typeof v === 'number' && Number.isFinite(v);
 /** Shape checks for restored rows: a recomputed checksum proves integrity, not validity. */
 function validRow(name: store.StoreName, r: Record<string, unknown>): boolean {
   if (!r || typeof r !== 'object') return false;
   switch (name) {
     case 'packs':
-      return str(r.id) && typeof r.title === 'string' && Array.isArray(r.papers) && num(r.updatedAt);
+      return (
+        str(r.id) && typeof r.title === 'string' && Array.isArray(r.papers) && num(r.updatedAt) &&
+        (r.papers as Record<string, unknown>[]).every(
+          (m) => !!m && typeof m === 'object' && str(m.id) && typeof m.title === 'string' && Array.isArray(m.group) && int(m.questionCount, 1, 200) && int(m.timeLimitMin, 1, 600) && int(m.optionCount, 2, 5) && int(m.present, 0, 200) && int(m.keyed, 0, 200),
+        )
+      );
     case 'papers':
       return (
         str(r.key) && str(r.packId) && str(r.id) && r.key === `${r.packId}::${r.id}` && Array.isArray(r.questions) && num(r.timeLimitMin) && (r.timeLimitMin as number) >= 1 && (r.timeLimitMin as number) <= 600 &&
         (r.questions as Record<string, unknown>[]).every(
-          (q) => !!q && typeof q === 'object' && str(q.id) && num(q.n) && num(q.optionCount) && (q.optionCount as number) >= 2 && (q.optionCount as number) <= 5 && (q.answer === null || (num(q.answer) && (q.answer as number) >= 0 && (q.answer as number) < (q.optionCount as number))),
+          (q) =>
+            !!q && typeof q === 'object' && int(q.n, 1, 200) && q.id === `${r.id}#${q.n}` && int(q.optionCount, 2, 5) &&
+            (q.answer === null || int(q.answer, 0, (q.optionCount as number) - 1)) &&
+            (q.stem === undefined || typeof q.stem === 'string') && (q.image === undefined || typeof q.image === 'string') &&
+            (q.options === undefined || (Array.isArray(q.options) && (q.options as unknown[]).every((o) => !!o && typeof o === 'object'))) &&
+            (q.table === undefined || (!!q.table && Array.isArray((q.table as { rows?: unknown }).rows) && ((q.table as { rows: unknown[] }).rows).every(Array.isArray))),
         )
       );
     case 'sessions':
-      return str(r.id) && str(r.packId) && ['paper', 'random', 'drill'].includes(r.type as string) && ['exam', 'practice'].includes(r.mode as string) && ['active', 'saved', 'submitted', 'auto-submitted'].includes(r.status as string) && num(r.total) && num(r.answered) && num(r.correct) && (r.correct as number) <= (r.answered as number) && (r.answered as number) <= (r.total as number);
+      return str(r.id) && str(r.packId) && ['paper', 'random', 'drill'].includes(r.type as string) && ['exam', 'practice'].includes(r.mode as string) && ['active', 'saved', 'submitted', 'auto-submitted'].includes(r.status as string) && num(r.total) && num(r.answered) && num(r.correct) && (r.correct as number) <= (r.answered as number) && (r.answered as number) <= (r.total as number) && timerOk(r.timer);
     case 'sessionDetail':
-      return str(r.id) && str(r.packId) && Array.isArray(r.questionIds) && (r.questionIds as unknown[]).every(str) && Array.isArray(r.answers) && (r.answers as unknown[]).length === (r.questionIds as unknown[]).length && (r.answers as Record<string, unknown>[]).every((a) => !!a && typeof a === 'object' && str(a.qid) && (a.choice === null || num(a.choice)) && num(a.timeMs));
+      return str(r.id) && str(r.packId) && Array.isArray(r.questionIds) && (r.questionIds as unknown[]).every(str) && Array.isArray(r.answers) && (r.answers as unknown[]).length === (r.questionIds as unknown[]).length && (r.answers as Record<string, unknown>[]).every((a) => !!a && typeof a === 'object' && str(a.qid) && (a.choice === null || num(a.choice)) && num(a.timeMs)) && timerOk(r.timer);
     case 'questionStats':
       return str(r.key) && str(r.packId) && str(r.qid) && r.key === `${r.packId}::${r.qid}` && num(r.timesSeen) && num(r.attempts) && typeof r.inBank === 'boolean';
     case 'bankEvents':
@@ -111,12 +130,14 @@ function cleanSettings(v: Record<string, unknown>): Settings {
   for (const [k, def] of Object.entries(DEFAULT_SETTINGS)) {
     const x = v?.[k];
     if (x === undefined) continue;
-    if (Array.isArray(def) ? Array.isArray(x) && x.every((y) => typeof y === 'string') : typeof x === typeof def) out[k] = x;
+    if (Array.isArray(def) ? Array.isArray(x) && x.every((y) => typeof y === 'string') : typeof x === typeof def && (typeof x !== 'number' || Number.isFinite(x))) out[k] = x;
   }
   if (typeof v?.examDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v.examDate)) out.examDate = v.examDate;
   if (typeof v?.lastBackupAt === 'number') out.lastBackupAt = v.lastBackupAt;
   if (!['system', 'light', 'dark'].includes(out.theme as string)) out.theme = 'system';
   out.backupEvery = Math.min(100, Math.max(1, Math.round(Number(out.backupEvery)) || 10));
+  out.lastBackupAtCount = Math.min(1e6, Math.max(0, Math.round(Number(out.lastBackupAtCount)) || 0));
+  if (typeof out.lastBackupAt === 'number' && !Number.isFinite(out.lastBackupAt)) delete out.lastBackupAt;
   return out as unknown as Settings;
 }
 
@@ -270,22 +291,22 @@ export async function applyRestore(plan: RestorePlan): Promise<void> {
           continue;
         }
         let take = !have || stamp(name, r) > stamp(name, have);
-        if (name === 'papers') take = !have || winners.has(`pack:${r.packId}`);
+        if (name === 'papers') {
+          // Question-level merge in both directions: never drop a question either copy has.
+          if (have) {
+            const incomingWins = winners.has(`pack:${r.packId}`);
+            const [base, other] = (incomingWins ? [r, have] : [have, r]) as unknown as [Paper, Paper];
+            const merged = mergePaperCopies(base, other);
+            if (JSON.stringify(merged) !== JSON.stringify(have)) await os.put(merged);
+            // The pack row may have been replaced above; its paper counts follow the stored papers.
+            touchedPacks.add(merged.packId);
+            continue;
+          }
+          take = true;
+        }
         if (name === 'sessionDetail') take = !have || winners.has(`session:${r.id}`);
         if (take) {
-          let row = r;
-          if (name === 'papers' && have) {
-            // Never lose questions: keep local questions the incoming copy does not have.
-            const inc = r as unknown as Paper;
-            const ns = new Set(inc.questions.map((q) => q.n));
-            const extra = (have as unknown as Paper).questions.filter((q) => !ns.has(q.n));
-            if (extra.length) {
-              const merged: Paper = { ...inc, questions: [...inc.questions, ...extra].sort((a, b) => a.n - b.n) };
-              row = { ...merged, ...metaOf(merged) } as unknown as Record<string, unknown>;
-              touchedPacks.add(inc.packId);
-            }
-          }
-          await os.put(row);
+          await os.put(r);
           if (name === 'packs') winners.add(`pack:${r.id}`);
           if (name === 'sessions') winners.add(`session:${r.id}`);
         }

@@ -77,7 +77,7 @@ export function PackScreen({ id, section, onImport, onPrompt }: { id: string; se
   }, [data]);
 
   useEffect(() => {
-    if (section && data && data !== 'missing') requestAnimationFrame(() => document.getElementById(section)?.scrollIntoView({ block: 'start' }));
+    if (section && data && data !== 'missing') requestAnimationFrame(() => goSection(section));
   }, [section, data !== null]);
 
   const filters: Filters = { includePractice, includePartial: settings.includePartialInTrend, range, group: '' };
@@ -152,7 +152,7 @@ export function PackScreen({ id, section, onImport, onPrompt }: { id: string; se
           <ul>
             {SECTIONS.map(([s, l]) => (
               <li key={s}>
-                <a href={`#${s}`} aria-current={active === s ? 'true' : undefined} onClick={(e) => { e.preventDefault(); document.getElementById(s)?.scrollIntoView({ block: 'start' }); }}>
+                <a href={`#${s}`} aria-current={active === s ? 'true' : undefined} onClick={(e) => { e.preventDefault(); goSection(s); }}>
                   {l}
                 </a>
               </li>
@@ -181,7 +181,7 @@ export function PackScreen({ id, section, onImport, onPrompt }: { id: string; se
               <Button size="lg" onClick={() => onPrompt(pack)}>
                 <Icon name="plus" size={18} /> Add papers
               </Button>
-              <Button variant="accent" size="lg" onClick={() => document.getElementById('start')?.scrollIntoView({ block: 'start' })}>
+              <Button variant="accent" size="lg" onClick={() => goSection('start')}>
                 <Icon name="play" size={16} /> Start session
               </Button>
             </div>
@@ -350,7 +350,7 @@ export function PackScreen({ id, section, onImport, onPrompt }: { id: string; se
         <section id="start" class="section" aria-labelledby="start-h">
           <h2 id="start-h">Start</h2>
           <div class="start-types">
-            <button type="button" class="jy-panel jy-panel--link choice" onClick={() => document.getElementById('papers')?.scrollIntoView({ block: 'start' })}>
+            <button type="button" class="jy-panel jy-panel--link choice" onClick={() => goSection('papers')}>
               <span class="label">Paper</span>
               <span class="big">Full paper</span>
               <span class="small muted">Pick a paper below. Always the whole paper, in order or shuffled.</span>
@@ -358,7 +358,7 @@ export function PackScreen({ id, section, onImport, onPrompt }: { id: string; se
             <button type="button" class="jy-panel jy-panel--link choice" disabled={!randomSize} onClick={() => setStart({ type: 'random', size: randomSize })}>
               <span class="label">Random</span>
               <span class="big"><span class="num">{Math.round(a.coverage.unseen * 100)}%</span> unseen</span>
-              <span class="small muted">{randomSize ? `${randomSize} questions from across the pack, least-seen first.` : 'Import keyed papers to use Random.'}</span>
+              <span class="small muted">{randomSize ? `${randomSize} questions from across the pack, least-seen first. Once all are seen, questions repeat.` : 'Import keyed papers to use Random.'}</span>
             </button>
             <button type="button" class="jy-panel jy-panel--link choice" disabled={!drillSize} onClick={() => setStart({ type: 'drill', size: drillSize })}>
               <span class="label">Mistakes drill</span>
@@ -370,7 +370,7 @@ export function PackScreen({ id, section, onImport, onPrompt }: { id: string; se
             <div class="notice" style={{ marginTop: 'var(--space-4)' }}>
               <Icon name="info" />
               <div class="small">Tip: finish every paper once as a full paper before leaning on Random. It gives your trend a fair baseline. You can still use Random any time.</div>
-              <Button variant="ghost" size="sm" onClick={() => { setTipHidden(true); void updateSettings({ dismissedTips: [...settings.dismissedTips, `random:${pack.id}`] }); }} aria-label="Dismiss tip">
+              <Button variant="ghost" icon onClick={() => { setTipHidden(true); void updateSettings({ dismissedTips: [...settings.dismissedTips, `random:${pack.id}`] }); }} aria-label="Dismiss tip">
                 <Icon name="x" size={16} />
               </Button>
             </div>
@@ -407,6 +407,16 @@ export function PackScreen({ id, section, onImport, onPrompt }: { id: string; se
       {start && <StartDialog pack={pack} req={start} blocked={!!saved} onClose={() => setStart(null)} />}
     </>
   );
+}
+
+/** Scrolls to a section and moves focus to its heading, so keyboard users land there too. */
+function goSection(id: string) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.scrollIntoView({ block: 'start' });
+  const h = el.querySelector<HTMLElement>('h2') ?? el;
+  h.tabIndex = -1;
+  h.focus({ preventScroll: true });
 }
 
 function lowestIndex(xs: (number | null)[]): number | undefined {
@@ -546,13 +556,13 @@ function DataSection({ data }: { data: PackData }) {
             </>
           }
         >
-          <div class="stack">
+          <form class="stack" onSubmit={(e) => { e.preventDefault(); if (typed.trim() === 'DELETE') void del(); }}>
             <p>This deletes <b>{pack.title}</b> and its progress. It cannot be undone unless you have a backup.</p>
             <label class="jy-field">
               <span>Type DELETE to confirm</span>
               <input class="input" value={typed} onInput={(e) => setTyped((e.target as HTMLInputElement).value)} autoFocus />
             </label>
-          </div>
+          </form>
         </Modal>
       )}
       {fixQ && <FixQuestion packId={pack.id} question={fixQ} onClose={() => setFix(null)} />}

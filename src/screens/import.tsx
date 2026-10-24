@@ -15,6 +15,16 @@ import { FigureView, OptionBody, previewImages, Rich } from '../ui/content';
 import { RestoreDialog } from './data';
 
 const draft = { text: '' };
+/** Review edits survive closing the dialog while the same JSON is being imported. */
+const reviewDraft: { text: string; targetId?: string; newTitle?: string; newSubject?: string; ov?: Record<string, PaperOverrides & { groupText?: string }> } = { text: '' };
+
+/** A numeric field that can be emptied while typing: empty means "not set", values are capped. */
+function numField(v: string, max: number): number | undefined {
+  const d = v.replace(/\D/g, '');
+  if (!d) return undefined;
+  const n = Number(d);
+  return n >= 1 ? Math.min(max, n) : undefined;
+}
 
 export interface ImportProps {
   pack?: Pack;
@@ -59,6 +69,8 @@ export function ImportWizard({ pack, initial, onClose }: ImportProps) {
       setText(src.text);
       if (src.skipped.length) toast(`Skipped ${src.skipped.length} file(s): ${src.skipped.slice(0, 3).join(', ')}`);
     } catch (e) {
+      setSource(null);
+      setText('');
       const m = (e as Error).message || '';
       toast(/zip|unzip|invalid/i.test(m) && !/larger/.test(m) ? 'That zip could not be read. Is it a DMC pack or backup zip?' : m || 'Could not read that file.', undefined, 8000);
     }
@@ -100,7 +112,10 @@ export function ImportWizard({ pack, initial, onClose }: ImportProps) {
             autoFocus
           />
         </label>
-        <div id="import-status" aria-live="polite" class="stack-s">
+        <div id="import-status" class="stack-s">
+          <span class="sr-only" aria-live="polite">
+            {!outcome ? '' : !outcome.ok ? 'The JSON is not readable' : errors.length ? `${errors.length} problems to fix` : 'Valid JSON, ready to review'}
+          </span>
           {!outcome && <span class="small subtle">Waiting for input.</span>}
           {outcome && !outcome.ok && (
             <div class="notice notice--bad">
@@ -162,10 +177,12 @@ export function ImportWizard({ pack, initial, onClose }: ImportProps) {
 
 function Review({ pack, doc, warnings, source, onBack, onClose }: { pack?: Pack; doc: NDoc; warnings: { path: string; message: string; confirm?: boolean }[]; source: ImportSource | null; onBack: () => void; onClose: () => void }) {
   const [packs, setPacks] = useState<Pack[]>([]);
-  const [targetId, setTargetId] = useState<string>(pack?.id ?? '');
-  const [newTitle, setNewTitle] = useState(doc.pack?.title ?? '');
-  const [newSubject, setNewSubject] = useState(doc.pack?.subject ?? '');
+  const same = reviewDraft.text === draft.text && !!draft.text;
+  const [targetId, setTargetId] = useState<string>(pack?.id ?? (same ? reviewDraft.targetId ?? '' : ''));
+  const [newTitle, setNewTitle] = useState(same && reviewDraft.newTitle !== undefined ? reviewDraft.newTitle : doc.pack?.title ?? '');
+  const [newSubject, setNewSubject] = useState(same && reviewDraft.newSubject !== undefined ? reviewDraft.newSubject : doc.pack?.subject ?? '');
   const [ov, setOv] = useState<Record<string, PaperOverrides & { groupText?: string }>>(() =>
+    same && reviewDraft.ov ? reviewDraft.ov :
     Object.fromEntries(doc.papers.map((p) => [p.id, { title: p.title, groupText: p.group.join(' > '), questionCount: p.questionCount, ...(p.timeLimitMin ? { timeLimitMin: p.timeLimitMin } : {}) }])),
   );
   const [plan, setPlan] = useState<{ merge: MergeResult; images: ImageRecord[]; imageMap: Map<string, string> } | null>(null);
@@ -204,6 +221,10 @@ function Review({ pack, doc, warnings, source, onBack, onClose }: { pack?: Pack;
     };
   }, [doc, targetId, source, overrides]);
 
+  useEffect(() => {
+    Object.assign(reviewDraft, { text: draft.text, targetId, newTitle, newSubject, ov });
+  }, [targetId, newTitle, newSubject, ov]);
+
   // Count mismatches between expected and found require explicit confirmation.
   const mismatches = [
     ...warnings.filter((w) => w.confirm).map((w) => w.message),
@@ -222,6 +243,7 @@ function Review({ pack, doc, warnings, source, onBack, onClose }: { pack?: Pack;
       const id = await commitImport({ packId: targetId || null, newPack: { title: newTitle, subject: newSubject } }, plan.merge, plan.images);
       previewImages.clear();
       draft.text = '';
+      reviewDraft.text = '';
       bump();
       broadcastChange();
       const added = plan.merge.plan.reduce((a, p) => a + p.added, 0);
@@ -298,12 +320,12 @@ function Review({ pack, doc, warnings, source, onBack, onClose }: { pack?: Pack;
                           <input class="input" aria-label={`Group for ${p.id}`} value={o.groupText} onInput={(e) => set(p.id, { groupText: (e.target as HTMLInputElement).value })} />
                         </td>
                         <td data-label="Questions" class="n" style={{ width: '110px' }}>
-                          <input class="input num" aria-label={`Question count for ${p.id}`} inputMode="numeric" value={o.questionCount ?? ''} onInput={(e) => set(p.id, { questionCount: Math.max(1, Math.min(200, Number((e.target as HTMLInputElement).value) || 0)) || undefined })} />
+                          <input class="input num" aria-label={`Question count for ${p.id}`} inputMode="numeric" value={o.questionCount ?? ''} onInput={(e) => set(p.id, { questionCount: numField((e.target as HTMLInputElement).value, 200) })} />
                         </td>
                         <td data-label="Time cap (min)" class="n" style={{ width: '170px' }}>
-                          <input class="input num" aria-label={`Time limit in minutes for ${p.id}`} inputMode="numeric" aria-invalid={!o.timeLimitMin} value={o.timeLimitMin ?? ''} onInput={(e) => set(p.id, { timeLimitMin: Math.max(1, Math.min(600, Number((e.target as HTMLInputElement).value) || 0)) || undefined })} />
+                          <input class="input num" aria-label={`Time limit in minutes for ${p.id}`} inputMode="numeric" aria-invalid={!o.timeLimitMin} value={o.timeLimitMin ?? ''} onInput={(e) => set(p.id, { timeLimitMin: numField((e.target as HTMLInputElement).value, 600) })} />
                           {doc.papers.length > 1 && o.timeLimitMin && (
-                            <button type="button" class="jy-btn jy-btn--ghost jy-btn--sm" onClick={() => applyTimeToAll(o.timeLimitMin!)}>Apply to all</button>
+                            <button type="button" class="jy-btn jy-btn--ghost jy-btn--sm apply-all" onClick={() => applyTimeToAll(o.timeLimitMin!)}>Apply to all</button>
                           )}
                         </td>
                         <td>
@@ -396,6 +418,11 @@ function Review({ pack, doc, warnings, source, onBack, onClose }: { pack?: Pack;
             <Icon name="left" size={18} /> Back
           </Button>
           <span class="spacer" />
+          {!canCommit && !busy && (
+            <span class="small muted" role="status">
+              {!plan ? 'Checking…' : conflicts.length ? 'Resolve the conflicts above to import.' : missingTime ? 'Set a time cap for every paper.' : mismatches.length && !confirmed ? 'Tick the check box above to confirm.' : !targetId && !newTitle.trim() ? 'Name the new pack.' : ''}
+            </span>
+          )}
           <Button variant="accent" onClick={commit} disabled={!canCommit}>
             {busy ? 'Importing…' : 'Import'}
           </Button>

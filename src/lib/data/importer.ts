@@ -1,5 +1,5 @@
 import { lenientParse, JsonSyntaxError } from '../format/lenient';
-import { mergeDoc, metaOf, type MergeResult, type PaperOverrides } from '../format/merge';
+import { mergeDoc, mergePaperCopies, type MergeResult, type PaperOverrides } from '../format/merge';
 import { sanitizeSvg } from '../format/svg';
 import { slugify, validateDoc, type NDoc, type ValidationResult } from '../format/validate';
 import { uid } from '../engine/rng';
@@ -88,15 +88,7 @@ export async function commitImport(target: ImportTarget, merge: MergeResult, ima
       const p: Paper = { ...p0, packId, key: `${packId}::${p0.id}` };
       // Keep questions stored since this import was planned (another tab, another chunk).
       const stored = await tx.objectStore('papers').get(p.key);
-      if (stored) {
-        const have = new Set(p.questions.map((q) => q.n));
-        const extra = stored.questions.filter((q) => !have.has(q.n));
-        if (extra.length) {
-          p.questions = [...p.questions, ...extra].sort((a, b) => a.n - b.n);
-          Object.assign(p, metaOf(p));
-        }
-      }
-      papers.push(p);
+      papers.push(stored ? mergePaperCopies(p, stored) : p);
     }
     const metas = new Map(pack.papers.map((m) => [m.id, m] as const));
     for (const p of papers) {

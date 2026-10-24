@@ -118,14 +118,13 @@ export function Library({ onPrompt, onImport }: { onPrompt: () => void; onImport
                 <span class="label">{p.subject || 'Pack'}</span>
                 <h2 style={{ fontSize: '22px', lineHeight: '28px', overflowWrap: 'anywhere' }}>{p.title}</h2>
               </div>
-              <Ring value={p.papers.length ? done / p.papers.length : 0} text={`${done}/${p.papers.length}`} label={`${done} of ${p.papers.length} papers done`} />
+              <Ring size={64} value={p.papers.length ? done / p.papers.length : 0} text={`${done}/${p.papers.length}`} label={`${done} of ${p.papers.length} papers done`} />
             </div>
-            <div class="stack-s">
-              {!saved && next && <span class="small">Next: <b>{next}</b></span>}
-              <div class="row" style={{ gap: 'var(--space-3)' }}>
-                {saved && <Badge status="ink">Saved session</Badge>}
-                {unkeyed > 0 && <Badge status="warn">{unkeyed} incomplete</Badge>}
-              </div>
+            <div class="row status small" style={{ gap: 'var(--space-3)' }}>
+              {saved ? <Badge status="ink">Saved session</Badge> : next ? <span>Next: <b>{next}</b></span> : p.papers.length ? <span class="muted">Every paper done once</span> : <span class="muted">No papers yet</span>}
+              {unkeyed > 0 && <Badge status="warn">{unkeyed} incomplete</Badge>}
+            </div>
+            <div>
               <div class="meta">
                 <span class="num">{plural(p.papers.length, 'paper')}</span>
                 <span class="num">{plural(questions, 'question')}</span>

@@ -15,17 +15,21 @@ export async function acquireSessionLock(): Promise<Release | null> {
           resolve(null);
           return;
         }
+        ownLock = true;
         resolve(release);
         await held;
+        ownLock = false;
       })
       .catch(() => resolve(() => {}));
   });
 }
 
-/** True when some tab (possibly this one) is running a session. */
+let ownLock = false;
+
+/** True when another tab is running a session (this tab's own lock does not count). */
 export async function sessionLockHeld(): Promise<boolean> {
   try {
-    if (!('locks' in navigator) || !navigator.locks.query) return false;
+    if (ownLock || !('locks' in navigator) || !navigator.locks.query) return false;
     const q = await navigator.locks.query();
     return !!q.held?.some((l) => l.name === 'dmc-active-session');
   } catch {

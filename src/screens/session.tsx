@@ -137,6 +137,8 @@ function Runner({ initial }: { initial: Loaded }) {
    */
   const lastOk = useRef(true);
   const autoFailed = useRef(false);
+  const refused = useRef(false);
+  const timeUp = useRef(false);
   const persist = useCallback(
     (status: SessionSummary['status'] = 'active', final = false): Promise<void> => {
       if (ended.current && !final) return chain.current;
@@ -161,8 +163,9 @@ function Runner({ initial }: { initial: Loaded }) {
         // Refused if the session was submitted or discarded elsewhere (another tab, the pack page).
         if (!(await store.persistOpenSession(s, structuredClone(det)))) {
           // Finished or discarded elsewhere (another tab, the pack page): leave instead of going dead.
-          if (!ended.current) {
-            ended.current = true;
+          ended.current = true;
+          if (!refused.current) {
+            refused.current = true;
             const now = await store.getSession(summary.id);
             toast(now ? 'This session was submitted from another tab.' : 'This session was discarded from another tab.');
             navigate(now ? href.results(summary.id) : href.pack(summary.packId), true);
@@ -198,8 +201,10 @@ function Runner({ initial }: { initial: Loaded }) {
       attribute();
       try {
         await persist('active', true);
+        if (refused.current) return;
         if (!lastOk.current) throw new Error('not saved');
-        const r = await submitSession(summary.id, auto);
+        // After time zero every submit is the automatic one, even if it had to be retried by hand.
+        const r = await submitSession(summary.id, auto || timeUp.current);
         bump();
         broadcastChange();
         if (auto) toast('Time is up. Your paper was submitted automatically.');
@@ -209,7 +214,7 @@ function Runner({ initial }: { initial: Loaded }) {
         setBusy(false);
         // An automatic submit is not retried every tick; the user can press Submit.
         if (auto) autoFailed.current = true;
-        toast('Could not submit. Your answers are safe; try again, or save the session for later.', undefined, 10_000);
+        toast(lastOk.current ? 'Could not submit. Your answers are saved; try again, or save the session for later.' : 'Could not submit: storage is full. Free some space (export a backup and delete unused packs), then submit again.', undefined, 10_000);
       }
     },
     [attribute, persist, summary.id],
@@ -220,6 +225,7 @@ function Runner({ initial }: { initial: Loaded }) {
     ended.current = true;
     attribute();
     await persist('saved', true);
+    if (refused.current) return;
     if (!lastOk.current) {
       ended.current = false;
       toast('Could not save the session: storage is full. Free some space (export a backup and delete unused packs), then try again.', undefined, 12_000);
@@ -278,6 +284,7 @@ function Runner({ initial }: { initial: Loaded }) {
       prev = r;
       setRemaining(r);
       if (r <= 0) {
+        timeUp.current = true;
         if (!autoFailed.current) void finish(true);
         return;
       }
@@ -328,7 +335,7 @@ function Runner({ initial }: { initial: Loaded }) {
   const choose = useCallback(
     (i: number) => {
       const rec = detailRef.current.answers[detailRef.current.current];
-      if (!rec || rec.locked || rec.checked || !q || i >= q.optionCount) return;
+      if (!rec || rec.locked || rec.checked || timeUp.current || !q || i >= q.optionCount) return;
       if (rec.choice === null) rec.first = i;
       else if (rec.choice !== i) rec.changes++;
       rec.choice = rec.choice === i && exam ? rec.choice : i;
@@ -383,10 +390,8 @@ function Runner({ initial }: { initial: Loaded }) {
   const flaggedCount = d.answers.filter((x) => x.flagged).length;
   const frac = timer ? Math.max(0, Math.min(1, remaining / timer.config.totalMs)) : 1;
   const low = frac <= 0.1;
-  const colour =
-    frac >= 0.5
-      ? `color-mix(in srgb, var(--status-warn) ${Math.round(((1 - frac) / 0.5) * 100)}%, var(--status-ok))`
-      : `color-mix(in srgb, var(--status-bad) ${Math.round(((0.5 - frac) / 0.5) * 100)}%, var(--status-warn))`;
+  // ok (blue) above half, then amber shading to red; the last 10% adds stripes, pulse and "Low".
+  const colour = frac > 0.5 ? 'var(--status-ok)' : frac <= 0.1 ? 'var(--status-bad)' : `color-mix(in srgb, var(--status-bad) ${Math.round(((0.5 - frac) / 0.4) * 100)}%, var(--status-warn))`;
   const perQ = timer?.config.kind === 'perq' && !strict ? timer.config.perQMs ?? 0 : 0;
   const used = timer ? timer.config.totalMs - remaining : 0;
   const aheadMs = perQ ? cur * perQ - used : 0;
@@ -441,7 +446,7 @@ function Runner({ initial }: { initial: Loaded }) {
             </span>
           )}
           {strict && <span class="small num" aria-label="Time left on this question">Q {formatClock(qRemaining)}</span>}
-          {timer && low && <span class="jy-badge jy-badge--bad hide-sm">Low</span>}
+          {timer && low && <span class="jy-badge jy-badge--bad">Low</span>}
           {timer && (
             <span class={`clock${low ? ' low' : ''}`} role="timer" aria-label={`Time remaining ${formatClock(remaining)}`}>
               {formatClock(remaining)}
@@ -568,7 +573,7 @@ function Runner({ initial }: { initial: Loaded }) {
               <Icon name="left" /> <span class="hide-sm">Previous</span>
             </Button>
             {cur < n - 1 ? (
-              <Button onClick={() => goto(cur + 1)}>
+              <Button class="jy-btn--inverse" onClick={() => goto(cur + 1)}>
                 Next <Icon name="right" />
               </Button>
             ) : (

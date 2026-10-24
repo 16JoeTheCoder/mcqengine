@@ -1,9 +1,10 @@
-import { useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import * as store from '../lib/data/db';
 import { bump, href, navigate, settingsStore, toast, updateSettings, useStore } from '../lib/app-state';
 import { broadcastChange } from '../lib/tablock';
 import { Button, Field, Modal, Seg, Toggle } from '../ui/kit';
 import { Icon } from '../ui/icons';
+import { focusMainIfLost } from '../ui/kit';
 import { Signature, DmcMark } from '../ui/brand';
 import { BackupPanel } from './data';
 
@@ -12,6 +13,7 @@ export function SettingsScreen({ onImport, onAbout }: { onImport: () => void; on
   const [wipe, setWipe] = useState(false);
   const [typed, setTyped] = useState('');
   const set = (patch: Partial<typeof s>) => void updateSettings(patch);
+  useEffect(focusMainIfLost, []);
 
   const doWipe = async () => {
     await store.wipeAll();
@@ -90,12 +92,12 @@ export function SettingsScreen({ onImport, onAbout }: { onImport: () => void; on
             </>
           }
         >
-          <div class="stack">
+          <form class="stack" onSubmit={(e) => { e.preventDefault(); if (typed.trim() === 'ERASE') void doWipe(); }}>
             <p>This deletes every pack, session and setting on this device. It cannot be undone without a backup.</p>
             <Field label="Type ERASE to confirm">
               <input class="input" value={typed} onInput={(e) => setTyped((e.target as HTMLInputElement).value)} autoFocus />
             </Field>
-          </div>
+          </form>
         </Modal>
       )}
     </main>

@@ -97,15 +97,15 @@ export function StartDialog({ pack, req, blocked, onClose }: { pack: Pack; req: 
           <small>{mode === 'exam' ? 'Timed, results at the end, like the real paper.' : 'No timer. See if you are right after each answer.'}</small>
         </div>
         {mode === 'exam' && (
-          <div class="jy-field" style={{ minHeight: '200px' }}>
+          <div class="jy-field" style={{ minHeight: kind === 'none' ? undefined : '160px' }}>
             <span>Timer</span>
             <Seg
               label="Timer"
               value={kind}
               onChange={setKind}
               options={[
-                ...(req.type === 'drill' ? [] : [{ value: 'none' as TimerKind, label: `Full time (${capMin} min)` }]),
-                { value: 'total', label: 'Fixed total' },
+                ...(req.type === 'drill' ? [] : [{ value: 'none' as TimerKind, label: 'Full time' }]),
+                { value: 'total', label: 'Total' },
                 ...(perQMax >= 1 ? [{ value: 'perq' as TimerKind, label: 'Per question' }] : []),
               ]}
             />
