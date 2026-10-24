@@ -6,25 +6,38 @@ import { toast } from '../lib/app-state';
 import { Button, copyText, Field, Modal, Seg, Toggle } from '../ui/kit';
 import { Icon } from '../ui/icons';
 
+/** Form values survive closing the dialog, so an accidental Esc never loses the details. */
+const drafts = new Map<string, unknown>();
+function useDraft<T>(key: string, init: T): [T, (v: T) => void] {
+  const [v, setV] = useState<T>(drafts.has(key) ? (drafts.get(key) as T) : init);
+  return [
+    v,
+    (x: T) => {
+      drafts.set(key, x);
+      setV(x);
+    },
+  ];
+}
+
 const splitGroup = (s: string) => s.split('>').map((x) => x.trim()).filter(Boolean);
 
 /** "Make a pack with AI" / "Add papers": builds a complete, tailored prompt for any AI chat. */
 export function PromptDialog({ pack, onClose, onImport }: { pack?: Pack; onClose: () => void; onImport: () => void }) {
   const [tab, setTab] = useState<'paper' | 'key'>('paper');
-  const [subject, setSubject] = useState(pack?.subject ?? '');
-  const [packTitle, setPackTitle] = useState('');
-  const [paperTitle, setPaperTitle] = useState('');
-  const [paperId, setPaperId] = useState('');
-  const [group, setGroup] = useState('');
-  const [count, setCount] = useState('');
-  const [minutes, setMinutes] = useState('');
-  const [optionCount, setOptionCount] = useState<'4' | '5'>('4');
-  const [diagrams, setDiagrams] = useState<DiagramMode>('draw');
-  const [answerKey, setAnswerKey] = useState<PromptOptions['answerKey']>('attached');
-  const [chunk, setChunk] = useState(false);
-  const [from, setFrom] = useState('1');
-  const [to, setTo] = useState('20');
-  const [explanations, setExplanations] = useState(false);
+  const [subject, setSubject] = useDraft(`subject:${pack?.id ?? 'new'}`, pack?.subject ?? '');
+  const [packTitle, setPackTitle] = useDraft('packTitle', '');
+  const [paperTitle, setPaperTitle] = useDraft('paperTitle', '');
+  const [paperId, setPaperId] = useDraft('paperId', '');
+  const [group, setGroup] = useDraft('group', '');
+  const [count, setCount] = useDraft('count', '');
+  const [minutes, setMinutes] = useDraft('minutes', '');
+  const [optionCount, setOptionCount] = useDraft<'4' | '5'>('optionCount', '4');
+  const [diagrams, setDiagrams] = useDraft<DiagramMode>('diagrams', 'draw');
+  const [answerKey, setAnswerKey] = useDraft<PromptOptions['answerKey']>('answerKey', 'attached');
+  const [chunk, setChunk] = useDraft('chunk', false);
+  const [from, setFrom] = useDraft('from', '1');
+  const [to, setTo] = useDraft('to', '20');
+  const [explanations, setExplanations] = useDraft('explanations', false);
   const [keyPaper, setKeyPaper] = useState(pack?.papers.find((p) => p.keyed < p.questionCount)?.id ?? pack?.papers[0]?.id ?? '');
   const [copied, setCopied] = useState(false);
 
@@ -55,6 +68,7 @@ export function PromptDialog({ pack, onClose, onImport }: { pack?: Pack; onClose
     if (!ready) return;
     const ok = await copyText(prompt);
     setCopied(ok);
+    if (ok) setTimeout(() => setCopied(false), 2500);
     toast(ok ? 'Prompt copied. Paste it into your AI chat with the paper attached.' : 'Could not copy. Select the text and copy it manually.');
   };
 
@@ -161,14 +175,14 @@ export function PromptDialog({ pack, onClose, onImport }: { pack?: Pack; onClose
               <p class="small muted">Attach the mark scheme to your AI chat and paste this prompt. Import the reply like any pack file; it fills in the answers.</p>
             </div>
           )}
-          <div class="stack">
+          <div class="stack sticky-col">
             <div class="jy-code">
               <div class="bar">
                 <Icon name="sparkles" size={14} /> Paste into any AI chat
               </div>
               <pre tabIndex={0} aria-label="Generated prompt">{ready ? prompt : tab === 'paper' ? 'Enter a pack name and paper title to build the prompt.' : 'Choose a paper.'}</pre>
             </div>
-            <div class="row">
+            <div class="row sticky-actions">
               <Button variant="accent" size="lg" onClick={copy} disabled={!ready}>
                 <Icon name={copied ? 'check' : 'copy'} size={18} /> {copied ? 'Copied' : 'Copy prompt'}
               </Button>

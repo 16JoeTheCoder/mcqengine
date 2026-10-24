@@ -9,7 +9,7 @@ import { packAnalytics, trend, type Filters, type Metric, type Range } from '../
 import { bump, dataVersion, href, navigate, settingsStore, toast, updateSettings, useStore } from '../lib/app-state';
 import { broadcastChange, sessionLockHeld } from '../lib/tablock';
 import type { BankEvent, Pack, PaperMeta, Question, QuestionOverride, QuestionStat, SessionSummary } from '../lib/types';
-import { Badge, Button, CountUp, fmtDate, Modal, Popover, Ring, Seg, Skeleton } from '../ui/kit';
+import { Badge, Button, CountUp, fmtDate, fmtInt, Modal, Popover, Ring, Seg, Skeleton } from '../ui/kit';
 import { Icon } from '../ui/icons';
 import { Bars, LineChart, Scatter } from '../ui/charts';
 import { StartDialog, type StartRequest } from './start';
@@ -160,15 +160,15 @@ export function PackScreen({ id, section, onImport, onPrompt }: { id: string; se
           </ul>
         </div>
       </nav>
-      <main class="page" id="main">
+      <main class="page" id="main" tabIndex={-1}>
         <section id="overview" aria-label="Overview">
           <div class="pack-hero">
             <div class="stack-s">
               <span class="label">{pack.subject || 'Pack'}</span>
               <h1 class="display" style={{ overflowWrap: 'anywhere' }}>{pack.title}</h1>
               <div class="facts">
-                <span><b class="num">{pack.papers.length}</b> papers</span>
-                <span><b class="num">{questions}</b> questions</span>
+                <span><b class="num">{fmtInt(pack.papers.length)}</b> paper{pack.papers.length === 1 ? '' : 's'}</span>
+                <span><b class="num">{fmtInt(questions)}</b> question{questions === 1 ? '' : 's'}</span>
                 <span><b class="num">{a.coverage.papersDone}</b> done</span>
                 {examDays !== null && examDays >= 0 && (
                   <span>
@@ -336,7 +336,7 @@ export function PackScreen({ id, section, onImport, onPrompt }: { id: string; se
             <div class="jy-panel">
               <h3 style={{ marginBottom: 'var(--space-3)' }}>Coverage</h3>
               <div class="row" style={{ gap: 'var(--space-5)' }}>
-                <Ring value={a.coverage.papers ? a.coverage.papersDone / a.coverage.papers : 0} size={120} stroke={10} label={`${a.coverage.papersDone} of ${a.coverage.papers} papers done`} />
+                <Ring value={a.coverage.papers ? a.coverage.papersDone / a.coverage.papers : 0} size={120} stroke={10} text={`${a.coverage.papersDone}/${a.coverage.papers}`} label={`${a.coverage.papersDone} of ${a.coverage.papers} papers done`} />
                 <div class="stack-s">
                   <div><b class="num">{a.coverage.papersDone}</b> <span class="muted">of</span> <b class="num">{a.coverage.papers}</b> <span class="muted">papers done</span></div>
                   <div><b class="num">{Math.round(a.coverage.unseen * 100)}%</b> <span class="muted">of the random pool unseen</span></div>
@@ -515,10 +515,10 @@ function DataSection({ data }: { data: PackData }) {
               ))}
             </ul>
           ) : (
-            <p class="small muted">None. Use "Fix this question" during a session to correct or report one.</p>
+            <p class="small muted">No reports. Use "Fix this question" during a session to correct or report one.</p>
           )}
           {needsFig.length > 0 && (
-            <p class="small"><Badge status="warn">Needs figure</Badge> {needsFig.map((p) => `${p.title} (${p.figuresNeeded})`).join(', ')}. Attach figures from the question screen.</p>
+            <p class="small"><Badge status="warn">Needs figure</Badge> {needsFig.reduce((x, p) => x + p.figuresNeeded, 0)} questions need a figure: {needsFig.map((p) => `${p.title} (${p.figuresNeeded})`).join(', ')}. Attach them from the question screen.</p>
           )}
         </div>
       </div>

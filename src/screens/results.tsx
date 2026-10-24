@@ -73,7 +73,7 @@ export function Results({ id }: { id: string }) {
   const remind = settings.backupReminder && data.completed - settings.lastBackupAtCount >= settings.backupEvery;
 
   return (
-    <main class="page" id="main">
+    <main class="page" id="main" tabIndex={-1}>
       <section class="score-hero">
         <Ring value={score} size={168} stroke={12} label={`Paper score ${Math.round(score * 100)}%`} />
         <div class="stack-s">
@@ -117,18 +117,21 @@ export function Results({ id }: { id: string }) {
             <Stat label="On the paper" value={`${r.minLessOnPaper.toFixed(1)} min`} ctx="less than your median" />
             <Stat label="Your typical pace" value={`${r.trimmedMeanT.toFixed(0)} s/q`} ctx={r.baselineCount >= 5 ? 'trimmed mean' : 'mean'} />
             <Stat label="Finishing time" value={formatClock(r.finishMs)} ctx={`median ${formatClock(r.medianT * 1000 * s.total)}`} />
-            <Stat label="Accuracy drop" value={`${r.dropQuestions.toFixed(1)} Q`} ctx={`${r.dropPoints.toFixed(1)} points below median`} />
+            <Stat label="Accuracy drop" value={`${r.dropQuestions.toFixed(1)}`} ctx={`questions, ${r.dropPoints.toFixed(1)} points below your median`} />
           </div>
           {r.rushedErrors.length > 0 && (
             <div class="stack-s">
               <div class="label">Rushed errors (wrong, under half your usual time)</div>
-              <div class="chips">
-                {r.rushedErrors.map((e) => (
-                  <a class="chip" href={`#q-${e.index}`} key={e.qid} onClick={() => setFilter('all')}>
-                    Q{e.index + 1} · {Math.round(e.timeMs / 1000)} s
-                  </a>
+              <p>
+                {r.rushedErrors.map((e, k) => (
+                  <span key={e.qid}>
+                    {k > 0 && ', '}
+                    <a href={`#q-${e.index}`} onClick={() => setFilter('all')}>
+                      Q{e.index + 1} ({Math.round(e.timeMs / 1000)} s)
+                    </a>
+                  </span>
                 ))}
-              </div>
+              </p>
             </div>
           )}
         </section>

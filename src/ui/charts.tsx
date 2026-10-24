@@ -82,14 +82,11 @@ export function LineChart({
     lo = 0;
     hi = yMax;
   } else {
-    const pad = Math.max((hi - lo) * 0.15, yMax * 0.04);
-    lo = Math.max(0, lo - pad);
-    hi = Math.min(yMax, hi + pad);
-    if (hi - lo < yMax * 0.1) {
-      const mid = (hi + lo) / 2;
-      lo = Math.max(0, mid - yMax * 0.05);
-      hi = Math.min(yMax, mid + yMax * 0.05);
-    }
+    // Round outwards to tenths of the scale, so every point sits inside a gridline.
+    const step = yMax / 10;
+    lo = Math.max(0, Math.floor((lo - step * 0.3) / step) * step);
+    hi = Math.min(yMax, Math.ceil((hi + step * 0.3) / step) * step);
+    if (hi - lo < step * 2) hi = Math.min(yMax, lo + step * 2);
   }
   const x0 = Math.min(...xs);
   const x1 = Math.max(...xs);
@@ -108,13 +105,13 @@ export function LineChart({
             {ticks.map((t) => (
               <g key={t}>
                 <line x1={PAD.l} x2={PAD.l + iw} y1={sy(t)} y2={sy(t)} stroke="var(--data-grid)" stroke-width="1" />
-                <text x={PAD.l - 8} y={sy(t)} text-anchor="end" dominant-baseline="central" fill="var(--ink-subtle)" font-family="var(--font-mono)" font-size="11">
+                <text x={PAD.l - 8} y={sy(t)} text-anchor="end" dominant-baseline="central" fill="var(--ink-subtle)" font-family="var(--font-mono)" font-size="12">
                   {yFormat(t)}
                 </text>
               </g>
             ))}
             {xTicks.map((t) => (
-              <text key={t} x={sx(t)} y={PAD.t + ih + 16} text-anchor="middle" fill="var(--ink-subtle)" font-family="var(--font-mono)" font-size="11">
+              <text key={t} x={sx(t)} y={PAD.t + ih + 16} text-anchor="middle" fill="var(--ink-subtle)" font-family="var(--font-mono)" font-size="12">
                 {t}
               </text>
             ))}
@@ -174,7 +171,7 @@ export function Scatter({ points, height = 200, xLabel, yLabel, xFormat, yFormat
         const sx = (x: number) => PAD.l + ((x - xlo) / (xhi - xlo || 1)) * iw;
         const sy = (y: number) => PAD.t + ih - ((y - ylo) / (yhi - ylo || 1)) * ih;
         return (
-          <g font-size="11" font-family="var(--font-mono)">
+          <g font-size="12" font-family="var(--font-mono)">
             {niceTicks(ylo, yhi, 3).map((t) => (
               <g key={t}>
                 <line x1={PAD.l} x2={PAD.l + iw} y1={sy(t)} y2={sy(t)} stroke="var(--data-grid)" />
@@ -216,7 +213,7 @@ export function Bars({ bars, height = 200, yMax, format, label, xLabel, highligh
               return (
                 <g key={i}>
                   <rect x={x} y={24 + ih - h} width={bw * 0.64} height={h} fill={on ? 'var(--data-1)' : 'var(--data-6)'} opacity={on ? 1 : 0.5} rx="2" />
-                  <text x={x + bw * 0.32} y={24 + ih - h - 6} text-anchor="middle" fill="var(--ink)" font-family="var(--font-mono)" font-size="11">
+                  <text x={x + bw * 0.32} y={24 + ih - h - 6} text-anchor="middle" fill="var(--ink)" font-family="var(--font-mono)" font-size="12">
                     {b.value === null ? '—' : format(b.value)}
                   </text>
                   <text x={x + bw * 0.32} y={24 + ih + 16} text-anchor="middle" fill="var(--ink-muted)">{b.label}</text>

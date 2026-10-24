@@ -191,7 +191,8 @@ export async function submitSession(sessionId: string, auto: boolean, now = Date
       partial: grade.partial,
       answered: grade.answered,
       correct: grade.correct,
-      timeMs: grade.timeMs,
+      // Recorded time never exceeds the session budget (a sleep past time zero is not time spent).
+      timeMs: current.timer ? Math.min(grade.timeMs, current.timer.totalMs) : grade.timeMs,
       agg: grade.agg,
       endedAt: now,
       updatedAt: now,

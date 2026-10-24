@@ -1,5 +1,6 @@
 import { useState } from 'preact/hooks';
 import { createSession, packStandardLength, sessionCapMin } from '../lib/engine/session';
+import { getOpenSessions } from '../lib/data/db';
 import { formatClock, perQuestionMaxSec } from '../lib/engine/timer';
 import { bump, href, navigate, settingsStore, toast, useStore } from '../lib/app-state';
 import type { Pack, PaperMeta, SessionMode, SessionType, TimerKind } from '../lib/types';
@@ -32,6 +33,12 @@ export function StartDialog({ pack, req, blocked, onClose }: { pack: Pack; req: 
   const total = kind === 'total' ? minutes * 60_000 : kind === 'perq' ? perQ * 1000 * n : capMin * 60_000;
   const title = req.type === 'paper' ? req.paper?.title ?? 'Paper' : req.type === 'random' ? 'Random session' : 'Mistakes drill';
 
+  const resume = async () => {
+    const open = (await getOpenSessions()).find((s) => s.packId === pack.id);
+    onClose();
+    if (open) navigate(href.session(open.id));
+  };
+
   const start = async () => {
     if (blocked || busy) return;
     setBusy(true);
@@ -60,10 +67,16 @@ export function StartDialog({ pack, req, blocked, onClose }: { pack: Pack; req: 
       onClose={onClose}
       footer={
         <>
-          <Button onClick={onClose}>Cancel</Button>
-          <Button variant="accent" size="lg" onClick={start} disabled={blocked || busy} autoFocus>
-            <Icon name="play" size={16} /> Start
-          </Button>
+          <Button onClick={onClose} autoFocus={blocked}>Cancel</Button>
+          {blocked ? (
+            <Button variant="primary" onClick={resume}>
+              Resume saved session
+            </Button>
+          ) : (
+            <Button variant="accent" onClick={start} disabled={busy} autoFocus>
+              <Icon name="play" size={16} /> Start
+            </Button>
+          )}
         </>
       }
     >
@@ -84,33 +97,43 @@ export function StartDialog({ pack, req, blocked, onClose }: { pack: Pack; req: 
           <small>{mode === 'exam' ? 'Timed, results at the end, like the real paper.' : 'No timer. See if you are right after each answer.'}</small>
         </div>
         {mode === 'exam' && (
-          <div class="jy-field">
+          <div class="jy-field" style={{ minHeight: '200px' }}>
             <span>Timer</span>
             <Seg
               label="Timer"
               value={kind}
               onChange={setKind}
               options={[
-                ...(req.type === 'drill' ? [] : [{ value: 'none' as TimerKind, label: 'No limit' }]),
+                ...(req.type === 'drill' ? [] : [{ value: 'none' as TimerKind, label: `Full time (${capMin} min)` }]),
                 { value: 'total', label: 'Fixed total' },
                 ...(perQMax >= 1 ? [{ value: 'perq' as TimerKind, label: 'Per question' }] : []),
               ]}
             />
-            {kind === 'none' && <small>Counts down from the {capMin}-minute cap, which always applies.</small>}
+            {kind === 'none' && <small>The full time allowed for this paper, {capMin} minutes.</small>}
             {kind === 'total' && (
-              <div class="row" style={{ alignItems: 'center' }}>
+              <div class="row" style={{ alignItems: 'flex-end' }}>
                 <input type="range" min={1} max={capMin} value={minutes} onInput={(e) => setMinutes(clampMin(Number((e.target as HTMLInputElement).value)))} aria-label="Total minutes" style={{ flex: 1 }} />
                 <Field label="Minutes">
-                  <input class="input num" style={{ width: '96px' }} inputMode="numeric" value={minutes} onChange={(e) => setMinutes(clampMin(Number((e.target as HTMLInputElement).value)))} />
+                  <input class="input num" style={{ width: '96px' }} inputMode="numeric" value={minutes} onChange={(e) => {
+                    const el = e.target as HTMLInputElement;
+                    const v = clampMin(Number(el.value));
+                    el.value = String(v);
+                    setMinutes(v);
+                  }} />
                 </Field>
               </div>
             )}
             {kind === 'perq' && (
               <>
-                <div class="row" style={{ alignItems: 'center' }}>
+                <div class="row" style={{ alignItems: 'flex-end' }}>
                   <input type="range" min={1} max={perQMax} value={perQ} onInput={(e) => setPerQ(clampSec(Number((e.target as HTMLInputElement).value)))} aria-label="Seconds per question" style={{ flex: 1 }} />
                   <Field label="Seconds">
-                    <input class="input num" style={{ width: '96px' }} inputMode="numeric" value={perQ} onChange={(e) => setPerQ(clampSec(Number((e.target as HTMLInputElement).value)))} />
+                    <input class="input num" style={{ width: '96px' }} inputMode="numeric" value={perQ} onChange={(e) => {
+                      const el = e.target as HTMLInputElement;
+                      const v = clampSec(Number(el.value));
+                      el.value = String(v);
+                      setPerQ(v);
+                    }} />
                   </Field>
                 </div>
                 <label class="check">

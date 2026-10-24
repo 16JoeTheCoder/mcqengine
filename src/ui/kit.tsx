@@ -127,7 +127,7 @@ export function Seg<T extends string>({ value, options, onChange, label }: { val
   );
 }
 
-export function Ring({ value, size = 56, label, stroke = 5 }: { value: number | null; size?: number; label?: string; stroke?: number }) {
+export function Ring({ value, size = 56, label, stroke = 5, text }: { value: number | null; size?: number; label?: string; stroke?: number; text?: string }) {
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
   const v = value === null ? 0 : Math.max(0, Math.min(1, value));
@@ -146,8 +146,9 @@ export function Ring({ value, size = 56, label, stroke = 5 }: { value: number | 
         transform={`rotate(-90 ${size / 2} ${size / 2})`}
         stroke-linecap="butt"
       />
-      <text x="50%" y="50%" dominant-baseline="central" text-anchor="middle" font-size={size * 0.26}>
-        {value === null ? '—' : Math.round(v * 100)}
+      <text x="50%" y="50%" dominant-baseline="central" text-anchor="middle" font-size={Math.max(12, size * (text ? 0.22 : 0.26))}>
+        {text ?? (value === null ? '—' : Math.round(v * 100))}
+        {!text && value !== null && <tspan font-size={Math.max(10, size * 0.14)} fill="var(--ink-muted)">%</tspan>}
       </text>
     </svg>
   );
@@ -216,8 +217,12 @@ export function fmtDate(t?: number): string {
   if (!t) return '—';
   return new Date(t).toISOString().slice(0, 10);
 }
+/** Numbers with thin-space thousands, per the standard. */
+export const fmtInt = (n: number) => Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '\u2009');
+export const plural = (n: number, w: string) => `${fmtInt(n)} ${w}${n === 1 ? '' : 's'}`;
+
 export function relDay(t?: number, now = Date.now()): string {
-  if (!t) return 'Never';
+  if (!t) return 'Not practised yet';
   const d = Math.floor((now - t) / 86_400_000);
   if (d <= 0) return 'Today';
   if (d === 1) return 'Yesterday';

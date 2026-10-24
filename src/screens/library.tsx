@@ -3,7 +3,7 @@ import * as store from '../lib/data/db';
 import { papersDone } from '../lib/stats/kpi';
 import { dataVersion, href, useStore } from '../lib/app-state';
 import type { Pack, SessionSummary } from '../lib/types';
-import { Badge, Button, relDay, Ring, Skeleton } from '../ui/kit';
+import { Badge, Button, plural, relDay, Ring, Skeleton } from '../ui/kit';
 import { Icon } from '../ui/icons';
 
 export function Library({ onPrompt, onImport }: { onPrompt: () => void; onImport: () => void }) {
@@ -34,6 +34,7 @@ export function Library({ onPrompt, onImport }: { onPrompt: () => void; onImport
           questions: p.papers.reduce((a, x) => a + x.present, 0),
           saved: ss.some((s) => s.status === 'saved' || s.status === 'active'),
           unkeyed: p.papers.filter((x) => x.keyed < x.questionCount || x.present < x.questionCount).length,
+          next: p.papers.find((x) => !done.has(x.id) && x.keyed >= x.questionCount && x.present >= x.questionCount)?.title,
         };
       })
       .filter(({ p }) => !q.trim() || `${p.title} ${p.subject}`.toLowerCase().includes(q.trim().toLowerCase()))
@@ -56,7 +57,7 @@ export function Library({ onPrompt, onImport }: { onPrompt: () => void; onImport
 
   if (!packs.length)
     return (
-      <main class="page" id="main">
+      <main class="page" id="main" tabIndex={-1}>
         <section class="onboard">
           <div class="stack" style={{ gap: 'var(--space-5)' }}>
             <h1 class="display">
@@ -85,7 +86,7 @@ export function Library({ onPrompt, onImport }: { onPrompt: () => void; onImport
     );
 
   return (
-    <main class="page" id="main">
+    <main class="page" id="main" tabIndex={-1}>
       <section class="hero" style={{ paddingBottom: 'var(--space-6)' }}>
         <div class="row" style={{ alignItems: 'flex-end', gap: 'var(--space-5)' }}>
           <div class="stack-s" style={{ flex: 1, minWidth: '240px' }}>
@@ -110,23 +111,24 @@ export function Library({ onPrompt, onImport }: { onPrompt: () => void; onImport
         </div>
       )}
       <div class="cards">
-        {rows.map(({ p, done, questions, saved, unkeyed }) => (
+        {rows.map(({ p, done, questions, saved, unkeyed, next }) => (
           <a class="jy-panel jy-panel--link pack-card" href={href.pack(p.id)} key={p.id}>
             <div class="top">
               <div class="stack-s" style={{ minWidth: 0 }}>
                 <span class="label">{p.subject || 'Pack'}</span>
                 <h2 style={{ fontSize: '22px', lineHeight: '28px', overflowWrap: 'anywhere' }}>{p.title}</h2>
               </div>
-              <Ring value={p.papers.length ? done / p.papers.length : 0} label={`${done} of ${p.papers.length} papers done`} />
+              <Ring value={p.papers.length ? done / p.papers.length : 0} text={`${done}/${p.papers.length}`} label={`${done} of ${p.papers.length} papers done`} />
             </div>
             <div class="stack-s">
+              {!saved && next && <span class="small">Next: <b>{next}</b></span>}
               <div class="row" style={{ gap: 'var(--space-3)' }}>
                 {saved && <Badge status="ink">Saved session</Badge>}
                 {unkeyed > 0 && <Badge status="warn">{unkeyed} incomplete</Badge>}
               </div>
               <div class="meta">
-                <span><span class="num">{p.papers.length}</span> papers</span>
-                <span><span class="num">{questions}</span> questions</span>
+                <span class="num">{plural(p.papers.length, 'paper')}</span>
+                <span class="num">{plural(questions, 'question')}</span>
                 <span>{relDay(p.lastPractisedAt)}</span>
               </div>
             </div>

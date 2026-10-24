@@ -24,7 +24,7 @@ async function blobToFigure(blob: Blob): Promise<Figure | null> {
 }
 
 /** Per-question editor. Edits persist as an override keyed by question id; the import stays untouched. */
-export function FixQuestion({ packId, question, onClose, onSaved }: { packId: string; question: Question; onClose: () => void; onSaved?: () => void }) {
+export function FixQuestion({ packId, question, onClose, onSaved, allowAnswer = true }: { packId: string; question: Question; onClose: () => void; onSaved?: () => void; allowAnswer?: boolean }) {
   const key = statKey(packId, question.id);
   const [ov, setOv] = useState<QuestionOverride | null>(null);
   const [stem, setStem] = useState(question.stem ?? '');
@@ -141,16 +141,20 @@ export function FixQuestion({ packId, question, onClose, onSaved }: { packId: st
             ))}
           </div>
         )}
-        <div class="jy-field">
-          <span>Correct answer</span>
-          <div class="seg" role="radiogroup" aria-label="Correct answer">
-            {Array.from({ length: question.optionCount }, (_, i) => (
-              <button type="button" role="radio" aria-checked={answer === i} aria-pressed={answer === i} onClick={() => setAnswer(i)} key={i}>
-                {LETTERS[i]}
-              </button>
-            ))}
+        {allowAnswer ? (
+          <div class="jy-field">
+            <span>Correct answer</span>
+            <div class="seg" role="radiogroup" aria-label="Correct answer">
+              {Array.from({ length: question.optionCount }, (_, i) => (
+                <button type="button" role="radio" aria-checked={answer === i} onClick={() => setAnswer(i)} key={i}>
+                  {LETTERS[i]}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        ) : (
+          <p class="small muted">The answer key is hidden during an Exam. Report the problem here, and fix the key from the results page after you submit.</p>
+        )}
         <div class="jy-field">
           <span>Figure</span>
           {figure ? <FigureView figure={figure} /> : <span class="small muted">No figure.</span>}

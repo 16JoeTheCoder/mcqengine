@@ -65,7 +65,7 @@ export const toasts = createStore<Toast[]>([]);
 let tid = 0;
 export function toast(text: string, action?: Toast['action'], ms = 5000) {
   const t: Toast = { id: ++tid, text, ...(action ? { action } : {}) };
-  toasts.set([...toasts.get(), t]);
+  toasts.set([...toasts.get(), t].slice(-3));
   setTimeout(() => toasts.set(toasts.get().filter((x) => x.id !== t.id)), ms);
 }
 

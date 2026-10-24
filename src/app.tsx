@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import * as store from './lib/data/db';
 import { readFiles, type ImportSource } from './lib/data/files';
 import { submitSession } from './lib/engine/session';
@@ -51,6 +51,7 @@ export function App() {
   const [resumeChecked, setResumeChecked] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [crumb, setCrumb] = useState<Pack | null>(null);
+  const firstRoute = useRef(true);
 
   useEffect(() => {
     void (async () => {
@@ -92,7 +93,12 @@ export function App() {
   useEffect(() => {
     if (route.name === 'pack' && route.section) return;
     const y = savedScroll(location.hash || '#/');
-    requestAnimationFrame(() => window.scrollTo({ top: y ?? 0, behavior: 'instant' as ScrollBehavior }));
+    requestAnimationFrame(() => {
+      window.scrollTo({ top: y ?? 0, behavior: 'instant' as ScrollBehavior });
+      // Move focus to the new page so keyboard and screen-reader users start at its content.
+      if (!firstRoute.current) document.getElementById('main')?.focus({ preventScroll: true });
+      firstRoute.current = false;
+    });
     const t = route.name === 'library' ? 'DMC' : route.name === 'settings' ? 'Settings · DMC' : route.name === 'results' ? 'Results · DMC' : route.name === 'session' ? 'Session · DMC' : 'Pack · DMC';
     document.title = t;
   }, [route]);
@@ -170,7 +176,7 @@ export function App() {
 
   return (
     <>
-      <a class="sr-only" href="#main" onClick={(e) => { e.preventDefault(); document.getElementById('main')?.focus(); }}>Skip to content</a>
+      <a class="sr-only skip" href="#main" onClick={(e) => { e.preventDefault(); document.getElementById('main')?.focus(); }}>Skip to content</a>
       {!inSession && (
         <header class="topbar">
           <div class="page">
@@ -268,7 +274,7 @@ export function App() {
         </div>
       )}
       {list.length > 0 && (
-        <div class="toasts" aria-live="polite">
+        <div class={`toasts${inSession ? ' toasts--top' : ''}`} aria-live="polite">
           {list.map((t) => (
             <div class="toast" key={t.id} role="status">
               <span style={{ flex: 1 }}>{t.text}</span>

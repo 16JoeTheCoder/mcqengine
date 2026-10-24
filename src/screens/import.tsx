@@ -14,6 +14,8 @@ import { Icon } from '../ui/icons';
 import { FigureView, OptionBody, previewImages, Rich } from '../ui/content';
 import { RestoreDialog } from './data';
 
+const draft = { text: '' };
+
 export interface ImportProps {
   pack?: Pack;
   initial?: ImportSource | null;
@@ -22,7 +24,12 @@ export interface ImportProps {
 
 export function ImportWizard({ pack, initial, onClose }: ImportProps) {
   const [source, setSource] = useState<ImportSource | null>(initial ?? null);
-  const [text, setText] = useState(initial?.text ?? '');
+  // The pasted text survives closing the dialog (Esc, backdrop, Cancel) until an import succeeds.
+  const [text, setTextState] = useState(initial?.text ?? draft.text);
+  const setText = (t: string) => {
+    draft.text = t;
+    setTextState(t);
+  };
   const [outcome, setOutcome] = useState<ParseOutcome | null>(null);
   const [step, setStep] = useState<'input' | 'review'>('input');
   const [restore, setRestore] = useState<{ manifest: string; data: string; images: Map<string, Blob> } | null>(initial?.backup ?? null);
@@ -52,7 +59,8 @@ export function ImportWizard({ pack, initial, onClose }: ImportProps) {
       setText(src.text);
       if (src.skipped.length) toast(`Skipped ${src.skipped.length} file(s): ${src.skipped.slice(0, 3).join(', ')}`);
     } catch (e) {
-      toast((e as Error).message || 'Could not read that file.');
+      const m = (e as Error).message || '';
+      toast(/zip|unzip|invalid/i.test(m) && !/larger/.test(m) ? 'That zip could not be read. Is it a DMC pack or backup zip?' : m || 'Could not read that file.', undefined, 8000);
     }
   };
 
@@ -213,6 +221,7 @@ function Review({ pack, doc, warnings, source, onBack, onClose }: { pack?: Pack;
     try {
       const id = await commitImport({ packId: targetId || null, newPack: { title: newTitle, subject: newSubject } }, plan.merge, plan.images);
       previewImages.clear();
+      draft.text = '';
       bump();
       broadcastChange();
       const added = plan.merge.plan.reduce((a, p) => a + p.added, 0);
@@ -265,7 +274,7 @@ function Review({ pack, doc, warnings, source, onBack, onClose }: { pack?: Pack;
           <div class="stack-s">
             <div class="label">Papers</div>
             <div class="table-wrap">
-              <table class="jy-table">
+              <table class="jy-table review-table">
                 <thead>
                   <tr>
                     <th>Title</th>
@@ -281,17 +290,17 @@ function Review({ pack, doc, warnings, source, onBack, onClose }: { pack?: Pack;
                     const pl = plan?.merge.plan.find((x) => x.id === p.id);
                     return (
                       <tr key={p.id}>
-                        <td style={{ minWidth: '200px' }}>
+                        <td data-label="Title" style={{ minWidth: '200px' }}>
                           <input class="input" aria-label={`Title for ${p.id}`} value={o.title} onInput={(e) => set(p.id, { title: (e.target as HTMLInputElement).value })} />
                           <div class="small subtle num" style={{ marginTop: '4px' }}>{p.id} · found {p.questions.length}</div>
                         </td>
-                        <td style={{ minWidth: '160px' }}>
+                        <td data-label="Group" style={{ minWidth: '160px' }}>
                           <input class="input" aria-label={`Group for ${p.id}`} value={o.groupText} onInput={(e) => set(p.id, { groupText: (e.target as HTMLInputElement).value })} />
                         </td>
-                        <td class="n" style={{ width: '110px' }}>
+                        <td data-label="Questions" class="n" style={{ width: '110px' }}>
                           <input class="input num" aria-label={`Question count for ${p.id}`} inputMode="numeric" value={o.questionCount ?? ''} onInput={(e) => set(p.id, { questionCount: Math.max(1, Math.min(200, Number((e.target as HTMLInputElement).value) || 0)) || undefined })} />
                         </td>
-                        <td class="n" style={{ width: '170px' }}>
+                        <td data-label="Time cap (min)" class="n" style={{ width: '170px' }}>
                           <input class="input num" aria-label={`Time limit in minutes for ${p.id}`} inputMode="numeric" aria-invalid={!o.timeLimitMin} value={o.timeLimitMin ?? ''} onInput={(e) => set(p.id, { timeLimitMin: Math.max(1, Math.min(600, Number((e.target as HTMLInputElement).value) || 0)) || undefined })} />
                           {doc.papers.length > 1 && o.timeLimitMin && (
                             <button type="button" class="jy-btn jy-btn--ghost jy-btn--sm" onClick={() => applyTimeToAll(o.timeLimitMin!)}>Apply to all</button>

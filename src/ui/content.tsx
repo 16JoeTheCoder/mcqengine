@@ -26,19 +26,27 @@ function renderTokens(ts: Token[]) {
         return <strong key={i}>{renderTokens(t.c)}</strong>;
       case 'sqrt':
         return (
-          <span key={i}>
+          <span key={i} role="math" aria-label={`square root of ${speak(t.c)}`}>
             √<span class="mk-sqrt">{renderTokens(t.c)}</span>
           </span>
         );
       case 'frac':
         return (
-          <span key={i} class="mk-frac" role="math">
+          <span key={i} class="mk-frac" role="math" aria-label={`${speak(t.n)} over ${speak(t.d)}`}>
             <span>{renderTokens(t.n)}</span>
             <span>{renderTokens(t.d)}</span>
           </span>
         );
     }
   });
+}
+
+/** Spoken form for fractions and roots, so screen readers do not read "1 2" for a half. */
+function speak(ts: Token[]): string {
+  return ts
+    .map((t) => (t.t === 'text' ? t.v : t.t === 'sup' ? ` to the power ${speak(t.c)}` : t.t === 'sub' ? ` sub ${speak(t.c)}` : t.t === 'frac' ? `(${speak(t.n)} over ${speak(t.d)})` : t.t === 'sqrt' ? `square root of ${speak(t.c)}` : t.t === 'b' ? speak(t.c) : ' '))
+    .join('')
+    .trim();
 }
 
 /** Images not yet stored (import preview), looked up before the database. */
@@ -98,6 +106,7 @@ export function OptionBody({ q, i }: { q: Question; i: number }) {
       <span style={{ display: 'grid', gridTemplateColumns: `repeat(${row.length || 1}, minmax(0, 1fr))`, gap: '12px' }}>
         {row.map((c, k) => (
           <span key={k}>
+            {q.table?.columns[k] && <span class="sr-only">{q.table.columns[k]}: </span>}
             <Rich text={c} />
           </span>
         ))}

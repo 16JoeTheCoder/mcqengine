@@ -108,6 +108,7 @@ function Runner({ initial }: { initial: Loaded }) {
   const [fixOpen, setFixOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [announce, setAnnounce] = useState('');
+  const [qAnnounce, setQAnnounce] = useState('');
 
   // ----- timing -----
   const countdown = useRef<Countdown | null>(null);
@@ -132,6 +133,7 @@ function Runner({ initial }: { initial: Loaded }) {
    * Writes are serialised so a late autosave can never land after Save or Submit. Once the
    * session has ended only the final write (final = true) goes through.
    */
+  const lastOk = useRef(true);
   const persist = useCallback(
     (status: SessionSummary['status'] = 'active', final = false): Promise<void> => {
       if (ended.current && !final) return chain.current;
@@ -155,8 +157,10 @@ function Runner({ initial }: { initial: Loaded }) {
       try {
         // Refused if the session was submitted or discarded elsewhere (another tab, the pack page).
         if (!(await store.persistOpenSession(s, structuredClone(det)))) ended.current = true;
+        lastOk.current = true;
       } catch {
-        toast('Could not save your answers. Storage may be full: free some space or export a backup.');
+        if (lastOk.current) toast('Could not save your answers. Storage may be full: free some space or export a backup.', undefined, 10_000);
+        lastOk.current = false;
       }
   };
   const schedule = useCallback(() => {
@@ -182,6 +186,7 @@ function Runner({ initial }: { initial: Loaded }) {
       attribute();
       try {
         await persist('active', true);
+        if (!lastOk.current) throw new Error('not saved');
         const r = await submitSession(summary.id, auto);
         bump();
         broadcastChange();
@@ -201,6 +206,11 @@ function Runner({ initial }: { initial: Loaded }) {
     ended.current = true;
     attribute();
     await persist('saved', true);
+    if (!lastOk.current) {
+      ended.current = false;
+      toast('Could not save the session: storage is full. Free some space (export a backup and delete unused packs), then try again.', undefined, 12_000);
+      return;
+    }
     bump();
     broadcastChange();
     toast('Session saved. Resume it from the pack page or when you next open DMC.');
@@ -235,6 +245,7 @@ function Runner({ initial }: { initial: Loaded }) {
         }
       }
       det.current = i;
+      setQAnnounce(`Question ${i + 1} of ${n}`);
       rerender();
       schedule();
     },
@@ -357,8 +368,8 @@ function Runner({ initial }: { initial: Loaded }) {
   const low = frac <= 0.1;
   const colour =
     frac >= 0.5
-      ? `color-mix(in oklch, var(--status-warn) ${Math.round(((1 - frac) / 0.5) * 100)}%, var(--status-ok))`
-      : `color-mix(in oklch, var(--status-bad) ${Math.round(((0.5 - frac) / 0.5) * 100)}%, var(--status-warn))`;
+      ? `color-mix(in srgb, var(--status-warn) ${Math.round(((1 - frac) / 0.5) * 100)}%, var(--status-ok))`
+      : `color-mix(in srgb, var(--status-bad) ${Math.round(((0.5 - frac) / 0.5) * 100)}%, var(--status-warn))`;
   const perQ = timer?.config.kind === 'perq' && !strict ? timer.config.perQMs ?? 0 : 0;
   const used = timer ? timer.config.totalMs - remaining : 0;
   const aheadMs = perQ ? cur * perQ - used : 0;
@@ -387,8 +398,9 @@ function Runner({ initial }: { initial: Loaded }) {
         ))}
       </div>
       <div class="legend" aria-hidden="true">
-        <span><span class="kbd" style={{ background: 'var(--surface-sunken)' }}>12</span> answered</span>
-        <span>▶ flag, top right · ▲ unsure, top left</span>
+        <span class="jy-badge jy-badge--ink">Answered: filled</span>
+        <span class="jy-badge jy-badge--ink jy-badge--flag">Flag: top right</span>
+        <span class="jy-badge jy-badge--warn">Unsure: top left</span>
       </div>
     </div>
   );
@@ -400,7 +412,10 @@ function Runner({ initial }: { initial: Loaded }) {
           <div class="qs-title">
             <div class="t">{summary.title}</div>
             <div class="s">
-              Question <span class="num">{cur + 1}</span> of <span class="num">{n}</span> · <span class="num">{answered}</span> answered · {exam ? 'Exam' : 'Practice'}
+              Question <span class="num">{cur + 1}</span> of <span class="num">{n}</span>
+              <span class="hide-sm">
+                {' '}· <span class="num">{answered}</span> answered · {exam ? 'Exam' : 'Practice'}
+              </span>
             </div>
           </div>
           {perQ > 0 && (
@@ -409,12 +424,17 @@ function Runner({ initial }: { initial: Loaded }) {
             </span>
           )}
           {strict && <span class="small num" aria-label="Time left on this question">Q {formatClock(qRemaining)}</span>}
+          {timer && low && <span class="jy-badge jy-badge--bad hide-sm">Low</span>}
           {timer && (
             <span class={`clock${low ? ' low' : ''}`} role="timer" aria-label={`Time remaining ${formatClock(remaining)}`}>
               {formatClock(remaining)}
             </span>
           )}
-          <Button variant="default" onClick={() => setEndOpen(true)}>End session</Button>
+          <Button variant="default" onClick={() => setEndOpen(true)} aria-label="End session">
+            <span>
+              End<span class="hide-sm"> session</span>
+            </span>
+          </Button>
         </div>
         {timer && (
           <div class={`timer${low ? ' low' : ''}`} style={{ '--timer-colour': colour }} aria-hidden="true">
@@ -423,14 +443,15 @@ function Runner({ initial }: { initial: Loaded }) {
           </div>
         )}
         <div class="sr-only" aria-live="polite">{announce}</div>
+        <div class="sr-only" aria-live="polite" aria-atomic="true">{qAnnounce}</div>
       </header>
 
-      <main class="qs-main">
+      <main class="qs-main" id="main" tabIndex={-1}>
         <div class="qs-col">
           <section class="jy-panel qcard" aria-labelledby="qhead">
             <div class="qnum">
               <h1 id="qhead" class="h3" style={{ fontSize: '18px', lineHeight: '26px' }}>Question {cur + 1}</h1>
-              {a.flagged && <Badge status="ink">Flagged</Badge>}
+              {a.flagged && <span class="jy-badge jy-badge--ink jy-badge--flag">Flagged</span>}
               {a.unsure && <Badge status="warn">Unsure</Badge>}
               {a.locked && <Badge status="neutral">Locked</Badge>}
               <span class="spacer" />
@@ -460,7 +481,22 @@ function Runner({ initial }: { initial: Loaded }) {
                     <span />
                   </div>
                 )}
-                <div class={`options${shortOpts ? ' cols-2' : ''}`} role="radiogroup" aria-labelledby="qhead">
+                <div
+                  class={q.image && !q.options && !q.table ? 'opts-letters' : `options${shortOpts ? ' cols-2' : ''}`}
+                  role="radiogroup"
+                  aria-labelledby="qhead"
+                  onKeyDown={(e) => {
+                    // Up/Down move focus between options (Space or Enter selects); Left/Right stay question navigation.
+                    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+                    const opts = [...(e.currentTarget as HTMLElement).querySelectorAll<HTMLButtonElement>('.opt:not(:disabled)')];
+                    const i = opts.indexOf(document.activeElement as HTMLButtonElement);
+                    const next = opts[(i + (e.key === 'ArrowDown' ? 1 : opts.length - 1) + (i < 0 ? 1 : 0)) % opts.length];
+                    if (next) {
+                      e.preventDefault();
+                      next.focus();
+                    }
+                  }}
+                >
                   {Array.from({ length: q.optionCount }, (_, i) => {
                     const chosen = a.choice === i;
                     const showKey = a.checked && q.answer !== null;
@@ -471,6 +507,7 @@ function Runner({ initial }: { initial: Loaded }) {
                         key={i}
                         role="radio"
                         aria-checked={chosen}
+                        tabIndex={chosen || (a.choice === null && i === 0) ? 0 : -1}
                         class={`opt ${cls}`}
                         disabled={locked && !chosen}
                         onClick={() => choose(i)}
@@ -514,11 +551,11 @@ function Runner({ initial }: { initial: Loaded }) {
               <Icon name="left" /> <span class="hide-sm">Previous</span>
             </Button>
             {cur < n - 1 ? (
-              <Button variant="primary" onClick={() => goto(cur + 1)}>
+              <Button onClick={() => goto(cur + 1)}>
                 Next <Icon name="right" />
               </Button>
             ) : (
-              <Button variant="primary" onClick={() => (!settings.confirmSubmit && unanswered === 0 ? void finish(false) : setEndOpen(true))}>
+              <Button onClick={() => (!settings.confirmSubmit && unanswered === 0 ? void finish(false) : setEndOpen(true))}>
                 Finish
               </Button>
             )}
@@ -551,6 +588,7 @@ function Runner({ initial }: { initial: Loaded }) {
         <FixQuestion
           packId={summary.packId}
           question={q}
+          allowAnswer={!exam || a.checked}
           onClose={() => setFixOpen(false)}
           onSaved={async () => {
             setQuestions(await loadSessionQuestions(detailRef.current));
@@ -563,11 +601,11 @@ function Runner({ initial }: { initial: Loaded }) {
           onClose={() => setEndOpen(false)}
           footer={
             <>
-              <Button onClick={() => setEndOpen(false)}>Keep going</Button>
+              <Button onClick={() => setEndOpen(false)} autoFocus>Keep going</Button>
               <Button onClick={saveForLater} disabled={busy}>
                 <Icon name="save" size={18} /> Save for later
               </Button>
-              <Button variant="accent" onClick={() => finish(false)} disabled={busy || answered === 0} autoFocus>
+              <Button variant="accent" onClick={() => finish(false)} disabled={busy || answered === 0}>
                 Submit
               </Button>
             </>

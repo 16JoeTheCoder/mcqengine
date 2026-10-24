@@ -15,9 +15,12 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   addEventListener('load', async () => {
     try {
       const reg = await navigator.serviceWorker.register('./sw.js');
+      // Reload only when the user accepted an update, never on the first install.
+      let accepted = false;
       const offer = (w: ServiceWorker) =>
         updateReady.set(() => {
           if (routeStore.get().name === 'session') return;
+          accepted = true;
           w.postMessage({ type: 'SKIP_WAITING' });
         });
       if (reg.waiting && navigator.serviceWorker.controller) offer(reg.waiting);
@@ -29,7 +32,7 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) {
       });
       let reloading = false;
       navigator.serviceWorker.addEventListener('controllerchange', () => {
-        if (reloading) return;
+        if (reloading || !accepted) return;
         reloading = true;
         location.reload();
       });

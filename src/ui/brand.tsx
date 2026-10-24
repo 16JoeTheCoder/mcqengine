@@ -44,7 +44,7 @@ export function Signature({ height = 40, kind = 'lockup' }: { height?: number; k
     );
   // Intrinsic ratios of the standard's files (lockup 480 x 128, tab 72 x 128) reserve space before load.
   const ratio = /lockup/.test(src) ? 480 / 128 : 72 / 128;
-  return <img src={src} alt="builtbyjosef" height={height} width={Math.round(height * ratio)} style={{ height: `${height}px`, width: 'auto' }} />;
+  return <img src={src} alt="builtbyjosef" height={height} width={Math.round(height * ratio)} style={{ height: `${height}px`, width: 'auto', maxWidth: '100%', objectFit: 'contain', objectPosition: 'left center' }} />;
 }
 
 /** DMC mark: a Tab (72 x 128, corner 10, orange cap) holding three answer bars, one chosen. */

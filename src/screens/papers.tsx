@@ -94,9 +94,8 @@ export function PapersBrowser({ rows, inProgress, onPick }: { rows: LadderRow[];
 
   const card = (r: LadderRow) => {
     const p = r.paper;
-    const ready = paperReady(p);
     return (
-      <button type="button" class="jy-panel jy-panel--link paper-card" key={p.id} onClick={() => onPick(p)} aria-label={`${p.title}. ${ready ? 'Start' : 'Not ready'}`}>
+      <button type="button" class="jy-panel jy-panel--link paper-card" key={p.id} onClick={() => onPick(p)}>
         <span class="t">{p.title}</span>
         <Ring value={r.best} size={44} stroke={4} label={r.best === null ? 'No attempts yet' : `Best ${Math.round(r.best * 100)}%`} />
         <span class="m">

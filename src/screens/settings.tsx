@@ -24,11 +24,11 @@ export function SettingsScreen({ onImport, onAbout }: { onImport: () => void; on
   };
 
   return (
-    <main class="page" id="main" style={{ maxWidth: '880px' }}>
+    <main class="page" id="main" tabIndex={-1}>
       <div class="hero" style={{ paddingBottom: 'var(--space-5)' }}>
         <h1 class="display"><span class="light">Your</span> settings</h1>
       </div>
-      <div class="stack" style={{ gap: 'var(--space-6)' }}>
+      <div class="stack" style={{ gap: 'var(--space-6)', maxWidth: '880px' }}>
         <section class="jy-panel stack" aria-labelledby="s-exam">
           <h2 id="s-exam">Exam</h2>
           <Field label="Exam date" hint="Shows a countdown on each pack. Optional.">

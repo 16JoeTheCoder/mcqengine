@@ -91,3 +91,23 @@ One line each: what was decided and why. Grouped by area.
 64. The clock check compares wall-clock elapsed against monotonic elapsed, so a backward clock change is detected even when it coincides with a long throttled gap.
 65. The trend band uses the same noise model as the verdict: residual scatter around the trend line with 6+ sessions.
 66. Known limits, kept: verdict windows are 2 vs 2 with 4–5 sessions (the brief's 3-session SE implies overlapping windows that overstate noise). KPIs follow their own definitions and ignore the trend's range filter. "Include partial" affects trend, verdict and KPIs together. Practice mode is untimed and so has no cap. In strict per-question mode, a hidden tab advances at most one question per timer tick until it is visible again.
+
+## Changes after the design and UX reviews (round 1)
+
+67. In an Exam, "Fix this question" hides and locks the answer key (otherwise it leaks the answer and can be used to score a question). Text, figures and reports stay editable; the key is fixed after submitting.
+68. End session opens with focus on "Keep going", so two Enter presses can never submit by accident.
+69. A failed save (storage full) keeps the session open and says so; Save and Submit never report success they did not achieve.
+70. Pasted import JSON and the prompt dialog's fields survive closing the dialog, until an import succeeds.
+71. Route changes move focus to the new page's main region; question changes are announced politely ("Question 7 of 40"). Timer announcements stay at 50%, 25%, 10% and 1 minute.
+72. Answer options use roving focus: Up/Down move between options, Space/Enter choose, Left/Right stay question navigation (they are the exam's primary keys).
+73. Answered cells in the question grid use the inverse fill (3:1 or better in both themes); the current cell has an ink ring.
+74. The timer bar mixes colours in sRGB, not OKLCH: OKLCH hue interpolation passed through magenta or green between blue and amber. The bar still drains from the left, as the brief specifies; the low state adds stripes, a pulse and a "Low" word.
+75. The service worker never reloads the page on first install; it reloads only after the user accepts an update.
+76. Only one orange point on the question screen: the selected answer's cap. Next and Finish are plain buttons there.
+77. A wrong selected answer in Practice reverts to the raised surface, so its red border keeps contrast.
+78. Toasts show at most three at once, sit at the top on the question screen (never over Previous/Next), and errors stay longer.
+79. Recorded session time is capped at the session budget (a sleep past time zero is not time spent).
+80. "No limit" is renamed "Full time (N min)", because the cap always applies.
+81. Hover lifts are limited to hover-capable pointers; the cap sweep exits with ease-in at 60% duration.
+82. At 2200 px and wider the layout still zooms 1.25×. Full-height layouts divide their viewport units by the zoom, so the question screen and modals fit.
+83. Known minor design items kept: nested radii of 7 px inside 10 px segmented controls (concentric with the 3 px inset), 14 px text in tabs and tables, and no modal exit animation. Each costs more code than it returns.
