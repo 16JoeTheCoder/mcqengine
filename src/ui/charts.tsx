@@ -98,7 +98,13 @@ export function LineChart({
         const sx = (x: number) => PAD.l + (x1 === x0 ? iw / 2 : ((x - x0) / (x1 - x0)) * iw);
         const sy = (y: number) => PAD.t + ih - ((y - lo) / (hi - lo || 1)) * ih;
         const path = (pts: { x: number; y: number }[]) => pts.map((p, i) => `${i ? 'L' : 'M'}${sx(p.x).toFixed(1)},${sy(p.y).toFixed(1)}`).join('');
-        const ticks = niceTicks(lo, hi);
+        // Without true scale the domain is floored to tenths, so ticks start exactly at its minimum.
+        const ticks = trueScale || yMax !== 1 ? niceTicks(lo, hi) : (() => {
+          const step = 0.1 * Math.max(1, Math.ceil((hi - lo) / 0.1 / 5 - 1e-9));
+          const out: number[] = [];
+          for (let v = lo; v <= hi + 1e-9; v += step) out.push(+v.toFixed(10));
+          return out;
+        })();
         const xTicks = niceTicks(x0, x1, Math.min(6, Math.max(1, x1 - x0))).filter((t) => Number.isInteger(t));
         return (
           <g font-family="var(--font-sans)" font-size="12">

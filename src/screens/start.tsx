@@ -109,7 +109,7 @@ export function StartDialog({ pack, req, blocked, onClose }: { pack: Pack; req: 
                 ...(perQMax >= 1 ? [{ value: 'perq' as TimerKind, label: 'Per question' }] : []),
               ]}
             />
-            {kind === 'none' && <small>The full time allowed for this paper, {capMin} minutes.</small>}
+            {kind === 'none' && <small>The full time allowed, like the real paper.</small>}
             {kind === 'total' && (
               <div class="row" style={{ alignItems: 'flex-end' }}>
                 <input type="range" min={1} max={capMin} value={minutes} onInput={(e) => setMinutes(clampMin(Number((e.target as HTMLInputElement).value)))} aria-label="Total minutes" style={{ flex: 1 }} />

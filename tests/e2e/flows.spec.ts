@@ -155,3 +155,14 @@ test('no serious accessibility violations on main screens', async ({ page }) => 
   await page.goto('./#/settings');
   await check('settings');
 });
+
+test('figures render with a real size', async ({ page }) => {
+  const d = syntheticDoc([{ id: 'p1', count: 2 }]);
+  (d.papers[0]!.questions[0] as Record<string, unknown>).figure = {
+    svg: "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 240 100'><rect x='70' y='40' width='80' height='30' fill='none' stroke='black'/></svg>",
+  };
+  await importViaPaste(page, d);
+  await startPaper(page);
+  const box = await page.locator('.fig img').boundingBox();
+  expect(box && box.width > 100 && box.height > 40).toBe(true);
+});

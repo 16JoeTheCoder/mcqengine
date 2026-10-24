@@ -578,7 +578,7 @@ function Runner({ initial }: { initial: Loaded }) {
                 Next <Icon name="right" />
               </Button>
             ) : (
-              <Button onClick={() => (!settings.confirmSubmit && unanswered === 0 ? void finish(false) : setEndOpen(true))}>
+              <Button class="jy-btn--inverse" onClick={() => (!settings.confirmSubmit && unanswered === 0 ? void finish(false) : setEndOpen(true))}>
                 Finish
               </Button>
             )}

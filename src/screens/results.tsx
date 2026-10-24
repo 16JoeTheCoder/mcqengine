@@ -121,7 +121,7 @@ export function Results({ id }: { id: string }) {
             <Stat label="On the paper" value={`${r.minLessOnPaper.toFixed(1)} min`} ctx="less than your median" />
             <Stat label="Your typical pace" value={`${r.trimmedMeanT.toFixed(0)} s/q`} ctx={r.baselineCount >= 5 ? 'trimmed mean' : 'mean'} />
             <Stat label="Finishing time" value={formatClock(r.finishMs)} ctx={`median ${formatClock(r.medianT * 1000 * s.total)}`} />
-            <Stat label="Accuracy drop" value={`${Math.round(r.dropQuestions * 10) / 10} Q`} ctx={`questions, ${r.dropPoints.toFixed(1)} points below your median`} />
+            <Stat label="Accuracy drop" value={`${Math.round(r.dropQuestions * 10) / 10} Q`} ctx={`${Math.round(r.dropPoints)} points below your median`} />
           </div>
           {r.rushedErrors.length > 0 && (
             <div class="stack-s">
