@@ -43,6 +43,13 @@ export function packStandardLength(pack: Pack): number {
   return standardLength(pack.papers.map((p) => p.questionCount)) || 40;
 }
 
+/** Hard cap (minutes) for random and drill sessions, derived from the pack's average budget. */
+export function sessionCapMin(pack: Pack, type: SessionType, questions: number): number {
+  const avg = packBudgetSec(pack.papers);
+  if (type === 'drill') return Math.max(1, Math.round(drillBudgetMs(avg, questions) / 60_000));
+  return Math.max(1, Math.round((avg * questions) / 60));
+}
+
 export interface StartOptions {
   pack: Pack;
   type: SessionType;
@@ -90,8 +97,7 @@ export async function createSession(o: StartOptions, now = Date.now()): Promise<
       ids = selectDrill([...stats.values()], size, eligible);
       title = 'Mistakes drill';
     }
-    const avg = packBudgetSec(o.pack.papers);
-    capMin = o.type === 'drill' ? Math.max(1, Math.round(drillBudgetMs(avg, ids.length) / 60_000)) : Math.max(1, Math.round((avg * ids.length) / 60));
+    capMin = sessionCapMin(o.pack, o.type, ids.length);
   }
   if (!ids.length) throw new Error('No questions available for this session');
 

@@ -20,7 +20,7 @@ export const MAX_INPUT_CHARS = 15_000_000;
 const COLLIDING = /^(frac|tfrac|dfrac|theta|times|tau|text|to|beta|bar|rho|right|rightarrow|nu|neq|nabla|ne|underline|uparrow|upsilon)(?![A-Za-z])/;
 
 export function extractJsonText(raw: string, notes: Set<string>): string {
-  let s = raw.replace(/^﻿/, '');
+  let s = raw.replace(/^\uFEFF/, '');
   const fence = /```[a-zA-Z0-9]*\s*\n?([\s\S]*?)```/g;
   const blocks = [...s.matchAll(fence)].map((m) => m[1] ?? '');
   if (blocks.length) {

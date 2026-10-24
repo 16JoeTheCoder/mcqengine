@@ -24,7 +24,7 @@ function serviceWorker(): Plugin {
       const version = hash.digest('hex').slice(0, 12);
       const src = readFileSync(new URL('./src/sw-template.js', import.meta.url), 'utf8')
         .replace('__VERSION__', version)
-        .replace('__PRECACHE__', JSON.stringify(['./', ...files.filter((f) => f !== 'index.html')]));
+        .replace('__PRECACHE__', JSON.stringify(['./', ...files]));
       this.emitFile({ type: 'asset', fileName: 'sw.js', source: src });
     },
   };

@@ -98,8 +98,8 @@ export function normaliseText(s: string, notes: Set<string>): string {
       .replace(/\\([{}])/g, '$1');
     if (out !== before) notes.add('Converted LaTeX commands to symbols (\\lambda → λ)');
   }
-  if (/[​-‍﻿]/.test(out)) {
-    out = out.replace(/[​-‍﻿]/g, '');
+  if (/[\u200b-\u200d\uFEFF]/.test(out)) {
+    out = out.replace(/[\u200b-\u200d\uFEFF]/g, '');
     notes.add('Removed invisible characters');
   }
   return out;

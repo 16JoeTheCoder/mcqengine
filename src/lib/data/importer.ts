@@ -62,7 +62,7 @@ export async function planImport(doc: NDoc, target: ImportTarget, source: Import
   const qov = target.packId ? new Map((await store.getOverrides(target.packId)).map((o) => [o.key, o] as const)) : new Map();
   const imgs = source ? await prepareImages(doc, source.files) : { map: new Map<string, string>(), records: [] };
   const merge = mergeDoc(doc, packId, new Map(existing.map((p) => [p.id, p] as const)), imgs.map, overrides, qov);
-  return { merge, images: imgs.records };
+  return { merge, images: imgs.records, imageMap: imgs.map };
 }
 
 /** Writes a planned import. Refuses when the plan has conflicts. Returns the pack id. */

@@ -231,6 +231,7 @@ export interface Settings {
   lastBackupAtCount: number;
   lastBackupAt?: number;
   dismissedTips: string[];
+  theme: 'system' | 'light' | 'dark';
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -247,6 +248,7 @@ export const DEFAULT_SETTINGS: Settings = {
   includePartialInTrend: false,
   lastBackupAtCount: 0,
   dismissedTips: [],
+  theme: 'system',
 };
 
 /** Upper edges (seconds) of the time-per-question histogram bins; the last bin is open. */
