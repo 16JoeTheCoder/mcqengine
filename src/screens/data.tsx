@@ -121,6 +121,12 @@ export function RestoreDialog({ source, onClose }: { source: { manifest: string;
           </p>
           <p>{adds ? `Adds ${adds}.` : 'Adds nothing new.'}</p>
           {merges && <p>Updates {merges} where the backup is newer.</p>}
+          {plan.orphans > 0 && (
+            <div class="notice notice--warn">
+              <Badge status="warn">Packs missing</Badge>
+              <div class="small">{plan.orphans} progress records belong to packs that are not on this device and are not in this backup, so they are skipped. Import the packs (or a full backup) first to keep that progress.</div>
+            </div>
+          )}
           <p class="small muted">Records already on this device that are newer than the backup are kept. Nothing is deleted.</p>
         </div>
       )}

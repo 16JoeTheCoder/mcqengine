@@ -337,7 +337,7 @@ function Review({ pack, doc, warnings, source, onBack, onClose }: { pack?: Pack;
                 </tbody>
               </table>
             </div>
-            {missingTime && <p class="small" style={{ color: 'var(--status-bad)' }}>Set the time cap for every paper. It is the hard maximum for any timer.</p>}
+            {missingTime ? <p class="small" style={{ color: 'var(--status-bad)' }}>Set the time cap for every paper. It is the hard maximum for any timer.</p> : <p class="small muted">Time caps are 1 to 600 minutes; larger values are capped at 600.</p>}
           </div>
         )}
         {doc.answers.length > 0 && (

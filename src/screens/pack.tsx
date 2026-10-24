@@ -47,6 +47,10 @@ export function PackScreen({ id, section, onImport, onPrompt }: { id: string; se
   const [includePractice, setIncludePractice] = useState(false);
   const [active, setActive] = useState('overview');
   const [tipHidden, setTipHidden] = useState(false);
+  const [lockElsewhere, setLockElsewhere] = useState(false);
+  useEffect(() => {
+    void sessionLockHeld().then(setLockElsewhere);
+  }, [v]);
 
   useEffect(() => {
     let live = true;
@@ -102,6 +106,7 @@ export function PackScreen({ id, section, onImport, onPrompt }: { id: string; se
   const { pack, sessions, stats } = data;
   const open = sessions.filter((s) => s.status === 'saved' || s.status === 'active');
   const saved = open[0];
+  const elsewhere = saved?.status === 'active' && lockElsewhere;
   const inProgress = new Set(open.map((s) => s.paperId).filter(Boolean) as string[]);
   const questions = pack.papers.reduce((x, p) => x + p.present, 0);
   const std = packStandardLength(pack);
@@ -193,11 +198,15 @@ export function PackScreen({ id, section, onImport, onPrompt }: { id: string; se
                 <div>
                   <b>Saved session:</b> {saved.title} · <span class="num">{saved.answered}</span> of <span class="num">{saved.total}</span> answered
                 </div>
-                <div class="row">
-                  <Button variant="ghost" onClick={() => resolveSaved('discard')}>Discard</Button>
-                  <Button onClick={() => resolveSaved('submit')}>Submit now</Button>
-                  <Button variant="primary" onClick={() => resolveSaved('resume')}>Resume</Button>
-                </div>
+                {elsewhere ? (
+                  <span class="small muted">Running in another tab. Finish it there.</span>
+                ) : (
+                  <div class="row">
+                    <Button variant="ghost" onClick={() => resolveSaved('discard')}>Discard</Button>
+                    <Button onClick={() => resolveSaved('submit')}>Submit now</Button>
+                    <Button variant="primary" onClick={() => resolveSaved('resume')}>Resume</Button>
+                  </div>
+                )}
               </div>
             </div>
           )}

@@ -92,6 +92,7 @@ export function App() {
   // Restore scroll when returning to a page; otherwise start at the top.
   useEffect(() => {
     if (route.name === 'pack' && route.section) return;
+    if (route.name === 'session') toasts.set([]);
     const y = savedScroll(location.hash || '#/');
     requestAnimationFrame(() => {
       window.scrollTo({ top: y ?? 0, behavior: 'instant' as ScrollBehavior });

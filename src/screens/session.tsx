@@ -174,7 +174,8 @@ function Runner({ initial }: { initial: Loaded }) {
         }
         lastOk.current = true;
       } catch {
-        if (lastOk.current) toast('Could not save your answers. Storage may be full: free some space or export a backup.', undefined, 10_000);
+        // Same wording as the global storage-full notice, so the two merge into one toast.
+        if (lastOk.current) toast('Storage is full. Export a backup and delete packs you no longer need.', undefined, 10_000);
         lastOk.current = false;
       }
   };

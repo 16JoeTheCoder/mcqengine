@@ -69,6 +69,8 @@ export interface RestorePlan {
   adds: Record<string, number>;
   merges: Record<string, number>;
   skips: Record<string, number>;
+  /** Progress rows dropped because their pack is neither on this device nor in the backup. */
+  orphans: number;
 }
 
 export class BackupError extends Error {}
@@ -202,6 +204,16 @@ export async function planRestore(manifestText: string, data: string, images: Ma
     });
   }
   const d = await store.db();
+  // Progress for packs that exist nowhere would create ghost sessions and stats: drop it.
+  const known = new Set([...(await d.getAllKeys('packs')).map(String), ...((dump.packs ?? []) as Record<string, unknown>[]).map((p) => p.id as string)]);
+  let orphans = 0;
+  for (const name of ['sessions', 'sessionDetail', 'questionStats', 'bankEvents', 'overrides'] as const) {
+    const rows = dump[name] as Record<string, unknown>[] | undefined;
+    if (!rows) continue;
+    const kept = rows.filter((r) => known.has(r.packId as string));
+    orphans += rows.length - kept.length;
+    dump[name] = kept;
+  }
   const adds: Record<string, number> = {};
   const merges: Record<string, number> = {};
   const skips: Record<string, number> = {};
@@ -219,7 +231,7 @@ export async function planRestore(manifestText: string, data: string, images: Ma
       else skips[name] = (skips[name] ?? 0) + 1;
     }
   }
-  return { manifest, dump, images, adds, merges, skips };
+  return { manifest, dump, images, adds, merges, skips, orphans };
 }
 
 /** Applies a restore plan: adds new records, replaces older ones by updatedAt, keeps newer local ones. */

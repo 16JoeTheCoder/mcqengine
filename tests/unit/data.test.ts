@@ -159,4 +159,19 @@ describe('backup round-trip', () => {
     await expect(planRestore(parsed.manifest, parsed.data, new Map())).resolves.toBeTruthy();
     await expect(planRestore(parsed.manifest, parsed.data.replace('}', ' }'), new Map())).rejects.toBeInstanceOf(BackupError);
   });
+
+  it('progress-only restore onto a device without the pack skips its sessions (no ghost sessions)', async () => {
+    const id = await importPack(doc(syntheticPaper('p1', 4)));
+    const pack = (await store.getPack(id))!;
+    const { summary } = await createSession({ pack, type: 'paper', mode: 'exam', paperId: 'p1' });
+    const s = (await store.getSession(summary.id))!;
+    await store.saveSessionState({ ...s, status: 'saved' }, (await store.getDetail(summary.id))!);
+    const { blob } = await createBackup('progress');
+    await store.wipeAll();
+    const parsed = readProgressJson(await blob.text())!;
+    const plan = await planRestore(parsed.manifest, parsed.data, new Map());
+    expect(plan.orphans).toBeGreaterThan(0);
+    await applyRestore(plan);
+    expect(await store.getOpenSessions()).toEqual([]);
+  });
 });
