@@ -11,6 +11,7 @@ import { Badge, Button, fmtDate, Ring, Skeleton } from '../ui/kit';
 import { Icon } from '../ui/icons';
 import { FigureView, OptionBody, QuestionImage, Rich } from '../ui/content';
 import { doBackup } from './data';
+import { FixQuestion } from './fix';
 
 type Filter = 'all' | 'wrong' | 'flagged' | 'slow' | 'unsure';
 
@@ -18,6 +19,7 @@ export function Results({ id }: { id: string }) {
   const settings = useStore(settingsStore);
   const [data, setData] = useState<{ s: SessionSummary; d: SessionDetail; q: Map<string, Question>; history: SessionSummary[]; completed: number } | null | 'missing'>(null);
   const [filter, setFilter] = useState<Filter>('all');
+  const [fixing, setFixing] = useState<Question | null>(null);
 
   useEffect(() => {
     void (async () => {
@@ -183,6 +185,11 @@ export function Results({ id }: { id: string }) {
                 {a.flagged && <Badge status="ink">Flagged</Badge>}
                 {a.unsure && <Badge status="warn">Unsure</Badge>}
                 {r?.rushedErrors.some((e) => e.qid === a.qid) && <Badge status="warn">Rushed</Badge>}
+                {qq && (
+                  <Button variant="ghost" size="sm" onClick={() => setFixing(qq)}>
+                    <Icon name="pencil" size={16} /> Fix this question
+                  </Button>
+                )}
               </div>
               {qq && (
                 <details open={status === 'bad'}>
@@ -209,6 +216,8 @@ export function Results({ id }: { id: string }) {
           );
         })}
       </section>
+      {fixing && <FixQuestion packId={s.packId} question={fixing} onClose={() => setFixing(null)} />}
+      <p class="small subtle" style={{ marginTop: 'var(--space-5)' }}>A fixed answer key applies to future sessions; this result keeps the key it was graded with.</p>
     </main>
   );
 }

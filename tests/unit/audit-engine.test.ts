@@ -1,5 +1,5 @@
 // Audit (logic round 1): property-based and boundary tests of the pure engine.
-// Tests marked it.fails demonstrate real bugs; they pass while the bug exists.
+// Tests titled "regression (was a bug)" describe bugs the audits found; they now guard the fixes.
 import { describe, expect, it } from 'vitest';
 import { buildTimer, Countdown, perQuestionMaxSec, sanitizeTimer } from '../../src/lib/engine/timer';
 import { drawRandom, standardLength, type PoolItem } from '../../src/lib/engine/random';
@@ -86,7 +86,7 @@ describe('timer clamps: randomised', () => {
     }
   });
 
-  it('fixed: sanitizeTimer lets a negative perQMs through, giving a negative session budget', () => {
+  it('regression (was a bug): sanitizeTimer lets a negative perQMs through, giving a negative session budget', () => {
     const c = sanitizeTimer({ kind: 'perq', capMs: 600_000, totalMs: 600_000, perQMs: -5000 }, 10);
     expect(c.totalMs).toBeGreaterThan(0);
   });
@@ -135,7 +135,7 @@ describe('Countdown under random wall and monotonic clocks', () => {
     for (let s = 1; s <= 300; s++) run(s, true);
   });
 
-  it('fixed: a backward jump that roughly cancels a long tick gap is not detected and refunds the gap', () => {
+  it('regression (was a bug): a backward jump that roughly cancels a long tick gap is not detected and refunds the gap', () => {
     // Background tab: the tick fires after 60 s of real time (both clocks moved 60 s), but the
     // wall clock was also set back 60.5 s meanwhile. dWall = -0.5 s, which is above the -1 s
     // threshold, so no re-anchor: the 60 s really elapsed are never charged.

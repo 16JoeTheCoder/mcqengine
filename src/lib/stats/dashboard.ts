@@ -43,6 +43,8 @@ export function trend(sessions: SessionSummary[], metric: Metric) {
     const p = Math.min(0.95, Math.max(0.05, mean(values) || 0.5));
     sdOne = Math.sqrt((p * (1 - p)) / N);
   }
+  // Same floor as the verdict: never less than half a question of noise.
+  if (metric !== 'pace') sdOne = Math.max(sdOne, 0.5 / N);
   const se = sdOne / Math.sqrt(3);
   return {
     raw: values.map((y, i) => ({ x: i + 1, y })),

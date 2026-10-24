@@ -46,7 +46,7 @@ One line each: what was decided and why. Grouped by area.
 ## Session engine
 
 30. Standard paper length = the most common paper question count in the pack; ties go to the longer length. Random and drill sessions use it, or the whole pool if smaller.
-31. A session left `active` by a closed tab, crash or refresh becomes `saved` on the next app open, with the remaining time from its last persisted tick (written every 2 s and on `pagehide`). Time while the app was closed is not charged, so a closed tab acts like Save. The logic audit flagged this as a way to pause the clock; it is kept on purpose, because charging closed time would auto-submit a paper the moment a laptop is reopened days later, and this is self-practice. The heartbeat bounds the refund to 2 s. Recovery is skipped while another tab holds the session lock.
+31. A session left `active` by a closed tab, crash or refresh becomes `saved` on the next app open, with the remaining time from its last persisted tick (written every 2 s and on `pagehide`). Time while the app was closed is not charged, so a closed tab acts like Save. The logic audit flagged this as a way to pause the clock; it is kept on purpose, because charging closed time would auto-submit a paper the moment a laptop is reopened days later, and this is self-practice. The heartbeat bounds the refund to 2 s per close or refresh, so "never increases" holds within a page's lifetime, not across a close. Recovery is skipped while another tab holds the session lock.
 32. A refresh on the session screen restores the session directly; the resume prompt covers every other way of opening the app.
 33. Clock changes: remaining time comes from an absolute end timestamp. A backward wall-clock jump of more than 1 s re-anchors using the monotonic clock. A forward jump is charged, because it cannot be told apart from laptop sleep, which must be charged.
 34. Auto-submit at time zero is a complete attempt (not partial): unanswered questions count against the paper score, like a real exam. They are not graded individually, so they stay unseen for Random and stay out of the mistakes bank. The brief's partial rule covers manual Submit only. Excluding time-outs from the trend would hide exactly the time pressure the trend should show. Exception: an auto-submit with nothing answered is partial, and every completeness check requires at least one answer.
@@ -111,3 +111,14 @@ One line each: what was decided and why. Grouped by area.
 81. Hover lifts are limited to hover-capable pointers; the cap sweep exits with ease-in at 60% duration.
 82. At 2200 px and wider the layout still zooms 1.25×. Full-height layouts divide their viewport units by the zoom, so the question screen and modals fit.
 83. Known minor design items kept: nested radii of 7 px inside 10 px segmented controls (concentric with the 3 px inset), 14 px text in tabs and tables, and no modal exit animation. Each costs more code than it returns.
+
+## Changes after the logic audit (round 2)
+
+84. Creating a session checks "one open session per pack" inside the same transaction as the write, so two concurrent starts cannot both succeed.
+85. The session screen releases its lock one task after unmount, after the Runner's final save is queued and has landed.
+86. Restores and imports merge papers at the question level: a newer incoming copy never drops questions stored locally, and pack paper counts are recomputed.
+87. Restore validation checks question rows, stat and override keys against their pack and question ids, and sanitises settings to known keys with the right types.
+88. Pack ids get a 6-character random suffix and a counter fallback, so ids never collide on this device.
+89. A session whose save is refused (submitted or discarded elsewhere) leaves its screen with a message instead of going silent. Deleting a pack is refused while a session runs in another tab. A failing auto-submit is not retried every tick.
+90. Random and drill sessions keep the cap fixed at creation; only paper sessions re-clamp to the paper's current cap on resume.
+91. Known limits, kept: boot recovery is skipped entirely while any tab runs a session (stale sessions are recovered on the next open). A key fixed after a session does not rewrite that session's question stats or mistakes-bank entries; the next attempt corrects them.

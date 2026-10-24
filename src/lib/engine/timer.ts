@@ -47,7 +47,8 @@ export function sanitizeTimer(c: TimerConfig, questions: number): TimerConfig {
   const capMs = Math.max(60_000, c.capMs);
   const totalMs = Math.min(capMs, Math.max(1000, c.totalMs));
   if (c.kind === 'perq' && c.perQMs) {
-    const perQMs = Math.max(1, Math.min(c.perQMs, Math.floor(capMs / Math.max(1, questions))));
+    // At least one second per question, unless the cap itself allows less.
+    const perQMs = Math.min(Math.floor(capMs / Math.max(1, questions)), Math.max(1000, c.perQMs));
     return { ...c, capMs, perQMs, totalMs: Math.min(totalMs, perQMs * questions) };
   }
   return { ...c, capMs, totalMs };

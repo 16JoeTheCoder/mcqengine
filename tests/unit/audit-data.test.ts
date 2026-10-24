@@ -1,5 +1,5 @@
 // Audit (logic round 1): session lifecycle (randomised), data layer races, imports and backups.
-// Tests marked it.fails demonstrate real bugs; they pass while the bug exists.
+// Tests titled "regression (was a bug)" describe bugs the audits found; they now guard the fixes.
 import { beforeEach, describe, expect, it } from 'vitest';
 import * as store from '../../src/lib/data/db';
 import { commitImport, parseImport, planImport } from '../../src/lib/data/importer';
@@ -177,7 +177,7 @@ describe('session lifecycle: races and invariants', () => {
     expect(stats.map((s) => s.attempts)).toEqual([1, 1, 1, 1]);
   });
 
-  it('fixed: a stale autosave after submit (second tab, or pack-page submit while the session screen is open) un-submits the session and the next submit grades it twice', async () => {
+  it('regression (was a bug): a stale autosave after submit (second tab, or pack-page submit while the session screen is open) un-submits the session and the next submit grades it twice', async () => {
     const { packId, pack } = await setup();
     const { summary, detail } = await createSession({ pack, type: 'paper', mode: 'exam', paperId: 'p1' });
     const { d } = await answer(summary.id, (_i, q) => ({ choice: keyOf(q) }));
@@ -193,7 +193,7 @@ describe('session lifecycle: races and invariants', () => {
     expect(stats.map((s) => s.timesSeen)).toEqual([1, 1, 1, 1]);
   });
 
-  it('fixed: a stale autosave after "Delete pack" or "Discard" resurrects an orphan open session', async () => {
+  it('regression (was a bug): a stale autosave after "Delete pack" or "Discard" resurrects an orphan open session', async () => {
     const { packId, pack } = await setup();
     const { summary, detail } = await createSession({ pack, type: 'paper', mode: 'exam', paperId: 'p1' });
     await store.deletePack(packId);
@@ -201,7 +201,7 @@ describe('session lifecycle: races and invariants', () => {
     expect(await store.getOpenSessions()).toEqual([]);
   });
 
-  it('fixed: the engine allows a second open session in a pack that has a saved session (one saved session per pack)', async () => {
+  it('regression (was a bug): the engine allows a second open session in a pack that has a saved session (one saved session per pack)', async () => {
     const { pack } = await setup();
     const a = await createSession({ pack, type: 'random', mode: 'exam' });
     const s = (await store.getSession(a.summary.id))!;
@@ -209,7 +209,7 @@ describe('session lifecycle: races and invariants', () => {
     await expect(createSession({ pack, type: 'paper', mode: 'exam', paperId: 'p1' })).rejects.toThrow();
   });
 
-  it('fixed: a paper session cannot start while another session in the pack is open, so locked questions are never shared', async () => {
+  it('regression (was a bug): a paper session cannot start while another session in the pack is open, so locked questions are never shared', async () => {
     const { pack } = await setup();
     const a = await createSession({ pack, type: 'random', mode: 'exam' });
     const s = (await store.getSession(a.summary.id))!;
@@ -227,7 +227,7 @@ describe('session lifecycle: races and invariants', () => {
     expect(det.timer!.endAt).toBeUndefined();
   });
 
-  it('fixed: a key fix after a session never changes how that session is reviewed (key snapshot at submit)', async () => {
+  it('regression (was a bug): a key fix after a session never changes how that session is reviewed (key snapshot at submit)', async () => {
     const { packId, pack } = await setup();
     const { summary } = await createSession({ pack, type: 'paper', mode: 'exam', paperId: 'p1' });
     await answer(summary.id, () => ({ choice: 0 }));
@@ -290,7 +290,7 @@ describe('imports', () => {
     expect(meta).toMatchObject({ present: 4, keyed: 4 });
   });
 
-  it('fixed: a later chunk that declares a larger questionCount silently grows the paper past its count', async () => {
+  it('regression (was a bug): a later chunk that declares a larger questionCount silently grows the paper past its count', async () => {
     const id = await importPack(doc(syntheticPaper('p1', 4)));
     const more = await plan(doc(syntheticPaper('p1', 6, { from: 5, to: 6 })), id);
     // Expected: a conflict (the paper already has 4 questions), or questionCount updated to 6.
@@ -298,7 +298,7 @@ describe('imports', () => {
     expect(more.merge.conflicts.length > 0 || p.questionCount === p.questions.length).toBe(true);
   });
 
-  it('fixed: two imports committed concurrently into one pack lose a paper from the pack metadata', async () => {
+  it('regression (was a bug): two imports committed concurrently into one pack lose a paper from the pack metadata', async () => {
     const id = await importPack(doc(syntheticPaper('p1', 4)));
     const a = await plan(doc(syntheticPaper('p2', 4)), id);
     const b = await plan(doc(syntheticPaper('p3', 4)), id);
@@ -375,7 +375,7 @@ describe('backups', () => {
     expect(await snapshot()).toEqual(before);
   });
 
-  it('fixed: restore validates rows, clamps timers and keeps one open session per pack', async () => {
+  it('regression (was a bug): restore validates rows, clamps timers and keeps one open session per pack', async () => {
     const { id } = await richState();
     const { blob } = await createBackup('progress');
     const p = readProgressJson(await blob.text())!;
@@ -393,7 +393,7 @@ describe('backups', () => {
     expect(open).toHaveLength(1);
   });
 
-  it('fixed: image bytes in a backup zip are not verified against their sha-256 id', async () => {
+  it('regression (was a bug): image bytes in a backup zip are not verified against their sha-256 id', async () => {
     const { imgId } = await richState();
     const { blob } = await createBackup('everything');
     const { unzipSync, zipSync } = await import('fflate');
@@ -413,7 +413,7 @@ describe('backups', () => {
     expect(rejected || ok).toBe(true);
   });
 
-  it('fixed: restoring a same-id pack keeps every paper either copy lists (older or newer backup)', async () => {
+  it('regression (was a bug): restoring a same-id pack keeps every paper either copy lists (older or newer backup)', async () => {
     const id = await importPack(doc(syntheticPaper('p1', 4)));
     const { blob } = await createBackup('everything');
     const r = parseImport(JSON.stringify(doc(syntheticPaper('p2', 4))));

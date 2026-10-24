@@ -1,5 +1,5 @@
 import { lenientParse, JsonSyntaxError } from '../format/lenient';
-import { mergeDoc, type MergeResult, type PaperOverrides } from '../format/merge';
+import { mergeDoc, metaOf, type MergeResult, type PaperOverrides } from '../format/merge';
 import { sanitizeSvg } from '../format/svg';
 import { slugify, validateDoc, type NDoc, type ValidationResult } from '../format/validate';
 import { uid } from '../engine/rng';
@@ -76,12 +76,28 @@ export async function commitImport(target: ImportTarget, merge: MergeResult, ima
     if (!pack) {
       const title = target.newPack?.title.trim() || 'Untitled pack';
       const base = slugify(title) || 'pack';
-      // A random suffix keeps ids unique across devices too, so backups never collide on title.
-      const id = (await packs.get(base)) ? `${base}-${uid().slice(0, 5)}` : `${base}-${uid().slice(0, 4)}`;
+      // A random suffix keeps ids unique across devices too, so backups never collide on title;
+      // a counter guarantees uniqueness on this device.
+      let id = `${base}-${uid().slice(0, 6)}`;
+      for (let k = 2; await packs.get(id); k++) id = `${base}-${uid().slice(0, 6)}-${k}`;
       pack = { id, title, subject: target.newPack?.subject.trim() ?? '', createdAt: now, updatedAt: now, papers: [] };
     }
     const packId = pack.id;
-    const papers: Paper[] = merge.papers.map((p) => ({ ...p, packId, key: `${packId}::${p.id}` }));
+    const papers: Paper[] = [];
+    for (const p0 of merge.papers) {
+      const p: Paper = { ...p0, packId, key: `${packId}::${p0.id}` };
+      // Keep questions stored since this import was planned (another tab, another chunk).
+      const stored = await tx.objectStore('papers').get(p.key);
+      if (stored) {
+        const have = new Set(p.questions.map((q) => q.n));
+        const extra = stored.questions.filter((q) => !have.has(q.n));
+        if (extra.length) {
+          p.questions = [...p.questions, ...extra].sort((a, b) => a.n - b.n);
+          Object.assign(p, metaOf(p));
+        }
+      }
+      papers.push(p);
+    }
     const metas = new Map(pack.papers.map((m) => [m.id, m] as const));
     for (const p of papers) {
       const { key: _k, packId: _p, questions: _q, pendingKey: _pk, ...meta } = p;

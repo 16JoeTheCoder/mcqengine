@@ -197,6 +197,20 @@ export async function persistOpenSession(summary: SessionSummary, detail: Sessio
   });
 }
 
+/** Creates a session only if its pack has no open session, checked inside the same transaction. */
+export async function createOpenSession(summary: SessionSummary, detail: SessionDetail): Promise<boolean> {
+  return write(async () => {
+    const tx = (await db()).transaction(['sessions', 'sessionDetail'], 'readwrite');
+    const rows = await tx.objectStore('sessions').index('packId').getAll(summary.packId);
+    if (rows.some((s) => s.status === 'active' || s.status === 'saved')) {
+      await tx.done;
+      return false;
+    }
+    await Promise.all([tx.objectStore('sessions').put(summary), tx.objectStore('sessionDetail').put(detail), tx.done]);
+    return true;
+  });
+}
+
 export async function deleteSession(id: string) {
   const tx = (await db()).transaction(['sessions', 'sessionDetail'], 'readwrite');
   await Promise.all([tx.objectStore('sessions').delete(id), tx.objectStore('sessionDetail').delete(id), tx.done]);

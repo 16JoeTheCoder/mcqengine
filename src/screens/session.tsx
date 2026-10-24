@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import * as store from '../lib/data/db';
 import { Countdown, crossedThreshold, formatClock, sanitizeTimer } from '../lib/engine/timer';
-import { loadSessionQuestions, sessionCapMin, submitSession } from '../lib/engine/session';
+import { loadSessionQuestions, submitSession } from '../lib/engine/session';
 import { acquireSessionLock, broadcastChange, finalWrite, setFinalWrite } from '../lib/tablock';
 import { bump, href, navigate, settingsStore, toast, useStore } from '../lib/app-state';
 import { LETTERS, type AnswerRecord, type Question, type SessionDetail, type SessionSummary } from '../lib/types';
@@ -40,7 +40,8 @@ export function SessionScreen({ id }: { id: string }) {
       if (detail.timer) {
         const pack = await store.getPack(summary.packId);
         const n = detail.questionIds.length;
-        const capMin = summary.type === 'paper' ? pack?.papers.find((p) => p.id === summary.paperId)?.timeLimitMin : pack ? sessionCapMin(pack, summary.type, n) : undefined;
+        // Papers clamp to their current cap. Random and drill keep the cap fixed at creation.
+        const capMin = summary.type === 'paper' ? pack?.papers.find((p) => p.id === summary.paperId)?.timeLimitMin : undefined;
         const c = sanitizeTimer(capMin ? { ...detail.timer.config, capMs: Math.min(detail.timer.config.capMs, capMin * 60_000) } : detail.timer.config, n);
         detail.timer = { ...detail.timer, config: c, remainingMs: Math.max(0, Math.min(detail.timer.remainingMs, c.totalMs)) };
       }
@@ -50,8 +51,9 @@ export function SessionScreen({ id }: { id: string }) {
     return () => {
       live = false;
       // Release the one-session lock only after the screen's final save has landed.
+      // Child cleanups (the Runner's final save) run after this one, so wait a task first.
       const rel = release.current;
-      void finalWrite.then(() => rel?.());
+      setTimeout(() => void finalWrite.then(() => rel?.()), 0);
     };
   }, [id]);
 
@@ -134,6 +136,7 @@ function Runner({ initial }: { initial: Loaded }) {
    * session has ended only the final write (final = true) goes through.
    */
   const lastOk = useRef(true);
+  const autoFailed = useRef(false);
   const persist = useCallback(
     (status: SessionSummary['status'] = 'active', final = false): Promise<void> => {
       if (ended.current && !final) return chain.current;
@@ -156,7 +159,16 @@ function Runner({ initial }: { initial: Loaded }) {
       const s: SessionSummary = { ...summary, status, answered: det.answers.filter((x) => x.choice !== null).length, updatedAt: Date.now() };
       try {
         // Refused if the session was submitted or discarded elsewhere (another tab, the pack page).
-        if (!(await store.persistOpenSession(s, structuredClone(det)))) ended.current = true;
+        if (!(await store.persistOpenSession(s, structuredClone(det)))) {
+          // Finished or discarded elsewhere (another tab, the pack page): leave instead of going dead.
+          if (!ended.current) {
+            ended.current = true;
+            const now = await store.getSession(summary.id);
+            toast(now ? 'This session was submitted from another tab.' : 'This session was discarded from another tab.');
+            navigate(now ? href.results(summary.id) : href.pack(summary.packId), true);
+          }
+          return;
+        }
         lastOk.current = true;
       } catch {
         if (lastOk.current) toast('Could not save your answers. Storage may be full: free some space or export a backup.', undefined, 10_000);
@@ -195,7 +207,9 @@ function Runner({ initial }: { initial: Loaded }) {
       } catch {
         ended.current = false;
         setBusy(false);
-        toast('Could not submit. Your answers are safe; try again, or save the session for later.');
+        // An automatic submit is not retried every tick; the user can press Submit.
+        if (auto) autoFailed.current = true;
+        toast('Could not submit. Your answers are safe; try again, or save the session for later.', undefined, 10_000);
       }
     },
     [attribute, persist, summary.id],
@@ -263,7 +277,10 @@ function Runner({ initial }: { initial: Loaded }) {
       if (msg) setAnnounce(msg);
       prev = r;
       setRemaining(r);
-      if (r <= 0) return void finish(true);
+      if (r <= 0) {
+        if (!autoFailed.current) void finish(true);
+        return;
+      }
       if (strict && qCountdown.current) {
         const qr = qCountdown.current.remaining(Date.now(), performance.now());
         setQRemaining(qr);

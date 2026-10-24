@@ -480,6 +480,10 @@ function DataSection({ data }: { data: PackData }) {
     toast(`Exported ${name}. Anyone can import it into DMC.`);
   };
   const del = async () => {
+    if (await sessionLockHeld()) {
+      toast('A session is running in another tab. Finish it before deleting the pack.');
+      return;
+    }
     await store.deletePack(pack.id);
     bump();
     broadcastChange();

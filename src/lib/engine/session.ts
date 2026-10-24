@@ -143,7 +143,8 @@ export async function createSession(o: StartOptions, now = Date.now()): Promise<
     shuffled: !!o.shuffle || o.type !== 'paper',
     ...(timer ? { timer: { config: timer, remainingMs: timer.totalMs } } : {}),
   };
-  await store.saveSessionState(summary, detail);
+  if (!(await store.createOpenSession(summary, detail)))
+    throw new OpenSessionError('This pack has a saved session. Resume, submit or discard it first.');
   return { summary, detail };
 }
 

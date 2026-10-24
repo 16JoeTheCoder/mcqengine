@@ -98,7 +98,7 @@ describe('verdict: empirical path (6+ sessions)', () => {
     expect(v.z).toBeLessThan(2);
     expect(v.confidence).toBe('Low');
   });
-  it('fixed: that downgraded Low says "within noise" although |delta| >= 1 SE', () => {
+  it('regression (was a bug): that downgraded Low says "within noise" although |delta| >= 1 SE', () => {
     expect(disagree().label).not.toContain('within noise');
   });
 });
@@ -205,7 +205,7 @@ describe('KPIs', () => {
     expect(k.context).toBe('cleared 1 this week');
   });
 
-  it('fixed: a paper auto-submitted with zero answers counts as "done"', () => {
+  it('regression (was a bug): a paper auto-submitted with zero answers counts as "done"', () => {
     const s = sess({ status: 'auto-submitted', answered: 0, correct: 0, paperId: 'p9' });
     expect(papersDone([s]).has('p9')).toBe(false);
   });
