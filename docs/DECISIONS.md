@@ -30,7 +30,7 @@ One line each: what was decided and why. Grouped by area.
 18. Hash routing (`#/pack/id`): works on any static host and base path with no rewrite rules.
 19. The service worker is hand-written (`src/sw-template.js`); a tiny Vite plugin injects the precache list and a content-hash version. vite-plugin-pwa would add a Workbox build step for no gain here.
 20. The validator is hand-written for path-based, human messages. The published JSON Schema is checked against valid fixtures in tests with Ajv (dev only), so the two cannot drift silently.
-21. Initial JavaScript is 54 KB gzipped. Library, pack page and the question screen load up front, since they are the practice loop; import, prompt, insights, results and settings are split out and load on demand.
+21. Initial JavaScript is about 58 KB gzipped. Library, pack page and the question screen load up front, since they are the practice loop; import, prompt, insights, results and settings are split out and load on demand.
 
 ## Pack format
 
