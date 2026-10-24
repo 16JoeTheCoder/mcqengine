@@ -77,7 +77,10 @@ export function computeVerdict(
   const up = delta > 0;
   let direction: Direction;
   let label: string;
-  if (confidence === 'Low') {
+  if (confidence === 'Low' && disagrees && z >= 1) {
+    direction = up ? 'Rising' : 'Falling';
+    label = `Mixed signals, possibly ${up ? 'rising' : 'falling'}`;
+  } else if (confidence === 'Low') {
     if (z < 0.5) {
       direction = 'Flat';
       label = 'Flat, within noise';

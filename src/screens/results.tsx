@@ -32,7 +32,7 @@ export function Results({ id }: { id: string }) {
 
   const derived = useMemo(() => {
     if (!data || data === 'missing') return null;
-    const g = gradeSession(data.d.answers, (qid) => data.q.get(qid)?.answer, data.s.status === 'auto-submitted');
+    const g = gradeSession(data.d.answers, (qid) => keyAt(data.d, data.q, qid), data.s.status === 'auto-submitted');
     const times = data.d.answers.filter((a) => a.choice !== null).map((a) => a.timeMs);
     const med = median(times);
     let rushed: RushedReport | null = null;
@@ -57,7 +57,7 @@ export function Results({ id }: { id: string }) {
   const { s, d, q } = data;
   const score = s.total ? s.correct / s.total : 0;
   const acc = s.answered ? s.correct / s.answered : 0;
-  const keyOf = (qid: string) => q.get(qid)?.answer ?? null;
+  const keyOf = (qid: string) => keyAt(d, q, qid);
   const items = d.answers.map((a, i) => ({ a, i, q: q.get(a.qid) }));
   const slowCut = Math.max(derived.med * 1.5, 1);
   const shown = items.filter(({ a }) => {
@@ -208,6 +208,13 @@ export function Results({ id }: { id: string }) {
       </section>
     </main>
   );
+}
+
+/** The key the session was graded with (snapshot at submit), falling back to the current key. */
+function keyAt(d: SessionDetail, q: Map<string, Question>, qid: string): number | null {
+  const i = d.questionIds.indexOf(qid);
+  if (d.key && i >= 0 && d.key[i] !== undefined) return d.key[i] ?? null;
+  return q.get(qid)?.answer ?? null;
 }
 
 function Stat({ label, value, ctx }: { label: string; value: string; ctx: string }) {

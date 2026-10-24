@@ -52,7 +52,7 @@ export function trimmedMean(xs: number[]): number {
 }
 
 export const isComplete = (s: SessionSummary) =>
-  (s.status === 'submitted' || s.status === 'auto-submitted') && !s.partial;
+  (s.status === 'submitted' || s.status === 'auto-submitted') && !s.partial && s.answered > 0;
 
 export const isFinished = (s: SessionSummary) => s.status === 'submitted' || s.status === 'auto-submitted';
 

@@ -170,6 +170,8 @@ export function mergeDoc(
     if (ov.group) base.group = ov.group;
     if (ov.questionCount) base.questionCount = ov.questionCount;
     if (ov.timeLimitMin) base.timeLimitMin = ov.timeLimitMin;
+    if (prev && !ov.questionCount && prev.questionCount !== np.questionCount)
+      conflicts.push({ path: `papers[${pi}].questionCount`, message: `Paper "${np.id}" already has ${prev.questionCount} questions; this import says ${np.questionCount}. Correct the count in the review table if the paper really changed.` });
     if (prev && prev.optionCount !== np.optionCount)
       conflicts.push({ path: `papers[${pi}].optionCount`, message: `Paper "${np.id}" already has ${prev.optionCount} options per question, this import has ${np.optionCount}` });
 

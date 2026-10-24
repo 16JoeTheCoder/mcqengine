@@ -179,6 +179,24 @@ export async function saveSessionState(summary: SessionSummary, detail: SessionD
   });
 }
 
+/**
+ * Writes an open session (autosave, save, recovery). Refused inside the transaction when the
+ * session no longer exists (deleted, discarded) or is already finished, so a late write from a
+ * stale tab can never resurrect or un-submit a session. Returns whether the write happened.
+ */
+export async function persistOpenSession(summary: SessionSummary, detail: SessionDetail): Promise<boolean> {
+  return write(async () => {
+    const tx = (await db()).transaction(['sessions', 'sessionDetail'], 'readwrite');
+    const cur = await tx.objectStore('sessions').get(summary.id);
+    if (!cur || cur.status === 'submitted' || cur.status === 'auto-submitted') {
+      await tx.done;
+      return false;
+    }
+    await Promise.all([tx.objectStore('sessions').put(summary), tx.objectStore('sessionDetail').put(detail), tx.done]);
+    return true;
+  });
+}
+
 export async function deleteSession(id: string) {
   const tx = (await db()).transaction(['sessions', 'sessionDetail'], 'readwrite');
   await Promise.all([tx.objectStore('sessions').delete(id), tx.objectStore('sessionDetail').delete(id), tx.done]);

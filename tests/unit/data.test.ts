@@ -113,14 +113,14 @@ describe('session lifecycle', () => {
     expect((await store.getStats(id)).every((s) => s.timesSeen === 1)).toBe(true);
   });
 
-  it('a saved session locks its questions from random draws', async () => {
+  it('a saved session blocks a second session in the same pack', async () => {
     const id = await importPack(doc(syntheticPaper('p1', 4), syntheticPaper('p2', 4)));
     const pack = (await store.getPack(id))!;
     const a = await createSession({ pack, type: 'random', mode: 'exam' });
     const s = (await store.getSession(a.summary.id))!;
     await store.saveSessionState({ ...s, status: 'saved' }, a.detail);
-    const b = await createSession({ pack, type: 'random', mode: 'exam' });
-    expect(b.detail.questionIds.some((q) => a.detail.questionIds.includes(q))).toBe(false);
+    // One open session per pack: the engine refuses a second, so locked questions are never shared.
+    await expect(createSession({ pack, type: 'random', mode: 'exam' })).rejects.toThrow(/saved session/);
   });
 });
 

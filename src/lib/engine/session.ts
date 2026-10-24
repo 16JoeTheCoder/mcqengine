@@ -68,7 +68,12 @@ async function lockedIds(packId: string): Promise<Set<string>> {
   return ids;
 }
 
+export class OpenSessionError extends Error {}
+
 export async function createSession(o: StartOptions, now = Date.now()): Promise<{ summary: SessionSummary; detail: SessionDetail }> {
+  // One open (active or saved) session per pack, enforced in the engine, not only the UI.
+  if ((await store.getOpenSessions()).some((s) => s.packId === o.pack.id))
+    throw new OpenSessionError('This pack has a saved session. Resume, submit or discard it first.');
   const { papers } = await loadPackContent(o.pack.id);
   const byQ = new Map<string, Paper>();
   for (const p of papers) for (const q of p.questions) byQ.set(q.id, p);
@@ -192,7 +197,8 @@ export async function submitSession(sessionId: string, auto: boolean, now = Date
       updatedAt: now,
     };
     await sessions.put(summary);
-    const det = { ...detail };
+    // Snapshot the key used for grading, so later key fixes never make the review disagree.
+    const det: SessionDetail = { ...detail, key: detail.questionIds.map((q) => questions.get(q)?.answer ?? null) };
     if (det.timer) det.timer = { ...det.timer, endAt: undefined };
     await tx.objectStore('sessionDetail').put(det);
     const pack = await tx.objectStore('packs').get(detail.packId);

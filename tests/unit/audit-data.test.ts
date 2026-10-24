@@ -5,7 +5,7 @@ import * as store from '../../src/lib/data/db';
 import { commitImport, parseImport, planImport } from '../../src/lib/data/importer';
 import { applyRestore, createBackup, planRestore, readProgressJson } from '../../src/lib/data/backup';
 import { readZip, sha256Hex } from '../../src/lib/data/files';
-import { createSession, loadSessionQuestions, submitSession } from '../../src/lib/engine/session';
+import { createSession, submitSession } from '../../src/lib/engine/session';
 import { gradeSession } from '../../src/lib/engine/grade';
 import { CLEAR_STREAK, statKey } from '../../src/lib/engine/mistakes';
 import { mulberry32, type Rng } from '../../src/lib/engine/rng';
@@ -85,7 +85,7 @@ describe('session lifecycle: randomised sequences of create / answer / save / su
         try {
           created = await createSession({ pack, type, mode: rng() < 0.7 ? 'exam' : 'practice', paperId: `p${int(rng, 1, 3)}`, smart: rng() < 0.5 }, now);
         } catch (e) {
-          expect((e as Error).message).toMatch(/No questions available/);
+          expect((e as Error).message).toMatch(/saved session|No questions available/);
           continue;
         }
         const ids = created.detail.questionIds;
@@ -116,7 +116,7 @@ describe('session lifecycle: randomised sequences of create / answer / save / su
         const g = gradeSession(d.answers, keyOf, auto);
         expect(r.summary.answered).toBe(g.answered);
         expect(r.summary.correct).toBe(g.correct);
-        expect(r.summary.partial).toBe(!auto && g.answered < d.answers.length);
+        expect(r.summary.partial).toBe(auto ? g.answered === 0 : g.answered < d.answers.length);
         // Re-submitting is a no-op.
         await submitSession(target.id, !auto, now + 1);
       } else {
@@ -177,7 +177,7 @@ describe('session lifecycle: races and invariants', () => {
     expect(stats.map((s) => s.attempts)).toEqual([1, 1, 1, 1]);
   });
 
-  it.fails('BUG: a stale autosave after submit (second tab, or pack-page submit while the session screen is open) un-submits the session and the next submit grades it twice', async () => {
+  it('fixed: a stale autosave after submit (second tab, or pack-page submit while the session screen is open) un-submits the session and the next submit grades it twice', async () => {
     const { packId, pack } = await setup();
     const { summary, detail } = await createSession({ pack, type: 'paper', mode: 'exam', paperId: 'p1' });
     const { d } = await answer(summary.id, (_i, q) => ({ choice: keyOf(q) }));
@@ -185,7 +185,7 @@ describe('session lifecycle: races and invariants', () => {
     await submitSession(summary.id, false, 1000);
     // Tab A's Runner still holds the session and autosaves (session.tsx write(): saveSessionState
     // with its initial summary and status 'active'). Nothing in the store refuses the write.
-    await store.saveSessionState({ ...summary, status: 'active', answered: 4 }, { ...detail, answers: d.answers });
+    expect(await store.persistOpenSession({ ...summary, status: 'active', answered: 4 }, { ...detail, answers: d.answers })).toBe(false);
     // Tab A then submits (or the session is recovered and submitted later).
     await submitSession(summary.id, false, 2000);
     const stats = await store.getStats(packId);
@@ -193,15 +193,15 @@ describe('session lifecycle: races and invariants', () => {
     expect(stats.map((s) => s.timesSeen)).toEqual([1, 1, 1, 1]);
   });
 
-  it.fails('BUG: a stale autosave after "Delete pack" or "Discard" resurrects an orphan open session', async () => {
+  it('fixed: a stale autosave after "Delete pack" or "Discard" resurrects an orphan open session', async () => {
     const { packId, pack } = await setup();
     const { summary, detail } = await createSession({ pack, type: 'paper', mode: 'exam', paperId: 'p1' });
     await store.deletePack(packId);
-    await store.saveSessionState({ ...summary, status: 'active' }, detail); // the open Runner's next tick
+    expect(await store.persistOpenSession({ ...summary, status: 'active' }, detail)).toBe(false); // the open Runner's next tick
     expect(await store.getOpenSessions()).toEqual([]);
   });
 
-  it.fails('BUG: the engine allows a second open session in a pack that has a saved session (one saved session per pack)', async () => {
+  it('fixed: the engine allows a second open session in a pack that has a saved session (one saved session per pack)', async () => {
     const { pack } = await setup();
     const a = await createSession({ pack, type: 'random', mode: 'exam' });
     const s = (await store.getSession(a.summary.id))!;
@@ -209,45 +209,34 @@ describe('session lifecycle: races and invariants', () => {
     await expect(createSession({ pack, type: 'paper', mode: 'exam', paperId: 'p1' })).rejects.toThrow();
   });
 
-  it.fails('BUG: paper sessions ignore questions locked by another open session', async () => {
+  it('fixed: a paper session cannot start while another session in the pack is open, so locked questions are never shared', async () => {
     const { pack } = await setup();
-    const a = await createSession({ pack, type: 'random', mode: 'exam' }); // locks 4 of the 8
+    const a = await createSession({ pack, type: 'random', mode: 'exam' });
     const s = (await store.getSession(a.summary.id))!;
     await store.saveSessionState({ ...s, status: 'saved' }, a.detail);
-    const lockedP1 = a.detail.questionIds.filter((q) => q.startsWith('p1#'));
-    const lockedP2 = a.detail.questionIds.filter((q) => q.startsWith('p2#'));
-    const paperId = lockedP1.length >= lockedP2.length ? 'p1' : 'p2';
-    const b = await createSession({ pack, type: 'paper', mode: 'exam', paperId });
-    expect(b.detail.questionIds.some((q) => a.detail.questionIds.includes(q))).toBe(false);
+    await expect(createSession({ pack, type: 'paper', mode: 'exam', paperId: 'p1' })).rejects.toThrow(/saved session/);
   });
 
   it('auto-submit with nothing answered: complete, nothing graded, nothing seen', async () => {
     const { packId, pack } = await setup();
     const { summary } = await createSession({ pack, type: 'paper', mode: 'exam', paperId: 'p1', timer: { kind: 'total', minutes: 1 } });
     const r = (await submitSession(summary.id, true))!;
-    expect(r.summary).toMatchObject({ status: 'auto-submitted', partial: false, answered: 0, correct: 0 });
+    expect(r.summary).toMatchObject({ status: 'auto-submitted', partial: true, answered: 0, correct: 0 });
     expect(await store.getStats(packId)).toEqual([]);
     const det = (await store.getDetail(summary.id))!;
     expect(det.timer!.endAt).toBeUndefined();
   });
 
-  it.fails('BUG: fixing the answer key after a session leaves the stored score, the bank and the results review disagreeing', async () => {
+  it('fixed: a key fix after a session never changes how that session is reviewed (key snapshot at submit)', async () => {
     const { packId, pack } = await setup();
     const { summary } = await createSession({ pack, type: 'paper', mode: 'exam', paperId: 'p1' });
-    // Answer everything 'A' (index 0); the key says p1#4 is A, the others are not.
     await answer(summary.id, () => ({ choice: 0 }));
     const r = (await submitSession(summary.id, false))!;
-    expect(r.summary.correct).toBe(1);
-    // The user fixes question 1's key to A (Fix this question -> override).
     await store.putOverride({ key: statKey(packId, 'p1#1'), packId, qid: 'p1#1', answer: 0, updatedAt: Date.now() });
-    // The results page regrades with the current key (results.tsx gradeSession(...)) ...
     const det = (await store.getDetail(summary.id))!;
-    const q = await loadSessionQuestions(det);
-    const regraded = gradeSession(det.answers, (id) => q.get(id)?.answer, false);
-    // ... so it shows 2 correct in the review list and the rushed analysis, while the ring,
-    // trend, KPIs and the mistakes bank still use the stored 1 correct.
-    expect(regraded.correct).toBe((await store.getSession(summary.id))!.correct);
-    expect((await store.getStats(packId)).find((s) => s.qid === 'p1#1')!.inBank).toBe(false);
+    expect(det.key).toHaveLength(det.questionIds.length);
+    const regraded = gradeSession(det.answers, (id) => det.key![det.questionIds.indexOf(id)], false);
+    expect(regraded.correct).toBe(r.summary.correct);
   });
 
   it('deleting a pack with a saved session removes the session, its detail, stats, events and overrides', async () => {
@@ -301,7 +290,7 @@ describe('imports', () => {
     expect(meta).toMatchObject({ present: 4, keyed: 4 });
   });
 
-  it.fails('BUG: a later chunk that declares a larger questionCount silently grows the paper past its count', async () => {
+  it('fixed: a later chunk that declares a larger questionCount silently grows the paper past its count', async () => {
     const id = await importPack(doc(syntheticPaper('p1', 4)));
     const more = await plan(doc(syntheticPaper('p1', 6, { from: 5, to: 6 })), id);
     // Expected: a conflict (the paper already has 4 questions), or questionCount updated to 6.
@@ -309,7 +298,7 @@ describe('imports', () => {
     expect(more.merge.conflicts.length > 0 || p.questionCount === p.questions.length).toBe(true);
   });
 
-  it.fails('BUG: two imports committed concurrently into one pack lose a paper from the pack metadata', async () => {
+  it('fixed: two imports committed concurrently into one pack lose a paper from the pack metadata', async () => {
     const id = await importPack(doc(syntheticPaper('p1', 4)));
     const a = await plan(doc(syntheticPaper('p2', 4)), id);
     const b = await plan(doc(syntheticPaper('p3', 4)), id);
@@ -382,12 +371,11 @@ describe('backups', () => {
     data.sessions.push({ title: 'no id' });
     const tampered = JSON.stringify(data);
     const manifest = JSON.stringify({ ...JSON.parse(p.manifest), checksum: await sha256Hex(tampered) });
-    const planned = await planRestore(manifest, tampered, new Map());
-    await expect(applyRestore(planned)).rejects.toBeTruthy();
+    await expect(planRestore(manifest, tampered, new Map())).rejects.toThrow(/invalid sessions record/);
     expect(await snapshot()).toEqual(before);
   });
 
-  it.fails('BUG: restore applies semantically invalid rows (recomputed checksum): no schema validation', async () => {
+  it('fixed: restore validates rows, clamps timers and keeps one open session per pack', async () => {
     const { id } = await richState();
     const { blob } = await createBackup('progress');
     const p = readProgressJson(await blob.text())!;
@@ -405,7 +393,7 @@ describe('backups', () => {
     expect(open).toHaveLength(1);
   });
 
-  it.fails('BUG: image bytes in a backup zip are not verified against their sha-256 id', async () => {
+  it('fixed: image bytes in a backup zip are not verified against their sha-256 id', async () => {
     const { imgId } = await richState();
     const { blob } = await createBackup('everything');
     const { unzipSync, zipSync } = await import('fflate');
@@ -425,22 +413,23 @@ describe('backups', () => {
     expect(rejected || ok).toBe(true);
   });
 
-  it.fails('BUG: restoring a newer copy of a same-id pack replaces its paper list but leaves the other papers in the store, invisible yet still drawn by Random', async () => {
-    // Device 2 imported "Synthetic Physics" (slug id) with p1 only, later than device 1.
+  it('fixed: restoring a same-id pack keeps every paper either copy lists (older or newer backup)', async () => {
     const id = await importPack(doc(syntheticPaper('p1', 4)));
     const { blob } = await createBackup('everything');
-    await store.wipeAll();
-    // Device 1: same title -> same pack id, papers p1 and p2, imported earlier.
-    const r = parseImport(JSON.stringify(doc(syntheticPaper('p1', 4), syntheticPaper('p2', 4))));
+    const r = parseImport(JSON.stringify(doc(syntheticPaper('p2', 4))));
     if (!r.ok) throw new Error('parse');
-    const t = { packId: null, newPack: { title: 'Synthetic Physics', subject: 'Physics' } };
+    const t = { packId: id };
     const pl = await planImport(r.result.doc, t, null, {});
-    expect(await commitImport(t, pl.merge, [], 1)).toBe(id);
+    await commitImport(t, pl.merge, []);
     const src = await readZip(blob, 'b.zip');
+    // Backup older than local: union keeps p2.
     await applyRestore(await planRestore(src.backup!.manifest, src.backup!.data, src.backup!.images));
-    const listed = (await store.getPack(id))!.papers.map((p) => p.id).sort();
-    const stored = (await store.getPapers(id)).map((p) => p.id).sort();
-    expect(listed).toEqual(stored); // listed [p1], stored [p1, p2]
+    expect((await store.getPack(id))!.papers.map((p) => p.id).sort()).toEqual(['p1', 'p2']);
+    // Backup newer than local: union still keeps p2.
+    await store.putPack({ ...(await store.getPack(id))!, updatedAt: 0 });
+    await applyRestore(await planRestore(src.backup!.manifest, src.backup!.data, src.backup!.images));
+    expect((await store.getPack(id))!.papers.map((p) => p.id).sort()).toEqual(['p1', 'p2']);
+    expect((await store.getPapers(id)).map((p) => p.id).sort()).toEqual(['p1', 'p2']);
   });
 
   it('prototype-polluting keys in a backup do not pollute Object.prototype', async () => {

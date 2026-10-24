@@ -86,7 +86,7 @@ describe('timer clamps: randomised', () => {
     }
   });
 
-  it.fails('BUG: sanitizeTimer lets a negative perQMs through, giving a negative session budget', () => {
+  it('fixed: sanitizeTimer lets a negative perQMs through, giving a negative session budget', () => {
     const c = sanitizeTimer({ kind: 'perq', capMs: 600_000, totalMs: 600_000, perQMs: -5000 }, 10);
     expect(c.totalMs).toBeGreaterThan(0);
   });
@@ -135,7 +135,7 @@ describe('Countdown under random wall and monotonic clocks', () => {
     for (let s = 1; s <= 300; s++) run(s, true);
   });
 
-  it.fails('BUG: a backward jump that roughly cancels a long tick gap is not detected and refunds the gap', () => {
+  it('fixed: a backward jump that roughly cancels a long tick gap is not detected and refunds the gap', () => {
     // Background tab: the tick fires after 60 s of real time (both clocks moved 60 s), but the
     // wall clock was also set back 60.5 s meanwhile. dWall = -0.5 s, which is above the -1 s
     // threshold, so no re-anchor: the 60 s really elapsed are never charged.
@@ -199,9 +199,9 @@ describe('grading edge cases', () => {
     const g = gradeSession([rec('a', null), rec('b', null)], key, false);
     expect(g).toMatchObject({ answered: 0, correct: 0, partial: true });
   });
-  it('all unanswered auto-submit: complete (decision 34), nothing graded, time still summed', () => {
+  it('all unanswered auto-submit: partial (nothing attempted), nothing graded, time still summed', () => {
     const g = gradeSession([rec('a', null), rec('b', null)], key, true);
-    expect(g).toMatchObject({ answered: 0, correct: 0, partial: false, timeMs: 20_000 });
+    expect(g).toMatchObject({ answered: 0, correct: 0, partial: true, timeMs: 20_000 });
     expect(g.items).toEqual([]);
   });
   it('an answered question whose key is missing is not graded and makes a manual submit partial', () => {

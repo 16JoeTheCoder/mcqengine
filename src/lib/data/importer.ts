@@ -68,21 +68,29 @@ export async function planImport(doc: NDoc, target: ImportTarget, source: Import
 /** Writes a planned import. Refuses when the plan has conflicts. Returns the pack id. */
 export async function commitImport(target: ImportTarget, merge: MergeResult, images: ImageRecord[], now = Date.now()): Promise<string> {
   if (merge.conflicts.length) throw new Error('Resolve the conflicts before importing');
-  let pack: Pack | undefined = target.packId ? await store.getPack(target.packId) : undefined;
-  if (!pack) {
-    const title = target.newPack?.title.trim() || 'Untitled pack';
-    const base = slugify(title) || 'pack';
-    const exists = await store.getPack(base);
-    pack = { id: exists ? `${base}-${uid().slice(0, 5)}` : base, title, subject: target.newPack?.subject.trim() ?? '', createdAt: now, updatedAt: now, papers: [] };
-  }
-  const packId = pack.id;
-  const papers: Paper[] = merge.papers.map((p) => ({ ...p, packId, key: `${packId}::${p.id}` }));
-  const metas = new Map(pack.papers.map((m) => [m.id, m] as const));
-  for (const p of papers) {
-    const { key: _k, packId: _p, questions: _q, pendingKey: _pk, ...meta } = p;
-    metas.set(p.id, meta);
-  }
-  const updated: Pack = { ...pack, papers: [...metas.values()], updatedAt: now };
-  await store.savePackAndPapers(updated, papers, images);
-  return packId;
+  // Read-modify-write of the pack inside one transaction, so concurrent imports cannot drop papers.
+  return store.write(async () => {
+    const tx = (await store.db()).transaction(['packs', 'papers', 'images'], 'readwrite');
+    const packs = tx.objectStore('packs');
+    let pack: Pack | undefined = target.packId ? await packs.get(target.packId) : undefined;
+    if (!pack) {
+      const title = target.newPack?.title.trim() || 'Untitled pack';
+      const base = slugify(title) || 'pack';
+      // A random suffix keeps ids unique across devices too, so backups never collide on title.
+      const id = (await packs.get(base)) ? `${base}-${uid().slice(0, 5)}` : `${base}-${uid().slice(0, 4)}`;
+      pack = { id, title, subject: target.newPack?.subject.trim() ?? '', createdAt: now, updatedAt: now, papers: [] };
+    }
+    const packId = pack.id;
+    const papers: Paper[] = merge.papers.map((p) => ({ ...p, packId, key: `${packId}::${p.id}` }));
+    const metas = new Map(pack.papers.map((m) => [m.id, m] as const));
+    for (const p of papers) {
+      const { key: _k, packId: _p, questions: _q, pendingKey: _pk, ...meta } = p;
+      metas.set(p.id, meta);
+    }
+    await packs.put({ ...pack, papers: [...metas.values()], updatedAt: now });
+    for (const p of papers) await tx.objectStore('papers').put(p);
+    for (const i of images) await tx.objectStore('images').put(i);
+    await tx.done;
+    return packId;
+  });
 }

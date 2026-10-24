@@ -174,12 +174,13 @@ function Review({ pack, doc, warnings, source, onBack, onClose }: { pack?: Pack;
       out[id] = {
         ...(o.title ? { title: o.title.trim() } : {}),
         group: (o.groupText ?? '').split('>').map((x) => x.trim()).filter(Boolean),
-        ...(o.questionCount ? { questionCount: o.questionCount } : {}),
+        // Only an edited count overrides the import, so a mismatched chunk is reported, not absorbed.
+        ...(o.questionCount && o.questionCount !== doc.papers.find((p) => p.id === id)?.questionCount ? { questionCount: o.questionCount } : {}),
         ...(o.timeLimitMin ? { timeLimitMin: o.timeLimitMin } : {}),
       };
     }
     return out;
-  }, [ov]);
+  }, [ov, doc]);
 
   useEffect(() => {
     let live = true;

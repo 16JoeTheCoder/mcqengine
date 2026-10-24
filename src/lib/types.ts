@@ -167,6 +167,8 @@ export interface SessionDetail {
   current: number;
   timer?: TimerState;
   shuffled: boolean;
+  /** Answer key at submit time, by position. Reviews grade against this snapshot. */
+  key?: (number | null)[];
 }
 
 export interface QuestionStat {

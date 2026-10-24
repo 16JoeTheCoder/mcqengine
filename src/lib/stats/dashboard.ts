@@ -1,6 +1,6 @@
 import type { BankEvent, Pack, QuestionStat, SessionSummary } from '../types';
 import { TIME_BINS } from '../types';
-import { accuracy, isComplete, mean, paperScore, qualifying, rolling3, sd, secPerQ, type QualifyOpts } from './core';
+import { accuracy, isComplete, mean, ols, paperScore, qualifying, rolling3, secPerQ, type QualifyOpts } from './core';
 import { bankKpi, packBudgetSec, paceKpi, papersDone, scoreKpi, sessionsKpi } from './kpi';
 import { computeVerdict, projectScore } from './verdict';
 import { bankSizeAt } from '../engine/mistakes';
@@ -33,7 +33,11 @@ export function trend(sessions: SessionSummary[], metric: Metric) {
   // Noise for the band: one session's SD (empirical with 6+, else binomial for proportions).
   const N = mean(sessions.map((s) => s.total)) || 40;
   let sdOne: number;
-  if (values.length >= 6) sdOne = sd(values);
+  // Same noise model as the verdict: residual scatter around the trend line with 6+ sessions.
+  if (values.length >= 6) {
+    const r = values.slice(-10);
+    sdOne = ols(r.map((_, i) => i), r).residSd;
+  }
   else if (metric === 'pace') sdOne = (mean(values) || 60) * 0.15;
   else {
     const p = Math.min(0.95, Math.max(0.05, mean(values) || 0.5));

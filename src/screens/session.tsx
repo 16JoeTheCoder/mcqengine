@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import * as store from '../lib/data/db';
 import { Countdown, crossedThreshold, formatClock, sanitizeTimer } from '../lib/engine/timer';
-import { loadSessionQuestions, submitSession } from '../lib/engine/session';
-import { acquireSessionLock, broadcastChange } from '../lib/tablock';
+import { loadSessionQuestions, sessionCapMin, submitSession } from '../lib/engine/session';
+import { acquireSessionLock, broadcastChange, finalWrite, setFinalWrite } from '../lib/tablock';
 import { bump, href, navigate, settingsStore, toast, useStore } from '../lib/app-state';
 import { LETTERS, type AnswerRecord, type Question, type SessionDetail, type SessionSummary } from '../lib/types';
 import { Badge, Button, Modal } from '../ui/kit';
@@ -36,12 +36,22 @@ export function SessionScreen({ id }: { id: string }) {
       if (summary.status === 'submitted' || summary.status === 'auto-submitted') return navigate(href.results(id), true);
       const questions = await loadSessionQuestions(detail);
       if (!live) return;
+      // Re-derive the hard cap from the pack, so stored or restored timer data can never exceed it.
+      if (detail.timer) {
+        const pack = await store.getPack(summary.packId);
+        const n = detail.questionIds.length;
+        const capMin = summary.type === 'paper' ? pack?.papers.find((p) => p.id === summary.paperId)?.timeLimitMin : pack ? sessionCapMin(pack, summary.type, n) : undefined;
+        const c = sanitizeTimer(capMin ? { ...detail.timer.config, capMs: Math.min(detail.timer.config.capMs, capMin * 60_000) } : detail.timer.config, n);
+        detail.timer = { ...detail.timer, config: c, remainingMs: Math.max(0, Math.min(detail.timer.remainingMs, c.totalMs)) };
+      }
       setData({ summary: { ...summary, status: 'active' }, detail, questions });
       setState('ready');
     })();
     return () => {
       live = false;
-      release.current?.();
+      // Release the one-session lock only after the screen's final save has landed.
+      const rel = release.current;
+      void finalWrite.then(() => rel?.());
     };
   }, [id]);
 
@@ -126,6 +136,7 @@ function Runner({ initial }: { initial: Loaded }) {
     (status: SessionSummary['status'] = 'active', final = false): Promise<void> => {
       if (ended.current && !final) return chain.current;
       chain.current = chain.current.then(() => write(status));
+      setFinalWrite(chain.current);
       return chain.current;
     },
     [],
@@ -142,7 +153,8 @@ function Runner({ initial }: { initial: Loaded }) {
       }
       const s: SessionSummary = { ...summary, status, answered: det.answers.filter((x) => x.choice !== null).length, updatedAt: Date.now() };
       try {
-        await store.saveSessionState(s, structuredClone(det));
+        // Refused if the session was submitted or discarded elsewhere (another tab, the pack page).
+        if (!(await store.persistOpenSession(s, structuredClone(det)))) ended.current = true;
       } catch {
         toast('Could not save your answers. Storage may be full: free some space or export a backup.');
       }
@@ -168,12 +180,18 @@ function Runner({ initial }: { initial: Loaded }) {
       ended.current = true;
       setBusy(true);
       attribute();
-      await persist('active', true);
-      const r = await submitSession(summary.id, auto);
-      bump();
-      broadcastChange();
-      if (auto) toast('Time is up. Your paper was submitted automatically.');
-      navigate(href.results(r?.summary.id ?? summary.id), true);
+      try {
+        await persist('active', true);
+        const r = await submitSession(summary.id, auto);
+        bump();
+        broadcastChange();
+        if (auto) toast('Time is up. Your paper was submitted automatically.');
+        navigate(href.results(r?.summary.id ?? summary.id), true);
+      } catch {
+        ended.current = false;
+        setBusy(false);
+        toast('Could not submit. Your answers are safe; try again, or save the session for later.');
+      }
     },
     [attribute, persist, summary.id],
   );
@@ -247,7 +265,7 @@ function Runner({ initial }: { initial: Loaded }) {
     };
     tick();
     const iv = setInterval(tick, 250);
-    const persistIv = setInterval(() => void persist(), 5000);
+    const persistIv = setInterval(() => void persist(), 2000);
     const vis = () => (document.visibilityState === 'hidden' ? void flush() : tick());
     document.addEventListener('visibilitychange', vis);
     return () => {

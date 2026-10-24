@@ -4,7 +4,7 @@ import { readFiles, type ImportSource } from './lib/data/files';
 import { submitSession } from './lib/engine/session';
 import { formatClock } from './lib/engine/timer';
 import { bump, href, loadSettings, navigate, routeStore, savedScroll, toast, toasts, useStore, createStore } from './lib/app-state';
-import { broadcastChange, onRemoteChange } from './lib/tablock';
+import { broadcastChange, onRemoteChange, sessionLockHeld } from './lib/tablock';
 import type { Pack, SessionSummary } from './lib/types';
 import { Button, Modal } from './ui/kit';
 import { Icon } from './ui/icons';
@@ -28,12 +28,14 @@ export const updateReady = createStore<(() => void) | null>(null);
  * remaining time from their last persisted tick. Remaining time therefore never increases.
  */
 async function recoverSessions() {
+  // Another tab is running a session: its 'active' row is live, not stale. Leave it alone.
+  if (await sessionLockHeld()) return;
   for (const s of await store.getOpenSessions()) {
     if (s.status !== 'active') continue;
     const d = await store.getDetail(s.id);
     if (!d) continue;
     const timer = d.timer ? { ...d.timer, endAt: undefined } : undefined;
-    await store.saveSessionState({ ...s, status: 'saved', updatedAt: Date.now() }, { ...d, ...(timer ? { timer } : {}) });
+    await store.persistOpenSession({ ...s, status: 'saved', updatedAt: Date.now() }, { ...d, ...(timer ? { timer } : {}) });
   }
 }
 
@@ -147,6 +149,10 @@ export function App() {
 
   const handleResume = async (action: 'resume' | 'submit' | 'discard') => {
     if (!top) return;
+    if (action !== 'resume' && (await sessionLockHeld())) {
+      toast('A session is running in another tab. Finish it there first.');
+      return;
+    }
     if (action === 'discard' && !confirm('Discard this saved session? Its answers will be lost.')) return;
     setResume(resume.slice(1));
     if (action === 'resume') return navigate(href.session(top.id));

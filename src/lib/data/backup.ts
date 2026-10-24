@@ -1,5 +1,6 @@
 import { FORMAT_ID } from '../format/validate';
-import { LETTERS, type Figure, type Pack, type Paper, type QuestionOverride, type Settings } from '../types';
+import { LETTERS, type Figure, type Pack, type Paper, type QuestionOverride, type Settings, type TimerConfig, type TimerState } from '../types';
+import { sanitizeTimer } from '../engine/timer';
 import { applyOverride } from '../format/merge';
 import * as store from './db';
 import { sha256Hex } from './files';
@@ -72,6 +73,44 @@ export interface RestorePlan {
 
 export class BackupError extends Error {}
 
+const str = (v: unknown) => typeof v === 'string' && v.length > 0 && v.length < 300;
+const num = (v: unknown) => typeof v === 'number' && Number.isFinite(v);
+/** Shape checks for restored rows: a recomputed checksum proves integrity, not validity. */
+function validRow(name: store.StoreName, r: Record<string, unknown>): boolean {
+  if (!r || typeof r !== 'object') return false;
+  switch (name) {
+    case 'packs':
+      return str(r.id) && typeof r.title === 'string' && Array.isArray(r.papers) && num(r.updatedAt);
+    case 'papers':
+      return str(r.key) && str(r.packId) && str(r.id) && r.key === `${r.packId}::${r.id}` && Array.isArray(r.questions) && num(r.timeLimitMin) && (r.timeLimitMin as number) >= 1 && (r.timeLimitMin as number) <= 600;
+    case 'sessions':
+      return str(r.id) && str(r.packId) && ['paper', 'random', 'drill'].includes(r.type as string) && ['exam', 'practice'].includes(r.mode as string) && ['active', 'saved', 'submitted', 'auto-submitted'].includes(r.status as string) && num(r.total) && num(r.answered) && num(r.correct) && (r.correct as number) <= (r.answered as number) && (r.answered as number) <= (r.total as number);
+    case 'sessionDetail':
+      return str(r.id) && str(r.packId) && Array.isArray(r.questionIds) && Array.isArray(r.answers) && (r.answers as unknown[]).length === (r.questionIds as unknown[]).length;
+    case 'questionStats':
+      return str(r.key) && str(r.packId) && str(r.qid) && num(r.timesSeen) && num(r.attempts) && typeof r.inBank === 'boolean';
+    case 'bankEvents':
+      return str(r.packId) && str(r.qid) && num(r.at) && (r.kind === 'in' || r.kind === 'out');
+    case 'overrides':
+      return str(r.key) && str(r.packId) && str(r.qid) && num(r.updatedAt);
+    case 'meta':
+      return r.key === 'settings' && typeof r.value === 'object' && r.value !== null;
+    default:
+      return false;
+  }
+}
+
+/** Clamps restored timer state: remaining never above the budget, budget never above the cap. */
+function clampTimer<T extends { timer?: TimerState | TimerConfig }>(row: T, questions: number): T {
+  const t = row.timer as (TimerState & TimerConfig) | undefined;
+  if (!t) return row;
+  if ('config' in t && t.config) {
+    const config = sanitizeTimer(t.config, questions);
+    return { ...row, timer: { ...t, config, remainingMs: Math.max(0, Math.min(Number(t.remainingMs) || 0, config.totalMs)), endAt: undefined } };
+  }
+  return { ...row, timer: sanitizeTimer(t as TimerConfig, questions) };
+}
+
 /** Parses a progress JSON text (manifest + inline data). */
 export function readProgressJson(text: string): { manifest: string; data: string } | null {
   try {
@@ -98,8 +137,28 @@ export async function planRestore(manifestText: string, data: string, images: Ma
     throw new BackupError('The backup manifest is unreadable');
   }
   if (manifest.format !== BACKUP_FORMAT) throw new BackupError('This is not a DMC backup');
+  if (!(manifest.tier in TIER_STORES)) throw new BackupError('Unknown backup type');
   if ((await sha256Hex(data)) !== manifest.checksum) throw new BackupError('Checksum mismatch: the backup is corrupted or was edited');
-  const dump = JSON.parse(data) as Dump;
+  let raw: Dump;
+  try {
+    raw = JSON.parse(data) as Dump;
+  } catch {
+    throw new BackupError('The backup data is unreadable');
+  }
+  // Only the stores the tier declares, and only rows that pass shape checks.
+  const dump: Dump = {};
+  for (const name of TIER_STORES[manifest.tier]) {
+    const rows = raw[name];
+    if (!Array.isArray(rows)) continue;
+    // Any invalid row rejects the whole backup: a valid checksum on invalid data means tampering.
+    const bad = (rows as Record<string, unknown>[]).findIndex((r) => !validRow(name, r));
+    if (bad >= 0) throw new BackupError(`The backup contains an invalid ${name} record (#${bad + 1}); nothing was imported`);
+    dump[name] = (rows as Record<string, unknown>[]).map((r) => {
+      if (name === 'sessions') return clampTimer(r as never, Number(r.total) || 1);
+      if (name === 'sessionDetail') return clampTimer(r as never, (r.questionIds as unknown[]).length || 1);
+      return r;
+    });
+  }
   const d = await store.db();
   const adds: Record<string, number> = {};
   const merges: Record<string, number> = {};
@@ -127,7 +186,24 @@ export async function applyRestore(plan: RestorePlan): Promise<void> {
   const imgs: { id: string; type: string; blob: Blob }[] = [];
   for (const [id, type] of Object.entries(plan.manifest.images ?? {})) {
     const b = plan.images.get(id);
-    if (b && /^[0-9a-f]{64}$/.test(id)) imgs.push({ id, type, blob: new Blob([b], { type }) });
+    if (!b || !/^[0-9a-f]{64}$/.test(id) || !/^image\/(png|jpeg|webp|gif|svg\+xml)$/.test(type)) continue;
+    // Image ids are the SHA-256 of their bytes; anything else was tampered with.
+    if ((await sha256Hex(await b.arrayBuffer())) !== id) continue;
+    imgs.push({ id, type, blob: new Blob([b], { type }) });
+  }
+  // One open session per pack: an incoming open session is skipped if its pack already has one.
+  const openPacks = new Set((await store.getOpenSessions()).map((s) => s.packId));
+  const skippedOpen = new Set<string>();
+  const sessions = (plan.dump.sessions ?? []) as Record<string, unknown>[];
+  for (const s of sessions.slice().sort((a, b) => Number(b.updatedAt) - Number(a.updatedAt))) {
+    if (s.status !== 'active' && s.status !== 'saved') continue;
+    const local = await d.get('sessions', s.id as string);
+    if (local && (local.status === 'active' || local.status === 'saved')) continue;
+    if (openPacks.has(s.packId as string)) skippedOpen.add(s.id as string);
+    else {
+      openPacks.add(s.packId as string);
+      s.status = 'saved';
+    }
   }
   await store.write(async () => {
     const tx = d.transaction(store.STORES, 'readwrite');
@@ -148,13 +224,29 @@ export async function applyRestore(plan: RestorePlan): Promise<void> {
         continue;
       }
       const existingEvents = name === 'bankEvents' ? new Set((await os.getAll()).map((r) => keyOf(name, r))) : null;
-      for (const r of rows) {
+      for (const r0 of rows) {
+        const r = r0;
+        if ((name === 'sessions' || name === 'sessionDetail') && skippedOpen.has(r.id as string)) continue;
         if (existingEvents) {
           if (!existingEvents.has(keyOf(name, r))) await os.put(r);
           continue;
         }
         const k = name === 'packs' || name === 'sessions' || name === 'sessionDetail' ? r.id : r.key;
         const have = await os.get(k);
+        if (name === 'packs' && have) {
+          // Same pack on two devices: keep every paper either copy knows about.
+          const newer = stamp(name, r) > stamp(name, have);
+          const [base, other] = newer ? [r, have] : [have, r];
+          const metas = new Map(((other.papers as { id: string }[]) ?? []).map((m) => [m.id, m] as const));
+          for (const m of base.papers as { id: string }[]) metas.set(m.id, m);
+          const added = metas.size > (base.papers as unknown[]).length;
+          if (newer || added) {
+            await os.put({ ...base, papers: [...metas.values()] });
+            if (newer) winners.add(`pack:${r.id}`);
+            else winners.add(`pack-add:${r.id}`);
+          }
+          continue;
+        }
         let take = !have || stamp(name, r) > stamp(name, have);
         if (name === 'papers') take = !have || winners.has(`pack:${r.packId}`);
         if (name === 'sessionDetail') take = !have || winners.has(`session:${r.id}`);

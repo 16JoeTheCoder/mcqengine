@@ -7,7 +7,7 @@ import { loadPackContent, packStandardLength, submitSession } from '../lib/engin
 import { selectDrill } from '../lib/engine/mistakes';
 import { packAnalytics, trend, type Filters, type Metric, type Range } from '../lib/stats/dashboard';
 import { bump, dataVersion, href, navigate, settingsStore, toast, updateSettings, useStore } from '../lib/app-state';
-import { broadcastChange } from '../lib/tablock';
+import { broadcastChange, sessionLockHeld } from '../lib/tablock';
 import type { BankEvent, Pack, PaperMeta, Question, QuestionOverride, QuestionStat, SessionSummary } from '../lib/types';
 import { Badge, Button, CountUp, fmtDate, Modal, Popover, Ring, Seg, Skeleton } from '../ui/kit';
 import { Icon } from '../ui/icons';
@@ -122,6 +122,10 @@ export function PackScreen({ id, section, onImport, onPrompt }: { id: string; se
 
   const resolveSaved = async (action: 'resume' | 'submit' | 'discard') => {
     if (!saved) return;
+    if (await sessionLockHeld()) {
+      toast(action === 'resume' ? 'This session is open in another tab.' : 'A session is running in another tab. Finish it there first.');
+      return;
+    }
     if (action === 'resume') return navigate(href.session(saved.id));
     if (action === 'submit') {
       const r = await submitSession(saved.id, false);

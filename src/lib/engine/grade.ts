@@ -21,7 +21,8 @@ export interface GradeResult {
  * Grades a session. Only answered questions are graded; unanswered ones are not graded and
  * return to the unseen pool. A manual submit with unanswered questions is partial. An
  * auto-submit at time zero is a complete attempt: unanswered questions count against the paper
- * score (correct / full length) but are not graded as individual answers.
+ * score (correct / full length) but are not graded as individual answers. An auto-submit with
+ * nothing answered is partial (nothing was attempted).
  */
 export function gradeSession(
   answers: AnswerRecord[],
@@ -81,7 +82,8 @@ export function gradeSession(
   return {
     answered,
     correct,
-    partial: !auto && answered < total,
+    // Auto-submit at zero is a complete attempt, unless nothing was answered at all.
+    partial: auto ? answered === 0 : answered < total,
     timeMs,
     items,
     agg: { thirds, sure, unsureAcc, changes, slowest, rest, hist },

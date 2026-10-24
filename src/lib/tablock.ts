@@ -22,6 +22,23 @@ export async function acquireSessionLock(): Promise<Release | null> {
   });
 }
 
+/** True when some tab (possibly this one) is running a session. */
+export async function sessionLockHeld(): Promise<boolean> {
+  try {
+    if (!('locks' in navigator) || !navigator.locks.query) return false;
+    const q = await navigator.locks.query();
+    return !!q.held?.some((l) => l.name === 'dmc-active-session');
+  } catch {
+    return false;
+  }
+}
+
+/** The session screen's last write; the lock is released only after it lands. */
+export let finalWrite: Promise<unknown> = Promise.resolve();
+export function setFinalWrite(p: Promise<unknown>) {
+  finalWrite = p;
+}
+
 const channel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('dmc') : null;
 export function broadcastChange() {
   channel?.postMessage({ type: 'changed' });

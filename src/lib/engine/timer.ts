@@ -47,7 +47,7 @@ export function sanitizeTimer(c: TimerConfig, questions: number): TimerConfig {
   const capMs = Math.max(60_000, c.capMs);
   const totalMs = Math.min(capMs, Math.max(1000, c.totalMs));
   if (c.kind === 'perq' && c.perQMs) {
-    const perQMs = Math.min(c.perQMs, Math.floor(capMs / Math.max(1, questions)));
+    const perQMs = Math.max(1, Math.min(c.perQMs, Math.floor(capMs / Math.max(1, questions))));
     return { ...c, capMs, perQMs, totalMs: Math.min(totalMs, perQMs * questions) };
   }
   return { ...c, capMs, totalMs };
@@ -75,8 +75,8 @@ export class Countdown {
   remaining(wall: number, mono: number): number {
     const dWall = wall - this.lastWall;
     const dMono = Math.max(0, mono - this.lastMono);
-    if (dWall < -1000) {
-      // Wall clock moved backwards: re-anchor using the monotonic elapsed time.
+    if (dWall < dMono - 1000) {
+      // Wall clock moved backwards relative to real elapsed time: re-anchor on the monotonic clock.
       this.endAt = wall + Math.max(0, this.lastRemaining - dMono);
     }
     const r = Math.max(0, Math.min(this.endAt - wall, this.lastRemaining));

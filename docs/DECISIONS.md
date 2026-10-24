@@ -46,10 +46,10 @@ One line each: what was decided and why. Grouped by area.
 ## Session engine
 
 30. Standard paper length = the most common paper question count in the pack; ties go to the longer length. Random and drill sessions use it, or the whole pool if smaller.
-31. A session left `active` by a closed tab, crash or refresh becomes `saved` on the next app open, with the remaining time from its last persisted tick (written every 5 s and on `pagehide`). Time while the app was closed is not charged, and remaining time never increases.
+31. A session left `active` by a closed tab, crash or refresh becomes `saved` on the next app open, with the remaining time from its last persisted tick (written every 2 s and on `pagehide`). Time while the app was closed is not charged, so a closed tab acts like Save. The logic audit flagged this as a way to pause the clock; it is kept on purpose, because charging closed time would auto-submit a paper the moment a laptop is reopened days later, and this is self-practice. The heartbeat bounds the refund to 2 s. Recovery is skipped while another tab holds the session lock.
 32. A refresh on the session screen restores the session directly; the resume prompt covers every other way of opening the app.
 33. Clock changes: remaining time comes from an absolute end timestamp. A backward wall-clock jump of more than 1 s re-anchors using the monotonic clock. A forward jump is charged, because it cannot be told apart from laptop sleep, which must be charged.
-34. Auto-submit at time zero is a complete attempt (not partial): unanswered questions count against the paper score, like a real exam. They are not graded individually, so they stay unseen for Random and stay out of the mistakes bank.
+34. Auto-submit at time zero is a complete attempt (not partial): unanswered questions count against the paper score, like a real exam. They are not graded individually, so they stay unseen for Random and stay out of the mistakes bank. The brief's partial rule covers manual Submit only. Excluding time-outs from the trend would hide exactly the time pressure the trend should show. Exception: an auto-submit with nothing answered is partial, and every completeness check requires at least one answer.
 35. Starting a new session in a pack that has a saved session is blocked until the saved one is resumed, submitted or discarded (one saved session per pack). The random engine also excludes locked questions, and this is tested.
 36. Drill time budget: the pack's average budget per question, clamped to 30–180 s per question. Exam-mode drills always have a timer, so "No limit" is not offered for drills.
 37. Smart random ships behind its switch, off by default. It uses weighted sampling without replacement inside the lowest tier only (wrong +2, Unsure +1), and has unit tests for both the bias and tier order.
@@ -78,3 +78,16 @@ One line each: what was decided and why. Grouped by area.
 54. Backups: progress tier is JSON; packs and everything tiers are zips with a manifest and a SHA-256 checksum of the data. Restore merges by id and `updatedAt` (question stats by last answer time) and never deletes.
 55. Wipe all, and delete pack, need a typed confirmation (ERASE, DELETE).
 56. Persistent storage is requested on first open.
+
+## Changes after the logic audit (round 1)
+
+57. Session writes go through `persistOpenSession`, which refuses inside the transaction when the session is gone or finished. A stale tab can therefore never un-submit, double-grade or resurrect a session. The session lock is released only after the screen's final write.
+58. "One open session per pack" is enforced in `createSession`, not only in the UI, so paper sessions can never share questions with a saved random session.
+59. Every submitted session stores the answer key it was graded with (`detail.key`). Reviews and the rushed-error list grade against that snapshot, so a later "Fix this question" never makes a past result disagree with its stored score. Fixes apply to future sessions only.
+60. Restores reject the whole backup if any row fails shape checks (a valid checksum on invalid data means tampering). They apply only the stores the tier declares, clamp timers, verify image bytes against their SHA-256 ids, and keep one open session per pack. A same-id pack keeps the union of both copies' papers.
+61. New pack ids carry a short random suffix, so the same title imported on two devices never collides in a backup.
+62. A chunk that declares a different `questionCount` than the stored paper is a conflict unless the count is edited in the review table. Imports update the pack inside one transaction.
+63. The session screen re-derives the hard cap from the pack on every load, so stored or restored timer data can never exceed it.
+64. The clock check compares wall-clock elapsed against monotonic elapsed, so a backward clock change is detected even when it coincides with a long throttled gap.
+65. The trend band uses the same noise model as the verdict: residual scatter around the trend line with 6+ sessions.
+66. Known limits, kept: verdict windows are 2 vs 2 with 4–5 sessions (the brief's 3-session SE implies overlapping windows that overstate noise). KPIs follow their own definitions and ignore the trend's range filter. "Include partial" affects trend, verdict and KPIs together. Practice mode is untimed and so has no cap. In strict per-question mode, a hidden tab advances at most one question per timer tick until it is visible again.
