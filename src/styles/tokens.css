@@ -1,0 +1,193 @@
+/* builtbyjosef design tokens. Light is default; dark follows the OS or [data-theme="dark"]. Generated from tokens.json. */
+:root, [data-theme="light"] {
+  --brand-ink: #0D0E10;
+  --brand-paper: #F3F2EE;
+  --brand-orange: #FF5B1F;
+  --surface: #F3F2EE;
+  --surface-raised: #FBFAF7;
+  --surface-sunken: #E8E6E0;
+  --inverse: #0D0E10;
+  --on-inverse: #F3F2EE;
+  --ink: #0D0E10;
+  --ink-muted: #4A4D53;
+  --ink-subtle: #5E6167;
+  --line: #D3D0C7;
+  --line-strong: #767A80;
+  --accent: #FF5B1F;
+  --accent-hover: #FF7A47;
+  --accent-press: #E64A12;
+  --on-accent: #0D0E10;
+  --accent-text: #B93A09;
+  --focus: #0D0E10;
+  --status-ok: #0B5FB5;
+  --status-warn: #8F5B00;
+  --status-bad: #C41E3A;
+  --data-1: #D9480F;
+  --data-2: #0B63C5;
+  --data-3: #00796B;
+  --data-4: #A8326F;
+  --data-5: #9A6700;
+  --data-6: #4A4D53;
+  --data-grid: #D3D0C7;
+  --seq-1: #FFE3D6;
+  --seq-2: #FFB38F;
+  --seq-3: #FF8A57;
+  --seq-4: #E3490F;
+  --seq-5: #8F2A04;
+  --syn-keyword: #B93A09;
+  --syn-string: #0B5FB5;
+  --syn-number: #8F5B00;
+  --syn-comment: #5E6167;
+  --syn-function: #0D0E10;
+  --syn-type: #006659;
+  --shadow-lift: 4px 4px 0 0 #0D0E10;
+  --shadow-float: 0 12px 32px 0 rgba(13,14,16,0.18);
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+  --brand-ink: #0D0E10;
+  --brand-paper: #F3F2EE;
+  --brand-orange: #FF5B1F;
+  --surface: #0D0E10;
+  --surface-raised: #16181B;
+  --surface-sunken: #08090A;
+  --inverse: #F3F2EE;
+  --on-inverse: #0D0E10;
+  --ink: #F3F2EE;
+  --ink-muted: #A9ADB3;
+  --ink-subtle: #8D9198;
+  --line: #2A2D32;
+  --line-strong: #7B8088;
+  --accent: #FF5B1F;
+  --accent-hover: #FF7A47;
+  --accent-press: #E64A12;
+  --on-accent: #0D0E10;
+  --accent-text: #FF5B1F;
+  --focus: #FF5B1F;
+  --status-ok: #6DB3FF;
+  --status-warn: #F0B429;
+  --status-bad: #FF6B7F;
+  --data-1: #FF5B1F;
+  --data-2: #56B4E9;
+  --data-3: #2FD3A3;
+  --data-4: #E58FBD;
+  --data-5: #F0C419;
+  --data-6: #A9ADB3;
+  --data-grid: #2A2D32;
+  --seq-1: #3A1E12;
+  --seq-2: #7A2D0F;
+  --seq-3: #C2400F;
+  --seq-4: #FF7A47;
+  --seq-5: #FFC4A8;
+  --syn-keyword: #FF7A47;
+  --syn-string: #7CC4FF;
+  --syn-number: #F0B429;
+  --syn-comment: #8D9198;
+  --syn-function: #F3F2EE;
+  --syn-type: #2FD3A3;
+  --shadow-lift: 4px 4px 0 0 #FF5B1F;
+  --shadow-float: 0 12px 32px 0 rgba(0,0,0,0.6);
+  color-scheme: dark;
+  }
+}
+[data-theme="dark"] {
+  --brand-ink: #0D0E10;
+  --brand-paper: #F3F2EE;
+  --brand-orange: #FF5B1F;
+  --surface: #0D0E10;
+  --surface-raised: #16181B;
+  --surface-sunken: #08090A;
+  --inverse: #F3F2EE;
+  --on-inverse: #0D0E10;
+  --ink: #F3F2EE;
+  --ink-muted: #A9ADB3;
+  --ink-subtle: #8D9198;
+  --line: #2A2D32;
+  --line-strong: #7B8088;
+  --accent: #FF5B1F;
+  --accent-hover: #FF7A47;
+  --accent-press: #E64A12;
+  --on-accent: #0D0E10;
+  --accent-text: #FF5B1F;
+  --focus: #FF5B1F;
+  --status-ok: #6DB3FF;
+  --status-warn: #F0B429;
+  --status-bad: #FF6B7F;
+  --data-1: #FF5B1F;
+  --data-2: #56B4E9;
+  --data-3: #2FD3A3;
+  --data-4: #E58FBD;
+  --data-5: #F0C419;
+  --data-6: #A9ADB3;
+  --data-grid: #2A2D32;
+  --seq-1: #3A1E12;
+  --seq-2: #7A2D0F;
+  --seq-3: #C2400F;
+  --seq-4: #FF7A47;
+  --seq-5: #FFC4A8;
+  --syn-keyword: #FF7A47;
+  --syn-string: #7CC4FF;
+  --syn-number: #F0B429;
+  --syn-comment: #8D9198;
+  --syn-function: #F3F2EE;
+  --syn-type: #2FD3A3;
+  --shadow-lift: 4px 4px 0 0 #FF5B1F;
+  --shadow-float: 0 12px 32px 0 rgba(0,0,0,0.6);
+  color-scheme: dark;
+}
+:root {
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+  --space-9: 96px;
+  --space-10: 128px;
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 10px;
+  --radius-lg: 20px;
+  --radius-app: 21.875%;
+  --radius-pill: 999px;
+  --tab-w: 72px;
+  --tab-h: 128px;
+  --tab-cap: 14px;
+  --cap-h: 6px;
+  --hit-min: 44px;
+  --measure: 68ch;
+  --page-max: 1200px;
+  --border-hair: 1px;
+  --border-strong: 2px;
+  --dur-instant: 80ms;
+  --dur-fast: 140ms;
+  --dur-base: 240ms;
+  --dur-slow: 400ms;
+  --dur-sweep: 640ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
+  --ease-inout: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-snap: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --font-sans: "Space Grotesk", "Zen Kaku Gothic New", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Consolas, monospace;
+}
+.display-xl { font-family: var(--font-sans); font-size: 96px; line-height: 88px; font-weight: 700; letter-spacing: -0.04em; }
+.display-l { font-family: var(--font-sans); font-size: 64px; line-height: 64px; font-weight: 700; letter-spacing: -0.035em; }
+.display-m { font-family: var(--font-sans); font-size: 44px; line-height: 48px; font-weight: 700; letter-spacing: -0.03em; }
+.display-light { font-family: var(--font-sans); font-size: 64px; line-height: 64px; font-weight: 300; letter-spacing: -0.035em; }
+.h1 { font-family: var(--font-sans); font-size: 32px; line-height: 40px; font-weight: 700; letter-spacing: -0.025em; }
+.h2 { font-family: var(--font-sans); font-size: 24px; line-height: 32px; font-weight: 700; letter-spacing: -0.02em; }
+.h3 { font-family: var(--font-sans); font-size: 18px; line-height: 26px; font-weight: 700; letter-spacing: -0.01em; }
+.body-l { font-family: var(--font-sans); font-size: 18px; line-height: 28px; font-weight: 400; letter-spacing: 0; }
+.body { font-family: var(--font-sans); font-size: 15px; line-height: 24px; font-weight: 400; letter-spacing: 0; }
+.body-s { font-family: var(--font-sans); font-size: 13px; line-height: 20px; font-weight: 400; letter-spacing: 0.005em; }
+.label { font-family: var(--font-sans); font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: 0.08em; }
+.button { font-family: var(--font-sans); font-size: 14px; line-height: 20px; font-weight: 500; letter-spacing: 0.01em; }
+.code { font-family: var(--font-mono); font-size: 14px; line-height: 22px; font-weight: 400; letter-spacing: 0; }
+.code-s { font-family: var(--font-mono); font-size: 12px; line-height: 18px; font-weight: 400; letter-spacing: 0; }
+.numeral-xl { font-family: var(--font-sans); font-size: 72px; line-height: 72px; font-weight: 300; letter-spacing: -0.04em; }
+.numeral { font-family: var(--font-mono); font-size: 24px; line-height: 32px; font-weight: 500; letter-spacing: -0.01em; }
+body { background: var(--surface); color: var(--ink); font: 400 15px/24px var(--font-sans); }

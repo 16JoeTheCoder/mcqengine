@@ -1,153 +1,149 @@
-# mcqpack v1.0 — question pack format
+# DMC pack format, version 1 (`dmc-pack/1`)
 
-> Reconstruction note: the original toolkit zip was not available when the engine
-> was built, so this spec was written from the build brief. See DECISIONS.md.
+DMC never reads PDFs. You run a question paper through any AI chat with a prompt that DMC generates ("Make a pack with AI"), then import the JSON it returns. This document is the full specification. The machine-readable schema is [`schema/dmc-pack-1.schema.json`](../schema/dmc-pack-1.schema.json); the importer is `src/lib/format/` (lenient reader, validator, merge).
 
-A pack is a folder (or a zip of one) containing `pack.json`, its assets, and optional
-overlay files. All paths inside a pack are relative POSIX paths from the folder that
-holds `pack.json`.
+The design goals, in order: an LLM can produce it reliably, the intake forgives common LLM mistakes, every remaining error points to an exact path with a fix, and silent mis-transcription is caught before it reaches practice.
 
-```
-my-pack/
-  pack.json
-  assets/page-02.png
-  overlays/explanations.json
-```
-
-## pack.json
-
-| Field | Type | Required | Meaning |
-|---|---|---|---|
-| `format` | `"mcqpack"` | yes | Identifies the file. |
-| `formatVersion` | string `"1.x"` | yes | Readers accept any `1.x`; unknown fields are ignored and kept. |
-| `id` | string | yes | `^[a-z0-9][a-z0-9-]{1,63}$`. Stable across versions. |
-| `version` | string | yes | Content version of the pack, e.g. `"1.0.0"`. |
-| `title` | string | yes | Shown to the player. |
-| `optionKeys` | string[] | yes | 2–10 unique non-empty keys of at most 3 characters, e.g. `["A","B","C","D"]`. |
-| `questions` | Question[] | yes | At least one, in paper order. |
-| `timeLimitSec` | integer > 0 | no | Exam-mode time limit. Default: 90 s per question. |
-| `overlays` | string[] | no | Overlay files to apply after loading. |
-| `subject`, `source`, `licence` | string | no | Informational. |
-
-## Question
-
-| Field | Type | Required | Meaning |
-|---|---|---|---|
-| `id` | string | yes | `^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$`, unique in the pack. |
-| `type` | string | yes | `"single"` (one correct key). Other types are skipped with a warning. |
-| `rev` | integer ≥ 1 | yes | Bump whenever the question or its answer changes. |
-| `answer` | string | yes* | One of `optionKeys`. *May be supplied by an `answers` overlay. |
-| `number` | integer | no | Printed question number. |
-| `snapshot` | Snapshot[] | see below | Images of the printed question. |
-| `stem` | Block[] | see below | Typed question body. |
-| `options` | Option[] | see below | Typed options, `{key, blocks: Block[]}`, one per option key, in order. |
-| `explanation` | string | no | Markdown-lite (below). |
-| `topics` | string[] | no | Free tags. |
-
-A question must have a non-empty `snapshot`, or both `stem` and `options`, or all three.
-When typed content exists it is shown, with the snapshot behind a "view original" toggle.
-
-### Snapshot item
-
-`{ "src": "assets/page-02.png", "clip": [x, y, w, h] }` — `clip` is a rectangle in the
-image's own pixel units (`w`, `h` > 0, `x`, `y` ≥ 0). Without `clip` the whole image is
-shown. Several items stack vertically (a question that runs across a page break).
-
-### Blocks
-
-| `type` | Fields |
-|---|---|
-| `text` | `text`: markdown-lite string |
-| `math` | `tex`: TeX string; `display`: boolean (default true) |
-| `fig` | `src`, `alt` (required, non-empty), `clip` (optional), `provenance`: `"crop"` (cut from the paper) or `"redraw"` (redrawn; shown with a badge) |
-| `table` | `rows`: string[][] (markdown-lite cells); `header`: boolean, first row is a header |
-
-Unknown block types are shown as "unsupported content" and produce a warning.
-
-### Markdown-lite
-
-Paragraphs separated by blank lines, `**bold**`, `*italic*`, inline math `$...$`.
-Everything else is literal text. HTML is never interpreted.
-
-## Assets
-
-Images referenced by `snapshot[].src` and `fig.src`: PNG, JPEG, WebP, GIF or SVG.
-They must exist inside the pack and paths must not escape it (no leading `/`, no `..`
-or `.` segments, no `\`, no `:`). SVG files must not contain `<script`, `on*=` event
-attributes, `<foreignObject`, or any `href` / `xlink:href` that does not start with `#`.
-
-## Overlays
-
-An overlay adds one layer of data to an existing pack without editing it:
+## 1. Shape
 
 ```json
-{ "format": "mcqpack-overlay", "formatVersion": "1.0", "pack": "sample-physics",
-  "layer": "explanations", "items": { "q01": "Because **F = ma**." } }
+{
+  "format": "dmc-pack/1",
+  "pack": { "title": "AS Physics Paper 1", "subject": "Physics" },
+  "papers": [
+    {
+      "id": "may-june-2025-paper-12",
+      "title": "May/June 2025 Paper 12",
+      "group": ["2025", "May/June"],
+      "questionCount": 40,
+      "timeLimitMinutes": 75,
+      "optionCount": 4,
+      "questions": [
+        {
+          "n": 1,
+          "stem": "A car of mass 1.2 × 10^{3} kg accelerates at 3.0 m s^{-2}. What is the resultant force?",
+          "options": ["2.0 × 10^{3} N", "3.6 × 10^{3} N", "4.0 × 10^{2} N", "1.2 × 10^{4} N"],
+          "answer": "B"
+        }
+      ]
+    }
+  ],
+  "answers": [{ "paper": "may-june-2025-paper-12", "key": "BDACC…" }]
+}
 ```
 
-| `layer` | Item value | Effect |
-|---|---|---|
-| `explanations` | string | sets `explanation` |
-| `topics` | string[] | sets `topics` |
-| `answers` | key string | sets `answer` |
+| Field | Required | Meaning |
+| --- | --- | --- |
+| `format` | no (assumed) | Always `"dmc-pack/1"`. Any other value is rejected. |
+| `pack` | no | Title and subject. Used only when the import creates a new pack. |
+| `papers[]` | `papers` or `answers` | One object per paper. One AI response normally holds exactly one paper. |
+| `papers[].id` | yes | Stable id: lowercase letters, digits, hyphens, at most 64 characters. Re-importing the same id merges instead of duplicating. |
+| `papers[].title` | yes | Display title. |
+| `papers[].group` | no | Path for the papers browser, most general first, at most 4 levels: `["2025", "Oct/Nov"]`. |
+| `papers[].questionCount` | yes | The number of questions printed on the paper. Used to detect dropped questions. |
+| `papers[].timeLimitMinutes` | no | The hard time cap. If absent, the import wizard asks for it; no timer can exceed it. |
+| `papers[].optionCount` | no | 2 to 5. If absent, the most common option count in the paper is used. |
+| `answers[]` | no | Answer keys applied after the questions (see 4). |
 
-Overlays are applied in this order: files listed in `pack.overlays`, then any other
-`.json` file in the pack root whose `format` is `mcqpack-overlay`, sorted by name. Later
-values win. An overlay for a different `pack`, an unknown `layer`, or an item for an
-unknown question id produces a warning and is skipped. A listed overlay that is missing
-is an error. Validation runs after overlays are applied.
+### Question
 
-## Validation
+| Field | Required | Meaning |
+| --- | --- | --- |
+| `n` | yes | Question number as printed, 1 to `questionCount`. |
+| `stem` | yes, unless `image` | Full question text in DMC markup (see 3). |
+| `options` | one of `options`, `table`, `image` | Exactly `optionCount` entries, in order A, B, C…. Each is a string, or an object `{ "text": "…", "svg": "<svg…>" }`, `{ "file": "images/q5a.png" }` or `{ "figure": { "needed": true, "note": "…" } }` when the options are pictures. |
+| `table` | | Options laid out as a table: `{ "columns": ["force", "energy"], "rows": [["N", "J"], …] }`, with one row per option and one cell per column. Leave out the letter column. |
+| `image` | | A whole-question screenshot (path inside a zip or folder). Options may then be omitted; the buttons show letters. |
+| `figure` | no | A diagram in the stem: `{ "svg": "<svg…>", "alt": "…" }`, `{ "file": "images/q5.png", "alt": "…" }`, or `{ "needed": true, "note": "graph of v against t" }`. |
+| `answer` | yes | `"A"`–`"E"`, or `null` until keyed. |
+| `topic` | no | Short topic tag. |
+| `explanation` | no | Shown in Practice mode and review. |
+| `uncertain` | no | The transcriber's note about something it could not read reliably. Surfaced in the wizard. |
 
-Errors (pack refused) carry a code; warnings do not refuse the pack.
+## 2. Figures
 
-| Code | Condition |
-|---|---|
-| `json` | `pack.json` missing or not valid JSON |
-| `format` | `format` is not `mcqpack` or `formatVersion` is not `1.x` |
-| `field` | required field missing or of the wrong type (includes `rev`, `type`, `title`, `version`) |
-| `id` | pack or question id does not match its pattern |
-| `duplicate-id` | two questions share an id |
-| `option-keys` | bad `optionKeys`, or `options` keys differ from `optionKeys` |
-| `answer` | answer missing or not one of `optionKeys` |
-| `content` | no snapshot and no stem+options, or only one of stem/options |
-| `clip` | clip is not four numbers with `x,y ≥ 0`, `w,h > 0` |
-| `alt` | a `fig` block has no non-empty `alt` |
-| `path` | an asset or overlay path escapes the pack |
-| `asset-missing` | a referenced asset or listed overlay does not exist |
-| `svg-unsafe` | an SVG asset contains script, event handlers, foreignObject or an external href |
+* **Inline SVG** for simple diagrams an LLM can draw (circuits, rays, force arrows, straight-line graphs). It is sanitised on import (an allowlist of shape and text elements; scripts, event handlers, `foreignObject`, external `href`s and `url()`s are removed) and is then rendered through `<img>`, where SVG cannot run code or load anything. Limit 200 KB.
+* **Image files** in a zip or folder import, referenced by relative path (`images/q5.png`). PNG, JPEG, WebP, GIF or SVG, at most 5 MB each. Images are stored by SHA-256, so the same image is stored once.
+* **Placeholder**: `{ "needed": true, "note": "…" }`. The question shows a "Needs figure" badge with a one-click attach (file picker or paste a screenshot). A referenced file that is missing from the import becomes a placeholder automatically.
 
-Warning codes: `unsupported-type`, `unsupported-block`, `overlay`.
+Figures and screenshots always sit on a light paper panel and are never colour-inverted.
 
-`tools/mcqpack.py validate` and `js/validator.js` implement exactly these rules and
-report the same `(code, where)` pairs, where `where` is a question id or `pack`.
+## 3. Markup
 
-## Making a pack (three commands)
+A deliberately tiny LaTeX subset, which LLMs already write fluently. It is parsed into a token tree and rendered with text nodes only; no HTML is ever interpreted.
+
+| Write | Renders as |
+| --- | --- |
+| `m s^{-2}`, `x^2` | superscript (braces, or a short run: digits with optional sign, or one letter) |
+| `v_{0}`, `E_k` | subscript (braces, or one letter or digit) |
+| `\frac{1}{2}` | stacked fraction (nesting allowed) |
+| `\sqrt{2gh}` | square root |
+| `**NOT**` | bold |
+| a newline (`\n` in JSON) | line break |
+
+Greek letters and symbols are plain Unicode (`λ Ω μ ° × ± ≤ → ∝`). In JSON a backslash must be doubled: `"\\frac{1}{2}"`. The importer also repairs the common case where it was not (see 5).
+
+Why not a maths library: exam MCQs need superscripts, subscripts, simple fractions and roots. KaTeX would add about 280 KB for features the format does not need.
+
+## 4. Chunks and answer keys
+
+* **Several papers, one pack.** Import papers one response at a time into the same pack. Each paper merges by its `id`.
+* **Chunks of one paper.** Long papers can be transcribed in parts (questions 1–20, then 21–40). Parts merge by paper `id` plus question `n`. A question number that already exists with identical content is skipped; with different content it is a conflict and nothing is written.
+* **Keys later.** A second AI step can read the mark scheme and return only:
+
+  ```json
+  { "format": "dmc-pack/1", "answers": [{ "paper": "may-june-2025-paper-12", "key": "BDACCABD…" }] }
+  ```
+
+  `key` has exactly `questionCount` letters in question order; `?` marks an unknown answer. The importer also accepts `"1A 2C 3D"`, `"A, C, D"`, lowercase letters and `{ "1": "A", "2": "C" }`. A key fills `null` answers; a key letter that contradicts an existing answer is a conflict. Keys are remembered, so chunks that arrive after the key are keyed on arrival.
+* A paper can be started only when all `questionCount` questions are present and keyed. The UI says which is missing.
+
+## 5. Tolerant intake, strict validation
+
+Before validation the reader silently repairs, and then reports:
+
+* markdown code fences, and prose before or after the JSON; several fenced blocks are combined;
+* smart quotes used as delimiters (smart quotes inside text are kept), single-quoted strings;
+* trailing commas, missing commas between items, `//` and `/* */` comments, unquoted keys, `True`/`False`/`None`;
+* raw line breaks inside strings, unescaped LaTeX backslashes (`\frac`, `\theta`, `\lambda`);
+* LaTeX symbol commands (`\lambda` → λ, `\times` → ×), `$…$` delimiters around maths, zero-width characters;
+* property name case and common aliases (`question` → `stem`, `choices` → `options`, `correct_answer` → `answer`, `number` → `n`);
+* answer letters such as `b`, `(C)`, `D.`; option prefixes such as `"A. 2.0 N"`;
+* a bare paper object or a bare array of papers.
+
+Then it validates strictly, with path-based messages that also count from zero:
 
 ```
-python3 tools/mcqpack.py extract --profile profiles/cie-mcq-v1.json \
-    --paper paper.pdf --scheme scheme.pdf --id my-pack --title "My paper" --out packs/my-pack
-python3 tools/mcqpack.py merge packs/my-pack/pack.json structured.json -o packs/my-pack/pack.json
-python3 tools/mcqpack.py validate packs/my-pack
+papers[0].questions[12].options: Expected 4 options, found 3
+papers[0].questions[7].n: Duplicate question number 8 (also at questions[6])
+papers[0].questions[3].answer: Answer E is outside the 4 options
+answers[0].key: Key has 39 answers but "may-june-2025-paper-12" has 40 questions
 ```
 
-`extract` needs poppler (`pdftoppm`, `pdftotext`). It renders each page to PNG, finds
-question numbers in the left margin, and writes one snapshot clip per question (plus a
-second item when a question continues on the next page). It reads answers from the mark
-scheme. `merge` deep-merges a partial pack (`{"questions":[{"id":..., ...}]}`) by
-question id, or applies an overlay file; unknown fields are kept.
+Dropped-question detection: gaps in numbering, numbers above `questionCount`, duplicates, fewer questions than `questionCount`, and identical consecutive questions are reported. Gaps and count mismatches need explicit confirmation in the wizard.
 
-## Versioning
+When validation fails, **Copy fix prompt** produces a prompt with the exact errors, the original JSON (up to 60 000 characters) and an instruction to return only the complete corrected JSON.
 
-- Minor versions (`1.1`) only add optional fields; 1.0 readers ignore them.
-- A major version (`2.0`) may change meaning. Readers refuse unknown majors with a
-  `format` error. To upgrade, add a converter `2 -> 1` reader path or a migration in
-  the importer (see ARCHITECTURE.md), and bump `formatVersion` in the tool.
+## 6. Limits and safety
 
-## Leaderboard upgrade path
+All content is untrusted. Text reaches the page through text nodes only. Limits: 15 MB of JSON, 100 MB zip, 500 papers and 20 000 questions per import, 200 questions per paper, 5 000 characters per text field, 4 group levels. `__proto__`, `constructor` and `prototype` keys are dropped. Doctype and entity declarations in SVG are refused.
 
-Version 1 grades in the browser and submits only the score, so a determined user can
-forge scores. The upgrade: the client submits `{packId, packVersion, answers: {qid: key},
-durationMs}`; the server holds the answer keys for allowed packs (never shipped to the
-client for ranked packs) and grades itself. Packs used for ranking then ship without
-`answer` fields and get an `answers` overlay only after the run is submitted.
+## 7. Ids, hashes and re-import
+
+* Question id: `<paper id>#<n>`. Paper storage key: `<pack id>::<paper id>`.
+* Every question has a content hash of what the student sees (stem, options, table, figures), excluding the answer and notes. Re-importing the same paper is recognised as identical; a changed question is a conflict, so a re-import never silently overwrites.
+* Fixes made in the app ("Fix this question") are stored as overrides keyed by question id. They survive re-imports, and a re-import of an exported pack that carries those fixes is recognised as identical.
+
+## 8. Zip and folder imports
+
+```
+my-paper.zip
+├── pack.json          (or any single .json file)
+└── images/
+    ├── q5.png
+    └── q12.png
+```
+
+A single top-level folder inside the zip is ignored, so `my-paper/pack.json` works too. `__MACOSX/` and dotfiles are skipped. DMC's own **Export pack** writes exactly this layout, so exports round-trip through the same importer.
+
+Backups (`dmc-backup/1`) are a separate format: a zip with `dmc-backup.json` (manifest with a SHA-256 checksum) and `data.json`, or a single JSON file for the progress-only tier. Drop either into the same import box.

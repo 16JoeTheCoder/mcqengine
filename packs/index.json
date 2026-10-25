@@ -1,5 +1,0 @@
-{
- "packs": [
-  {"id": "sample-physics", "dir": "sample-physics", "title": "Synthetic Physics (sample)", "questions": 8}
- ]
-}

@@ -1,0 +1,110 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://dmc.app/schema/dmc-pack-1.schema.json",
+  "title": "DMC pack document, version 1 (dmc-pack/1)",
+  "description": "Canonical shape. The importer also tolerates documented variations (fences, aliases, trailing commas) and normalises them before strict validation.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "format": { "const": "dmc-pack/1" },
+    "pack": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "subject": { "type": "string", "maxLength": 80 }
+      }
+    },
+    "papers": { "type": "array", "maxItems": 500, "items": { "$ref": "#/definitions/paper" } },
+    "answers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["paper", "key"],
+        "properties": {
+          "paper": { "$ref": "#/definitions/id" },
+          "key": { "type": "string", "pattern": "^[A-E?]+$", "maxLength": 200 }
+        }
+      }
+    }
+  },
+  "anyOf": [{ "required": ["papers"] }, { "required": ["answers"] }],
+  "definitions": {
+    "id": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$", "maxLength": 64 },
+    "text": { "type": "string", "maxLength": 5000 },
+    "answer": { "oneOf": [{ "type": "string", "enum": ["A", "B", "C", "D", "E"] }, { "type": "null" }] },
+    "figure": {
+      "oneOf": [
+        {
+          "type": "object", "additionalProperties": false, "required": ["svg"],
+          "properties": { "svg": { "type": "string", "maxLength": 200000 }, "alt": { "type": "string", "maxLength": 300 } }
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["file"],
+          "properties": { "file": { "type": "string" }, "alt": { "type": "string", "maxLength": 300 } }
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["needed"],
+          "properties": { "needed": { "const": true }, "note": { "type": "string", "maxLength": 300 } }
+        }
+      ]
+    },
+    "option": {
+      "oneOf": [
+        { "type": "string", "minLength": 1, "maxLength": 1000 },
+        {
+          "type": "object", "additionalProperties": false,
+          "properties": {
+            "text": { "type": "string", "maxLength": 1000 },
+            "svg": { "type": "string", "maxLength": 200000 },
+            "file": { "type": "string" },
+            "figure": { "$ref": "#/definitions/figure" }
+          }
+        }
+      ]
+    },
+    "question": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["n", "answer"],
+      "properties": {
+        "n": { "type": "integer", "minimum": 1, "maximum": 200 },
+        "stem": { "$ref": "#/definitions/text" },
+        "image": { "type": "string", "description": "Whole-question screenshot path inside a zip or folder" },
+        "figure": { "$ref": "#/definitions/figure" },
+        "options": { "type": "array", "minItems": 2, "maxItems": 5, "items": { "$ref": "#/definitions/option" } },
+        "table": {
+          "type": "object", "additionalProperties": false, "required": ["rows"],
+          "properties": {
+            "columns": { "type": "array", "items": { "type": "string" } },
+            "rows": { "type": "array", "minItems": 2, "maxItems": 5, "items": { "type": "array", "items": { "type": "string" } } }
+          }
+        },
+        "answer": { "$ref": "#/definitions/answer" },
+        "topic": { "type": "string", "maxLength": 80 },
+        "explanation": { "$ref": "#/definitions/text" },
+        "uncertain": { "type": "string", "maxLength": 500 }
+      },
+      "anyOf": [
+        { "required": ["stem", "options"] },
+        { "required": ["stem", "table"] },
+        { "required": ["image"] }
+      ]
+    },
+    "paper": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "questionCount", "questions"],
+      "properties": {
+        "id": { "$ref": "#/definitions/id" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "group": { "type": "array", "maxItems": 4, "items": { "type": "string", "maxLength": 60 } },
+        "questionCount": { "type": "integer", "minimum": 1, "maximum": 200 },
+        "timeLimitMinutes": { "oneOf": [{ "type": "integer", "minimum": 1, "maximum": 600 }, { "type": "null" }] },
+        "optionCount": { "type": "integer", "minimum": 2, "maximum": 5 },
+        "questions": { "type": "array", "maxItems": 200, "items": { "$ref": "#/definitions/question" } }
+      }
+    }
+  }
+}

@@ -1,9 +1,0 @@
-{
- "format": "mcqpack-overlay",
- "formatVersion": "1.0",
- "pack": "fixture-pack",
- "layer": "answers",
- "items": {
-  "q1": "D"
- }
-}

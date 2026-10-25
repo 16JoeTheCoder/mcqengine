@@ -1,13 +1,36 @@
 {
-  "name": "mcq-engine",
+  "name": "dmc",
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Static web app for practising multiple-choice exam papers. No build step.",
+  "description": "DMC (Dynamic Multiple Choice): local-first practice for multiple-choice exam papers.",
   "scripts": {
-    "test": "node --test \"tests/*.test.js\"",
-    "e2e": "node tests/e2e.mjs",
-    "serve": "python3 -m http.server 8000",
-    "sample": "python3 tests/make_fixture.py build/fixture && python3 tools/mcqpack.py extract --profile profiles/cie-mcq-v1.json --paper build/fixture/paper.pdf --scheme build/fixture/scheme.pdf --id sample-physics --title \"Synthetic Physics (sample)\" --out packs/sample-physics && python3 tools/mcqpack.py merge packs/sample-physics/pack.json tests/sample/structured.json && python3 tools/mcqpack.py validate packs/sample-physics"
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --port 4173 --strictPort",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --max-warnings 0",
+    "test": "vitest run",
+    "e2e": "playwright test",
+    "check": "npm run typecheck && npm run lint && npm test && npm run build"
+  },
+  "dependencies": {
+    "fflate": "^0.8.3",
+    "idb": "^8.0.4",
+    "preact": "^10.29.8"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.14.0",
+    "@eslint/js": "^9.39.5",
+    "@playwright/test": "1.63.0",
+    "ajv": "^8.20.0",
+    "eslint": "^9.39.5",
+    "fake-indexeddb": "^6.2.6",
+    "globals": "^17.13.0",
+    "happy-dom": "^21.0.4",
+    "typescript": "5.7",
+    "typescript-eslint": "^8.72.0",
+    "vite": "^6.4.5",
+    "vitest": "^3.2.7"
   }
 }

@@ -1,3 +1,6 @@
-build/
 node_modules/
-__pycache__/
+dist/
+test-results/
+playwright-report/
+.vite/
+*.log

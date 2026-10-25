@@ -1,105 +1,68 @@
-# MCQ Engine
+<img src="brand/tab-lockup-light.svg" alt="builtbyjosef" height="40">
 
-A static web app for practising multiple-choice exam papers. Pick a pack, answer in
-**exam mode** (timed, results at the end) or **practice mode** (no timer, feedback after
-each answer), then review every mistake with an explanation. One mark per question.
+# DMC: Dynamic Multiple Choice
 
-Plain HTML, CSS and JavaScript modules. No framework, no build step, no runtime network
-calls: this folder is the website. Two vendored libraries: KaTeX (maths) and fflate (zip).
+Practise multiple-choice exam papers the way the real exam feels: full timed papers, random sets that cover the pool, and drills on your mistakes, with honest progress analytics. Everything is local-first: no account, no server, no tracking, and it works offline once loaded.
 
-## Run locally
+* **Packs and papers.** A pack (for example "AS Physics Paper 1") holds many papers, browsable by year and series.
+* **Sessions.** Paper (always the full paper), Random (least-seen first) or Mistakes drill, in Exam mode (timed, results at the end) or Practice mode (instant feedback).
+* **Honest numbers.** Rolling averages, a verdict with confidence that says when a change is within noise, pace analysis and a rushed-error alert.
+* **AI-assisted packs.** DMC writes a precise prompt; any AI chat turns your PDF into JSON; DMC validates it and writes the fix prompt if anything is wrong.
 
-```
-python3 -m http.server 8000
-```
+## Run it
 
-Open http://localhost:8000. (Opening `index.html` as a file does not work: browsers block
-modules from `file://`.)
+Needs Node 22. In a terminal (Ubuntu/WSL, macOS Terminal or the VS Code terminal), in the repository root:
 
-## Tests
-
-```
-npm test            # node --test: engine, store, text/XSS, validator, importer, parity with Python, leaderboard
-npm run e2e         # optional: Playwright + Chromium if installed, otherwise prints SKIP
+```bash
+npm install
+npm run dev          # http://localhost:5173
 ```
 
-There are no npm dependencies; `package.json` only holds scripts. The parity test needs
-`python3`. The e2e script serves the site with the production Content-Security-Policy.
+## Check and build
 
-## Deploy to Netlify
+Same terminal, repository root:
 
-1. Connect the repository in Netlify.
-2. Publish directory: `.` (the repository root). Build command: leave empty.
-3. Done. `netlify.toml` sets the security headers and the functions folder.
-
-For the optional leaderboard, also:
-
-4. Create a Supabase project and run `docs/leaderboard.sql` in its SQL editor.
-5. In Netlify, set `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` (the service role key; it stays
-   server-side). Optionally set `ALLOWED_PACKS`, e.g. `sample-physics:8,my-paper:40`
-   (pack id, optionally with its question count so only full-length runs are accepted).
-
-Without these variables the functions answer 503 and the app hides the leaderboard.
-
-## Packs are not hosted
-
-The deployed site contains only the engine and the synthetic sample pack. Real exam papers
-are copyrighted and are **not** published on the site. They are shared as zip files, and
-each student loads one into their own browser, where it stays (IndexedDB) and works offline.
-
-### Load a pack as a student
-
-On the home page, under "Load your own pack", choose the `.zip` you were given (or the
-unzipped folder, or a single `pack.json`). The pack is checked first. If anything is
-wrong it is refused with a list of problems, one line per question. A loaded pack stays
-until you press Remove. Your scores and mistakes live in this browser only; use
-"Your data" → Export to move them to another device.
-
-### Make a pack
-
-The format is in [docs/PACK_FORMAT.md](docs/PACK_FORMAT.md). From a question paper PDF and
-its mark scheme PDF (needs poppler: `apt install poppler-utils` or `brew install poppler`):
-
-```
-python3 tools/mcqpack.py extract --profile profiles/cie-mcq-v1.json \
-    --paper paper.pdf --scheme scheme.pdf --id my-pack --title "My paper" --out packs/my-pack
-python3 tools/mcqpack.py merge packs/my-pack/pack.json structured.json -o packs/my-pack/pack.json
-python3 tools/mcqpack.py validate packs/my-pack
+```bash
+npm run check        # typecheck, lint, unit tests, production build
+npm run e2e          # Playwright end-to-end tests (builds and serves dist/ on port 4173)
+npm run build        # production build into dist/
+npm run preview      # serve dist/ at http://localhost:4173
 ```
 
-`extract` cuts one snapshot per question. `merge` adds typed questions, explanations and
-other fields by question id (optional). `validate` runs the same rules as the app. Zip the
-folder to share it. To ship a pack with the site instead, add it to `packs/index.json`.
+The first time on a new machine, `npm run e2e` may need the browser: `npx playwright install chromium`.
 
-`npm run sample` rebuilds `packs/sample-physics` from the synthetic fixture
-(`tests/make_fixture.py`, needs reportlab) and `tests/sample/structured.json`.
+## Deploy
 
-## Leaderboard: known weakness
+`dist/` is plain static files with relative paths and hash routing, so it works on any static host under any base path.
 
-Grading happens in the browser and the client sends only its score, so anyone can post a
-fake score with a hand-made request. The server rejects implausible numbers (wrong mode,
-`correct > total`, under 2 s per question, unknown pack or wrong length when
-`ALLOWED_PACKS` is set) but cannot detect a plausible fake. Treat the board as
-friendly, not authoritative. The upgrade path (in PACK_FORMAT.md): submit the answers instead of
-the score and let the server grade against answer keys it keeps for ranked packs, which then
-ship without answers. There is no rate limiting; add Netlify's rate limiting or a
-Supabase check if abuse appears.
+* **Netlify** (current): `netlify.toml` sets the build command (`npm run build`), the publish folder (`dist`) and the security headers. Push to the connected branch.
+* **Anywhere else:** run `npm run build` and upload `dist/`. Serve `sw.js` and `index.html` with `Cache-Control: no-cache` so updates are found.
 
-## Keyboard and accessibility
+When a new version is deployed, open copies of DMC show "A new version of DMC is ready". The update is never applied in the middle of a session.
 
-A–D or 1–4 answer, ← → move between questions, Enter goes to the next question. Timer
-milestones (10, 5, 1 minutes left) and results are announced to screen readers. Tap targets
-are at least 44 px. The layout works from 360 px wide. Light and dark themes follow the
-system, and paper snapshots always sit on white.
+## Make a pack
 
-## Assumptions
+1. In DMC, choose **Make a pack with AI** (or **Add papers** on a pack). Fill in the paper details and copy the prompt.
+2. Open any AI chat, attach the question paper PDF (and the mark scheme if you have it), and paste the prompt.
+3. Copy the reply, then choose **Import** in DMC and paste it. DMC tidies common formatting slips, checks every question, and shows a preview to compare with the paper. If something is wrong, **Copy fix prompt** gives the AI the exact errors.
 
-- The original mcqpack toolkit was not available; the format, schema, Python tool and
-  fixture here were written from the build brief (see DECISIONS.md #1).
-- Questions have exactly one correct option; other question types are shown as
-  "unsupported" and not scored.
-- A pack's `timeLimitSec` is for the whole paper; without it, 90 s per question.
-- Closing the tab pauses an exam's timer (resume continues from the saved time).
+The format is documented in [docs/PACK_FORMAT.md](docs/PACK_FORMAT.md), with a JSON Schema in [schema/](schema/). Zips (JSON plus an `images/` folder) and folders import too, and **Export pack** writes the same format for sharing.
 
-See [DECISIONS.md](DECISIONS.md) for every judgement call and
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the code fits together.
+## Your data
+
+Packs and progress live in this browser's storage on this device. Clearing site data erases them. Use **Settings > Data > Export everything** regularly and keep the file somewhere safe; import it on another device to move. Backups are checked with a checksum and merge without deleting anything.
+
+## Project layout
+
+```
+src/lib/engine/   timer, random draw, mistakes bank, grading, session lifecycle
+src/lib/stats/    rolling averages, verdict, rushed-error alert, KPIs, dashboard
+src/lib/format/   lenient reader, validator, merge, markup, SVG sanitiser, prompts
+src/lib/data/     IndexedDB (versioned, with migrations), import, backups
+src/screens/      library, pack dashboard, question screen, results, settings
+src/ui/           design-system components, charts, brand
+brand/            builtbyjosef logo files (picked up automatically)
+docs/             PACK_FORMAT.md, DECISIONS.md, design standard, review reports
+```
+
+Built by Josef Yang. Built to a standard. Built to move.
