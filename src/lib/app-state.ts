@@ -77,12 +77,14 @@ export type Route =
   | { name: 'session'; id: string }
   | { name: 'results'; id: string }
   | { name: 'settings' }
-  | { name: 'school' };
+  | { name: 'school' }
+  | { name: 'notebook'; id: string };
 
 export function parseRoute(hash: string): Route {
   const [path = '', query = ''] = hash.replace(/^#/, '').split('?');
   const parts = path.split('/').filter(Boolean).map(decodeURIComponent);
   const q = new URLSearchParams(query);
+  if (parts[0] === 'pack' && parts[1] && parts[2] === 'notebook') return { name: 'notebook', id: parts[1] };
   if (parts[0] === 'pack' && parts[1]) return { name: 'pack', id: parts[1], ...(q.get('s') ? { section: q.get('s') as string } : {}) };
   if (parts[0] === 'session' && parts[1]) return { name: 'session', id: parts[1] };
   if (parts[0] === 'results' && parts[1]) return { name: 'results', id: parts[1] };
@@ -98,6 +100,7 @@ export const href = {
   results: (id: string) => `#/results/${encodeURIComponent(id)}`,
   settings: () => '#/settings',
   school: () => '#/library',
+  notebook: (id: string) => `#/pack/${encodeURIComponent(id)}/notebook`,
 };
 
 export const routeStore = createStore<Route>(parseRoute(typeof location !== 'undefined' ? location.hash : ''));

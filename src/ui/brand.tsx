@@ -9,10 +9,11 @@ import { settingsStore, useStore } from '../lib/app-state';
  */
 const files = import.meta.glob('/brand/*.{svg,png,webp}', { eager: true, query: '?url', import: 'default' }) as Record<string, string>;
 
-function pick(kind: 'lockup' | 'small', dark: boolean): string | null {
+function pick(kind: 'lockup' | 'small' | 'outline', dark: boolean): string | null {
   const names = Object.keys(files);
   const ground = dark ? 'dark' : 'light';
   const match = (re: RegExp) => names.find((n) => re.test(n.toLowerCase()));
+  if (kind === 'outline') return files[names.find((n) => /tab-outline/.test(n.toLowerCase())) ?? ''] ?? pick('lockup', false);
   const found =
     kind === 'lockup'
       ? match(new RegExp(`lockup-${ground}`)) ?? match(/lockup/)
@@ -32,7 +33,8 @@ export function useDark(): boolean {
   return s.theme === 'dark' || (s.theme !== 'light' && sys);
 }
 
-export function Signature({ height = 40, kind = 'lockup' }: { height?: number; kind?: 'lockup' | 'small' }) {
+/** `outline` is the low-ink study-sheet logo (tab-outline); until that file is added, the light lockup stands in. */
+export function Signature({ height = 40, kind = 'lockup' }: { height?: number; kind?: 'lockup' | 'small' | 'outline' }) {
   const dark = useDark();
   const src = pick(kind, dark) ?? (kind === 'small' ? pick('lockup', dark) : null);
   if (!src)

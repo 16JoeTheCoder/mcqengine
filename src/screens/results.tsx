@@ -198,7 +198,7 @@ export function Results({ id }: { id: string }) {
           </div>
           {r.rushedErrors.length > 0 && (
             <div class="stack-s">
-              <div class="label">Rushed errors (wrong, under half your usual time)</div>
+              <div class="label">Rushed errors (wrong, under half your usual time; times approximate)</div>
               <p>
                 {r.rushedErrors.map((e, k) => (
                   <span key={e.qid}>
@@ -271,7 +271,7 @@ export function Results({ id }: { id: string }) {
                 <Badge status={status}>{a.choice === null ? 'Not answered' : a.choice === k ? 'Correct' : 'Wrong'}</Badge>
                 <span>Your answer <b class="num">{a.choice === null ? '—' : LETTERS[a.choice]}</b></span>
                 <span>Key <b class="num">{k === null ? '—' : LETTERS[k]}</b></span>
-                <span class="num">{Math.round(a.timeMs / 1000)} s</span>
+                <span class="num" title="Approximate: time this question was on screen">≈{Math.round(a.timeMs / 1000)} s</span>
                 {a.changes > 0 && <span>changed {a.changes}×</span>}
                 {a.flagged && <Badge status="ink">Flagged</Badge>}
                 {a.unsure && <Badge status="warn">Unsure</Badge>}

@@ -1,6 +1,7 @@
 import { expect, test } from './fixtures';
 import type { Page } from '@playwright/test';
 import { syntheticDoc } from './helpers';
+import { bothThemes } from './a11y';
 
 // Runs against the build that uses the in-browser mock backend (same rules as supabase/schema.sql).
 
@@ -114,4 +115,26 @@ test('reporting: three reports hide a set from other students', async ({ page })
   await expect(page.getByText('Hidden after reports')).toBeVisible();
   await page.getByRole('button', { name: 'Restore' }).click();
   await expect(page.getByText('Hidden after reports')).toHaveCount(0);
+});
+
+test('no serious accessibility violations on welcome, sign-in, Library and posting, light and dark', async ({ page }) => {
+  await page.goto('./');
+  await bothThemes(page, 'welcome');
+  await page.getByRole('button', { name: 'Sign in with school email' }).click();
+  await bothThemes(page, 'sign-in dialog');
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'Continue without an account' }).click();
+  await importPack(page);
+  await signIn(page, 'ana@stjbs.sch.id');
+  await page.goto('./#/library');
+  await expect(page.getByText('Nothing shared yet')).toBeVisible();
+  await bothThemes(page, 'empty Library');
+  await page.getByRole('button', { name: 'Post a set' }).click();
+  await page.getByRole('dialog').getByLabel('A pack on this device').selectOption({ label: 'Synthetic Physics' });
+  await expect(page.getByRole('dialog').getByLabel('Name')).toBeVisible();
+  await bothThemes(page, 'post dialog');
+  await page.getByRole('dialog').getByRole('button', { name: 'Post', exact: true }).click();
+  await page.getByRole('button', { name: 'Done' }).click();
+  await expect(page.locator('.set-card')).toHaveCount(1);
+  await bothThemes(page, 'Library with a set');
 });

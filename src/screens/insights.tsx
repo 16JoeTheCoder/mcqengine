@@ -108,11 +108,11 @@ function PaceTab({ a }: { a: Analytics }) {
           )}
         </div>
         <div class="jy-panel">
-          <h3 style={{ marginBottom: 'var(--space-3)' }}>Time per question</h3>
+          <h3 style={{ marginBottom: 'var(--space-3)' }}>Time per question (approximate)</h3>
           {a.hist.some((x) => x > 0) ? (
             <>
               <Bars label="Histogram of seconds per question" bars={a.hist.map((v, i) => ({ label: binLabels[i]!, value: v }))} format={(x) => `${Math.round(x)}`} height={200} xLabel="time per question (s)" />
-              <p class="chart-sentence">How long you spend on each question across qualifying sessions.</p>
+              <p class="chart-sentence">How long each question was on screen across qualifying sessions. Approximate: time spent looking back at a question counts toward it.</p>
             </>
           ) : (
             <p class="small muted">No data yet.</p>
@@ -125,7 +125,7 @@ function PaceTab({ a }: { a: Analytics }) {
           <Bars label="Accuracy by third of the paper" bars={a.thirds.map((x, i) => ({ label: ['First', 'Middle', 'Last'][i]!, value: x.acc }))} yMax={1} format={(x) => `${Math.round(x * 100)}%`} height={200} />
         </div>
         <div class="jy-panel stack-s">
-          <h3>Are your slowest questions the wrong ones?</h3>
+          <h3>Are your slowest questions the wrong ones? (approximate)</h3>
           {slow !== null && rest !== null ? (
             <>
               <Bars label="Accuracy on slowest quarter vs the rest" bars={[{ label: 'Slowest 25%', value: slow }, { label: 'The rest', value: rest }]} yMax={1} format={(x) => `${Math.round(x * 100)}%`} height={170} highlight={0} />

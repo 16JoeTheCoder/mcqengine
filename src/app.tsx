@@ -23,6 +23,7 @@ const AboutDialog = lazy(() => import('./screens/settings').then((m) => m.AboutD
 const ImportWizard = lazy(() => import('./screens/import').then((m) => m.ImportWizard));
 const PromptDialog = lazy(() => import('./screens/prompt').then((m) => m.PromptDialog));
 const CommandPalette = lazy(() => import('./screens/palette').then((m) => m.CommandPalette));
+const Notebook = lazy(() => import('./screens/notebook').then((m) => m.Notebook));
 const SchoolLibrary = lazy(() => import('./screens/school-library').then((m) => m.SchoolLibrary));
 
 /** Set by main.tsx when a new service worker is waiting. */
@@ -91,7 +92,7 @@ export function App() {
 
   // Breadcrumb pack title.
   useEffect(() => {
-    const id = route.name === 'pack' ? route.id : null;
+    const id = route.name === 'pack' || route.name === 'notebook' ? route.id : null;
     if (!id) return setCrumb(null);
     void store.getPack(id).then((p) => setCrumb(p ?? null));
   }, [route]);
@@ -240,6 +241,12 @@ export function App() {
                 <>
                   <span aria-hidden="true">/</span>
                   <a href={href.pack(crumb.id)} aria-current={route.name === 'pack' ? 'page' : undefined}>{crumb.title}</a>
+                  {route.name === 'notebook' && (
+                    <>
+                      <span aria-hidden="true">/</span>
+                      <span aria-current="page">Notebook</span>
+                    </>
+                  )}
                 </>
               )}
               {route.name === 'school' && (
@@ -285,6 +292,7 @@ export function App() {
       {route.name === 'results' && <Results id={route.id} />}
       {route.name === 'settings' && <SettingsScreen onImport={() => openImport()} onAbout={() => setAbout(true)} />}
       {route.name === 'school' && <SchoolLibrary />}
+      {route.name === 'notebook' && <Notebook packId={route.id} />}
 
       {!inSession && (
         <footer class="footer">

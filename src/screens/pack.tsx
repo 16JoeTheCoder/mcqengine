@@ -399,6 +399,9 @@ export function PackScreen({ id, section, onImport, onPrompt }: { id: string; se
               <span class="small muted">{a.bankSize ? 'Wrong or shaky answers, most-missed first. Two sure, correct answers clear one.' : 'Empty for now. Wrong answers and correct-but-unsure ones land here.'}</span>
             </button>
           </div>
+          <div style={{ marginTop: 'var(--space-3)' }}>
+            <a class="jy-btn jy-btn--ghost" href={href.notebook(pack.id)}><Icon name="file" size={18} /> Mistakes notebook</a>
+          </div>
           {showTip && (
             <div class="notice" style={{ marginTop: 'var(--space-4)' }}>
               <Icon name="info" />
