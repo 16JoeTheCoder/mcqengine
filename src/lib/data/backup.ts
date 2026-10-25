@@ -43,8 +43,13 @@ async function dumpStores(names: store.StoreName[]): Promise<Dump> {
 }
 
 /** Builds a backup. Progress tier is a JSON file; the others are zips with images. */
-export async function createBackup(tier: Tier, now = Date.now()): Promise<{ blob: Blob; name: string }> {
+export async function createBackup(tier: Tier, now = Date.now(), opts: { excludeLibrary?: boolean } = {}): Promise<{ blob: Blob; name: string }> {
   const dump = await dumpStores(TIER_STORES[tier]);
+  if (opts.excludeLibrary && dump.packs) {
+    // Cloud backups leave Library packs out: they come back from the Library.
+    const lib = new Set((dump.packs as Pack[]).filter((p) => p.origin?.kind === 'library').map((p) => p.id));
+    for (const k of Object.keys(dump) as store.StoreName[]) dump[k] = (dump[k] as { id?: string; packId?: string }[]).filter((r) => !lib.has((k === 'packs' ? r.id : r.packId) ?? ''));
+  }
   const data = JSON.stringify(dump);
   const counts = Object.fromEntries(Object.entries(dump).map(([k, v]) => [k, v?.length ?? 0]));
   const images: Record<string, string> = {};
@@ -56,7 +61,11 @@ export async function createBackup(tier: Tier, now = Date.now()): Promise<{ blob
       images[img.id] = img.type;
       files[`images/${img.id}`] = new Uint8Array(await img.blob.arrayBuffer());
     }
+    const usedPdfs = new Set<string>();
+    for (const p of (dump.papers ?? []) as Paper[]) for (const id of [p.pdf?.qp, p.pdf?.ms]) if (id) usedPdfs.add(id);
+    for (const sn of (dump.snips ?? []) as { pdfId: string }[]) usedPdfs.add(sn.pdfId);
     for (const pdf of await d.getAll('pdfs')) {
+      if (!usedPdfs.has(pdf.id)) continue;
       pdfs[pdf.id] = pdf.name;
       files[`pdfs/${pdf.id}`] = new Uint8Array(await pdf.blob.arrayBuffer());
     }
@@ -99,7 +108,7 @@ const timerOk = (t: unknown): boolean => {
 };
 const num = (v: unknown) => typeof v === 'number' && Number.isFinite(v);
 /** Shape checks for restored rows: a recomputed checksum proves integrity, not validity. */
-function validRow(name: store.StoreName, r: Record<string, unknown>): boolean {
+export function validRow(name: store.StoreName, r: Record<string, unknown>): boolean {
   if (!r || typeof r !== 'object') return false;
   switch (name) {
     case 'packs':
@@ -143,7 +152,7 @@ function validRow(name: store.StoreName, r: Record<string, unknown>): boolean {
 }
 
 /** Keeps only known settings whose type matches the default; anything else falls back to the default. */
-function cleanSettings(v: Record<string, unknown>): Settings {
+export function cleanSettings(v: Record<string, unknown>): Settings {
   const out = { ...DEFAULT_SETTINGS } as Record<string, unknown>;
   for (const [k, def] of Object.entries(DEFAULT_SETTINGS)) {
     const x = v?.[k];
@@ -152,6 +161,7 @@ function cleanSettings(v: Record<string, unknown>): Settings {
   }
   if (typeof v?.examDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v.examDate)) out.examDate = v.examDate;
   if (typeof v?.lastBackupAt === 'number') out.lastBackupAt = v.lastBackupAt;
+  if (typeof v?.updatedAt === 'number' && Number.isFinite(v.updatedAt)) out.updatedAt = v.updatedAt;
   if (!['system', 'light', 'dark'].includes(out.theme as string)) out.theme = 'system';
   out.backupEvery = Math.min(100, Math.max(1, Math.round(Number(out.backupEvery)) || 10));
   out.lastBackupAtCount = Math.min(1e6, Math.max(0, Math.round(Number(out.lastBackupAtCount)) || 0));

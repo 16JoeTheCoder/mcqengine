@@ -13,7 +13,8 @@ import { Library } from './screens/library';
 import { PackScreen } from './screens/pack';
 import { SessionScreen } from './screens/session';
 import { lazy } from './ui/lazy';
-import { backend, initAuth } from './lib/backend';
+import { authStore, backend, initAuth } from './lib/backend';
+import { syncLabel, syncNow, syncStore } from './lib/sync/sync';
 import { AccountButton } from './screens/account';
 
 const Results = lazy(() => import('./screens/results').then((m) => m.Results));
@@ -109,6 +110,34 @@ export function App() {
     const t = route.name === 'library' ? 'DMC' : route.name === 'school' ? 'Library · DMC' : route.name === 'settings' ? 'Settings · DMC' : route.name === 'results' ? 'Results · DMC' : route.name === 'session' ? 'Session · DMC' : 'Pack · DMC';
     document.title = t;
   }, [route]);
+
+  // Sync: on app open (once signed in), after each submitted session, when back online, and on
+  // "Sync now". Always in the background; the app never waits for it.
+  const sync = useStore(syncStore);
+  useEffect(() => {
+    if (!backend) return;
+    const run = () => {
+      const a = authStore.get().account;
+      if (a) void syncNow(backend, a.id);
+    };
+    let last: string | null = null;
+    const off = authStore.sub((s) => {
+      const id = s.account?.id ?? null;
+      if (id && id !== last) run();
+      if (!id) syncStore.set({ state: 'off' });
+      last = id;
+    });
+    const synced = () => bump();
+    addEventListener('dmc:submitted', run);
+    addEventListener('online', run);
+    addEventListener('dmc:synced', synced);
+    return () => {
+      off();
+      removeEventListener('dmc:submitted', run);
+      removeEventListener('online', run);
+      removeEventListener('dmc:synced', synced);
+    };
+  }, []);
 
   // Ctrl+K / Cmd+K opens the command palette (never during a session).
   useEffect(() => {
@@ -236,7 +265,7 @@ export function App() {
             {backend && route.name !== 'school' && (
               <a class="jy-btn jy-btn--ghost hide-sm" href={href.school()}>Library</a>
             )}
-            <AccountButton />
+            <AccountButton syncLabel={syncLabel(sync)} onSync={() => { const a = authStore.get().account; if (a) void syncNow(backend, a.id); }} />
             <button type="button" class="jy-btn jy-btn--ghost jy-btn--icon hide-sm" onClick={() => setPalette(true)} aria-label="Go to (Ctrl+K)" title="Go to (Ctrl+K)">
               <Icon name="search" />
             </button>

@@ -8,3 +8,5 @@ pilot/
 *.local.*
 *.dmc.zip
 dist-mock/
+.env.local
+.env.*.local

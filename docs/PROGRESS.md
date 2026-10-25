@@ -37,5 +37,5 @@ Already correct and kept as is: absolute-timestamp countdown with monotonic back
 - [x] 2. PDFs, snips, bare PDF import, mark scheme reading, cross-check, CLI validator, zip guards, pack for friends, backups with PDFs
 - [x] 3. Result card, personal best, command palette, tab rise on answers, count-up scores
 - [x] 4. Supabase auth (two tiers), Library (browse, post with resume, star, report, admin), RLS proven in PGlite, mock backend, SUPABASE_SETUP and LIBRARY_POLICY
-- [ ] 5. Sync
+- [x] 5. Sync (versions map, pull-push-pull, tombstones, two-device and interruption tests) and opt-in cloud pack backup
 - [ ] 6. Final review pass, docs, CLAUDE.md

@@ -106,7 +106,8 @@ export function AccountButton({ onSync, syncLabel }: { onSync?: () => void; sync
   const a = auth.account;
   return (
     <>
-      <button type="button" class="jy-btn jy-btn--ghost jy-btn--icon account-chip" aria-label={`Account: ${a.email}`} aria-haspopup="dialog" onClick={() => setMenu(true)}>
+      {syncLabel && <span class="small subtle hide-sm sync-label" aria-live="polite">{syncLabel}</span>}
+      <button type="button" class="jy-btn jy-btn--ghost jy-btn--icon account-chip" aria-label={`Account: ${a.email}`} aria-haspopup="dialog" title={syncLabel} onClick={() => setMenu(true)}>
         <span aria-hidden="true">{(a.name || a.email).charAt(0).toUpperCase()}</span>
       </button>
       {menu && (

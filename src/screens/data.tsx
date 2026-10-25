@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import { applyRestore, BackupError, createBackup, planRestore, type RestorePlan, type Tier } from '../lib/data/backup';
-import { downloadBlob } from '../lib/data/files';
+import { downloadBlob, readZip } from '../lib/data/files';
+import { authStore, backend } from '../lib/backend';
 import * as store from '../lib/data/db';
 import { bump, settingsStore, toast, updateSettings, useStore } from '../lib/app-state';
 import { broadcastChange } from '../lib/tablock';
@@ -65,6 +66,48 @@ export function BackupPanel() {
         ))}
       </div>
       <p class="small muted">Last full backup: {s.lastBackupAt ? fmtDate(s.lastBackupAt) : 'never'}. To restore, import a backup file the same way as a pack: drop it anywhere, or use Import.</p>
+      <CloudBackup />
+    </div>
+  );
+}
+
+/**
+ * Opt-in: your own packs (not Library packs, which come back from the Library) as one private file
+ * in your account. Progress already syncs; this is for the packs themselves.
+ */
+function CloudBackup() {
+  const auth = useStore(authStore);
+  const [pct, setPct] = useState<number | null>(null);
+  const [restore, setRestore] = useState<{ manifest: string; data: string; images: Map<string, Blob>; pdfs: Map<string, Blob> } | null>(null);
+  if (!backend || !auth.account) return null;
+  const path = `${auth.account.id}/packs.zip`;
+  const up = async () => {
+    setPct(0);
+    try {
+      const { blob } = await createBackup('packs', Date.now(), { excludeLibrary: true });
+      if (blob.size > 200 * 1024 * 1024) throw new Error('Your packs are over 200 MB; export them to a file instead.');
+      await backend!.upload('backups', { path, blob, contentType: 'application/zip' }, (n) => setPct(Math.round((n / blob.size) * 100)), new AbortController().signal, true);
+      toast('Your packs are backed up to your account.');
+    } catch (e) {
+      toast((e as Error).message || 'Backup failed.');
+    }
+    setPct(null);
+  };
+  const down = async () => {
+    const blob = await backend!.download('backups', path).catch(() => null);
+    if (!blob) return toast('No pack backup in your account yet.');
+    const src = await readZip(blob, 'packs.zip');
+    if (src.backup) setRestore(src.backup);
+  };
+  return (
+    <div class="jy-panel stack-s">
+      <h3>Packs in your account</h3>
+      <p class="small muted">Optional. Keeps a private copy of your own packs (with their PDFs) in your account, for a new device. Library packs are left out; download them again from the Library.</p>
+      <div class="row">
+        <Button onClick={() => void up()} disabled={pct !== null}><Icon name="upload" size={18} /> {pct === null ? 'Back up my packs' : `Uploading ${pct}%`}</Button>
+        <Button variant="ghost" onClick={() => void down()}>Restore from my account</Button>
+      </div>
+      {restore && <RestoreDialog source={restore} onClose={() => setRestore(null)} />}
     </div>
   );
 }

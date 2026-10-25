@@ -231,6 +231,7 @@ function Runner({ initial }: { initial: Loaded }) {
         const r = await submitSession(summary.id, auto || timeUp.current);
         bump();
         broadcastChange();
+        dispatchEvent(new CustomEvent('dmc:submitted'));
         if (auto) toast('Time is up. Your paper was submitted automatically.');
         navigate(href.results(r?.summary.id ?? summary.id), true);
       } catch {

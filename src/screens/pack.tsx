@@ -50,6 +50,7 @@ export function PackScreen({ id, section, onImport, onPrompt }: { id: string; se
   const [tipHidden, setTipHidden] = useState(false);
   const [lockElsewhere, setLockElsewhere] = useState(false);
   const [daily, setDaily] = useState<{ due: number; size: number } | null>(null);
+  const [missing, setMissing] = useState(0);
   useEffect(() => {
     void sessionLockHeld().then(setLockElsewhere);
   }, [v]);
@@ -60,6 +61,8 @@ export function PackScreen({ id, section, onImport, onPrompt }: { id: string; se
       const pack = await store.getPack(id);
       if (!pack) return live && setData('missing');
       const [sessions, stats, events, overrides] = await Promise.all([store.getSessions(id), store.getStats(id), store.getBankEvents(id), store.getOverrides(id)]);
+      const have = new Set((await (await store.db()).getAllKeysFromIndex('papers', 'packId', id)).map((k) => String(k).slice(id.length + 2)));
+      if (live) setMissing(pack.papers.filter((m) => !have.has(m.id)).length);
       if (live) setData({ pack, sessions, stats, events, overrides });
       const plan = await dailyPlan(pack);
       if (live) setDaily(plan);
@@ -195,6 +198,18 @@ export function PackScreen({ id, section, onImport, onPrompt }: { id: string; se
               </Button>
             </div>
           </div>
+          {missing > 0 && (
+            <div class="notice notice--warn" style={{ marginBottom: 'var(--space-4)' }}>
+              <Icon name="alert" />
+              <div class="row" style={{ justifyContent: 'space-between' }}>
+                <span class="small">
+                  {missing === pack.papers.length ? 'This pack' : `${missing} of its papers`} came from your other device: results synced, but questions and PDFs never upload.{' '}
+                  {pack.origin?.kind === 'library' ? 'Download it again from the Library to practise here.' : 'Import the pack file here to practise.'}
+                </span>
+                {pack.origin?.kind === 'library' ? <Button onClick={() => navigate(href.school())}>Open Library</Button> : <Button onClick={() => onImport(pack)}>Import pack file</Button>}
+              </div>
+            </div>
+          )}
           {saved && (
             <div class="notice" style={{ marginBottom: 'var(--space-4)' }}>
               <Icon name="clock" />

@@ -31,8 +31,8 @@ DMC is a practice app for multiple-choice exam papers. The Library is a place in
 * Every set has a **Report** button. Three reports from different members hide the set until an admin looks at it.
 * The person who posted a set can delete it at any time.
 * The owner is an admin and can remove any set instantly. Removing a set deletes its files from storage.
-* **Takedown requests** (from the school, Cambridge, or anyone with a reason) go to the owner, who removes the set the same day. Contact: the owner's school email, listed in the app's About dialog.
-* If the school withdraws its agreement, the owner switches the Library off (by removing the school domain from the allowlist table, which locks it for everyone at once) and deletes the stored sets.
+* **Takedown requests** (from the school, Cambridge, or anyone with a reason) go to the owner, Josef Yang, at school or through the Head of Cambridge. The owner removes the set the same day.
+* If the school withdraws its agreement, the owner switches the Library off (by deleting the school domain from the `library_domains` table, which locks it for everyone at once) and deletes the stored sets.
 
 ## What is stored, and where
 

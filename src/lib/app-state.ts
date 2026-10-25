@@ -36,7 +36,7 @@ export async function loadSettings() {
   applyTheme();
 }
 export async function updateSettings(patch: Partial<Settings>) {
-  const next = { ...settingsStore.get(), ...patch };
+  const next = { ...settingsStore.get(), ...patch, updatedAt: Date.now() };
   settingsStore.set(next);
   applyTheme();
   await putSettings(next);

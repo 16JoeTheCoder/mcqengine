@@ -290,6 +290,8 @@ export interface Settings {
   lastBackupAt?: number;
   dismissedTips: string[];
   theme: 'system' | 'light' | 'dark';
+  /** Last change, for sync (newest settings win across devices). */
+  updatedAt?: number;
 }
 
 export const DEFAULT_SETTINGS: Settings = {

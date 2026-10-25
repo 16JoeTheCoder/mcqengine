@@ -174,8 +174,14 @@ export const getSnips = async (packId: string) => (await db()).getAllFromIndex('
 export async function putSnip(s: Snip) {
   await write(async () => (await db()).put('snips', s));
 }
-export async function deleteSnip(key: string) {
-  await (await db()).delete('snips', key);
+/** Deletes a snip and leaves a tombstone, so the deletion syncs to other devices. */
+export async function deleteSnip(key: string, now = Date.now()) {
+  const tx = (await db()).transaction(['snips', 'meta'], 'readwrite');
+  await tx.objectStore('snips').delete(key);
+  const t = ((await tx.objectStore('meta').get('tombstones')) as Record<string, number> | undefined) ?? {};
+  t[`snips|${key}`] = now;
+  await tx.objectStore('meta').put(t, 'tombstones');
+  await tx.done;
 }
 
 /** Removes images no paper or override references. */
