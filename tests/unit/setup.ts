@@ -4,3 +4,4 @@ import { Blob as NodeBlob } from 'node:buffer';
 // fake-indexeddb clones records with structuredClone, which only round-trips Node's own Blob.
 // happy-dom's Blob would come back as an empty object, unlike a real browser's IndexedDB.
 (globalThis as { Blob: unknown }).Blob = NodeBlob;
+(globalThis as { File: unknown }).File = (await import('node:buffer')).File;

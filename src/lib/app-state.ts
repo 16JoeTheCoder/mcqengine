@@ -76,7 +76,8 @@ export type Route =
   | { name: 'pack'; id: string; section?: string }
   | { name: 'session'; id: string }
   | { name: 'results'; id: string }
-  | { name: 'settings' };
+  | { name: 'settings' }
+  | { name: 'school' };
 
 export function parseRoute(hash: string): Route {
   const [path = '', query = ''] = hash.replace(/^#/, '').split('?');
@@ -86,6 +87,7 @@ export function parseRoute(hash: string): Route {
   if (parts[0] === 'session' && parts[1]) return { name: 'session', id: parts[1] };
   if (parts[0] === 'results' && parts[1]) return { name: 'results', id: parts[1] };
   if (parts[0] === 'settings') return { name: 'settings' };
+  if (parts[0] === 'library') return { name: 'school' };
   return { name: 'library' };
 }
 
@@ -95,6 +97,7 @@ export const href = {
   session: (id: string) => `#/session/${encodeURIComponent(id)}`,
   results: (id: string) => `#/results/${encodeURIComponent(id)}`,
   settings: () => '#/settings',
+  school: () => '#/library',
 };
 
 export const routeStore = createStore<Route>(parseRoute(typeof location !== 'undefined' ? location.hash : ''));

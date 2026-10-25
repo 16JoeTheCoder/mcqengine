@@ -6,6 +6,9 @@ import type { Pack, SessionSummary } from '../lib/types';
 import { Badge, Button, plural, relDay, Ring, Skeleton } from '../ui/kit';
 import { Icon } from '../ui/icons';
 import { DailyPanel, useDaily } from './daily';
+import { AccountDialog, type AccountMode } from './account';
+import { authStore, backend } from '../lib/backend';
+import { settingsStore, updateSettings } from '../lib/app-state';
 
 export function Library({ onPrompt, onImport }: { onPrompt: () => void; onImport: () => void }) {
   const v = useStore(dataVersion);
@@ -13,6 +16,9 @@ export function Library({ onPrompt, onImport }: { onPrompt: () => void; onImport
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [q, setQ] = useState('');
   const [sort, setSort] = useState<'recent' | 'name' | 'progress'>('recent');
+  const [account, setAccount] = useState<AccountMode | null>(null);
+  const settings = useStore(settingsStore);
+  const auth = useStore(authStore);
 
   useEffect(() => {
     void Promise.all([store.getPacks(), store.getAllSessions()]).then(([p, s]) => {
@@ -55,6 +61,35 @@ export function Library({ onPrompt, onImport }: { onPrompt: () => void; onImport
       <main class="page" aria-busy="true">
         <div class="hero"><Skeleton h={48} /></div>
         <div class="cards"><Skeleton h={208} /><Skeleton h={208} /><Skeleton h={208} /></div>
+      </main>
+    );
+
+  // First run: lead with the school sign-in; the other two choices are one click away. Never a wall.
+  if (!packs.length && backend && !auth.account && !settings.dismissedTips.includes('welcome'))
+    return (
+      <main class="page" id="main" tabIndex={-1}>
+        <section class="onboard">
+          <div class="stack" style={{ gap: 'var(--space-5)' }}>
+            <h1 class="display">
+              <span class="light">Welcome to</span> DMC.
+            </h1>
+            <p class="lead">Timed, exam-realistic practice on past papers, with honest progress. Your school email unlocks the school Library of shared paper sets and syncs your progress.</p>
+            <div class="row">
+              <Button variant="accent" size="lg" onClick={() => setAccount('school')}>Sign in with school email</Button>
+            </div>
+            <div class="row">
+              <Button variant="ghost" onClick={() => void updateSettings({ dismissedTips: [...settings.dismissedTips, 'welcome'] })}>Continue without an account</Button>
+              <Button variant="ghost" onClick={() => setAccount('personal')}>Create a personal account</Button>
+            </div>
+          </div>
+          <div class="jy-panel stack-s">
+            <div class="label">Without an account</div>
+            <p class="small">Everything except the Library works, offline, on this device. You can sign in any time from the top bar.</p>
+            <div class="label" style={{ marginTop: 'var(--space-3)' }}>With a personal account</div>
+            <p class="small">Your sessions, stats and settings sync across your devices. Your PDFs never upload.</p>
+          </div>
+        </section>
+        {account && <AccountDialog mode={account} onClose={() => setAccount(null)} />}
       </main>
     );
 

@@ -42,6 +42,7 @@ export function CommandPalette({ onClose, actions }: { onClose: () => void; acti
       ...packs.map((p) => ({ id: `daily:${p.id}`, label: `Daily 10 in ${p.title}`, hint: 'mistakes due today', run: () => void startDaily(p) })),
       ...packs.map((p) => ({ id: `ins:${p.id}`, label: `Insights for ${p.title}`, run: () => navigate(href.pack(p.id, 'insights')) })),
       { id: 'home', label: 'Go home', hint: 'your packs', run: () => navigate(href.library()) },
+      { id: 'school', label: 'School Library', hint: 'shared paper sets', run: () => navigate(href.school()) },
       { id: 'settings', label: 'Settings', run: () => navigate(href.settings()) },
       { id: 'backup', label: 'Export everything', hint: 'backup', run: () => void doBackup('everything') },
     ],

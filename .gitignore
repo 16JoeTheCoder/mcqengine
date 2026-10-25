@@ -7,3 +7,4 @@ playwright-report/
 pilot/
 *.local.*
 *.dmc.zip
+dist-mock/

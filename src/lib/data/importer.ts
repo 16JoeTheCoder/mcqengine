@@ -54,13 +54,15 @@ export async function prepareImages(doc: NDoc, files: ReadonlyMap<string, Blob>)
 
 export interface ImportTarget {
   packId: string | null;
-  newPack?: { title: string; subject: string };
+  /** `id` fixes the new pack's id (Library downloads use `lib-<set id>`, so every device agrees). */
+  newPack?: { title: string; subject: string; id?: string; origin?: Pack['origin'] };
 }
 
 export async function planImport(doc: NDoc, target: ImportTarget, source: ImportSource | null, overrides: Record<string, PaperOverrides>) {
-  const packId = target.packId ?? '__new__';
-  const existing = target.packId ? await store.getPapers(target.packId) : [];
-  const qov = target.packId ? new Map((await store.getOverrides(target.packId)).map((o) => [o.key, o] as const)) : new Map();
+  const known = target.packId ?? (target.newPack?.id && (await store.getPack(target.newPack.id)) ? target.newPack.id : null);
+  const packId = known ?? '__new__';
+  const existing = known ? await store.getPapers(known) : [];
+  const qov = known ? new Map((await store.getOverrides(known)).map((o) => [o.key, o] as const)) : new Map();
   const imgs = source ? await prepareImages(doc, source.files) : { map: new Map<string, string>(), records: [] };
   const merge = mergeDoc(doc, packId, new Map(existing.map((p) => [p.id, p] as const)), imgs.map, overrides, qov);
   if (source?.pdfs.size) await attachPdfs(doc, merge, source.pdfs);
@@ -101,7 +103,7 @@ export async function commitImport(target: ImportTarget, merge: MergeResult, ima
   if (merge.conflicts.length) throw new Error('Resolve the conflicts before importing');
   const packId = await writeImport(target, merge, images, now);
   // Keys that arrived with this import grade any session that was waiting for them.
-  if (target.packId) await regradePack(packId, now);
+  if (target.packId || target.newPack?.id) await regradePack(packId, now);
   return packId;
 }
 
@@ -110,7 +112,11 @@ function writeImport(target: ImportTarget, merge: MergeResult, images: ImageReco
   return store.write(async () => {
     const tx = (await store.db()).transaction(['packs', 'papers', 'images', 'pdfs', 'snips'], 'readwrite');
     const packs = tx.objectStore('packs');
-    let pack: Pack | undefined = target.packId ? await packs.get(target.packId) : undefined;
+    let pack: Pack | undefined = target.packId ? await packs.get(target.packId) : target.newPack?.id ? await packs.get(target.newPack.id) : undefined;
+    if (!pack && target.newPack?.id) {
+      const t = target.newPack;
+      pack = { id: t.id!, title: t.title.trim() || 'Untitled pack', subject: t.subject.trim(), createdAt: now, updatedAt: now, papers: [], ...(t.origin ? { origin: t.origin } : {}) };
+    }
     if (!pack) {
       const title = target.newPack?.title.trim() || 'Untitled pack';
       const base = slugify(title) || 'pack';

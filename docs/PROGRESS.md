@@ -36,6 +36,6 @@ Already correct and kept as is: absolute-timestamp countdown with monotonic back
 - [x] 1. Correctness: timer colour, awaiting key and regrade, boundaries, causes, Daily 10 (key dialog, mark scheme reader, View in PDF viewer component added early)
 - [x] 2. PDFs, snips, bare PDF import, mark scheme reading, cross-check, CLI validator, zip guards, pack for friends, backups with PDFs
 - [x] 3. Result card, personal best, command palette, tab rise on answers, count-up scores
-- [ ] 4. Supabase auth, library, posting, RLS tests, docs
+- [x] 4. Supabase auth (two tiers), Library (browse, post with resume, star, report, admin), RLS proven in PGlite, mock backend, SUPABASE_SETUP and LIBRARY_POLICY
 - [ ] 5. Sync
 - [ ] 6. Final review pass, docs, CLAUDE.md
