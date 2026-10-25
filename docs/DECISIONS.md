@@ -146,3 +146,10 @@ One line each: what was decided and why. Grouped by area.
 107. ZIP mode is offered, labelled as needing an AI that can run code. Chats without code execution cannot produce real crops, so the dialog says so rather than letting them fake it.
 108. ZIP crop default is the whole question, cut between question numbers found in the PDF text. That is the crop least likely to be wrong; "diagram only" is offered for nicer typed text.
 109. Diagram mapping is enforced by the importer, not trusted to the prompt: files must be named `images/<paper id>/q<NN>.png`; a name that disagrees with its question is an error, and unused images need confirmation.
+
+## v2 (DMC v2 brief)
+
+110. Work happens on `claude/cool-thompson-v9r32r`, the branch this environment is allowed to push; it plays the role of the brief's `v2` branch. `main` stays deployable and is merged only through a reviewed pull request.
+111. Stack kept (Preact, Vite, IndexedDB, hand-written service worker). Added: `pdfjs-dist` (PDF viewing, snips, mark-scheme text; lazy chunk, never in the first load), `@supabase/supabase-js` (auth, Postgres, storage; lazy chunk, loaded only when an account or the Library is used), `@electric-sql/pglite` (dev only: runs the real RLS SQL in unit tests).
+112. Existing analytics beyond the brief's list (speed vs score, activity heatmap, question heat, projection) stay: they work, are tested, and removing them is churn. Nothing new is added to that list.
+113. Timer bar starts at ink, not the ok blue, and mixes ink to warn to bad in OKLCH. Decision 74's sRGB workaround existed because blue to amber in OKLCH swept through magenta; ink is achromatic, so OKLCH has no hue to sweep from.
