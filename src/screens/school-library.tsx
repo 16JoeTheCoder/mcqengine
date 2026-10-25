@@ -191,7 +191,7 @@ function Members({ admin, name }: { admin: boolean; name: string }) {
               </div>
               <div class="row set-actions">
                 <Button variant="ghost" size="sm" aria-pressed={s.starred} aria-label={`${s.starred ? 'Unstar' : 'Star'} ${s.title}, ${s.stars} star${s.stars === 1 ? '' : 's'}`} onClick={() => void toggleStar(s)}>
-                  <span aria-hidden="true" class={`star${s.starred ? ' on' : ''}`} /> <span class="num">{s.stars}</span>
+                  <svg class="star" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" fill={s.starred ? 'currentColor' : 'none'} stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 2.5l2.9 6.1 6.6.8-4.9 4.6 1.3 6.6L12 17.3l-5.9 3.3 1.3-6.6-4.9-4.6 6.6-.8z" /></svg> <span class="num">{s.stars}</span>
                 </Button>
                 <span class="spacer" />
                 <Button size="sm" onClick={() => void download(s)}>
@@ -386,7 +386,7 @@ function PostDialog({ name, resume, onClose }: { name: string; resume: PostPlan 
               <Field label="Description" hint="Optional. What is in it, and anything to know.">
                 <textarea class="textarea" style={{ fontFamily: 'var(--font-sans)', minHeight: '96px' }} maxLength={1000} value={desc} onInput={(e) => setDesc((e.target as HTMLTextAreaElement).value)} />
               </Field>
-              <div class="chips" aria-label="Detected">{prep.facts.map((f) => <span class="jy-badge jy-badge--ok" key={f}>{f}</span>)}</div>
+              <div class="chips" aria-label="Detected">{prep.facts.map((f) => <span class="jy-badge jy-badge--ink" key={f}>{f}</span>)}</div>
               <p class="small subtle">Checked: {prep.report.warnings.length ? `${prep.report.warnings.length} note${prep.report.warnings.length === 1 ? '' : 's'}, no errors` : 'no problems found'}. Posting as {name}.</p>
             </div>
           </div>

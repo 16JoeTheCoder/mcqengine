@@ -526,8 +526,8 @@ main.page { padding-bottom: var(--space-8); }
 .set-desc { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .set-card .meta { display: flex; gap: var(--space-3); flex-wrap: wrap; }
 .set-actions { gap: var(--space-2); }
-.star { display: inline-block; width: 14px; height: 14px; border: 1.5px solid currentColor; clip-path: polygon(50% 0, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%); }
-.star.on { background: currentColor; }
+.star { flex: none; }
+.home-links { display: flex; gap: var(--space-3); flex-wrap: wrap; margin-bottom: var(--space-6); }
 .post-grid { display: grid; gap: var(--space-5); grid-template-columns: 1fr; }
 @media (min-width: 720px) { .post-grid { grid-template-columns: 200px minmax(0, 1fr); } }
 .post-cover { width: 200px; }

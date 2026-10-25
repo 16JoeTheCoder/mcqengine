@@ -190,3 +190,6 @@ One line each: what was decided and why. Grouped by area.
 148. Newest write wins per record on both sides: the server's `sync_push` replaces only with a newer `updated_at`, the client applies only newer copies. Stats of packs whose sessions changed are rebuilt by replay after a pull, so stats and sessions always agree.
 149. Sync runs on app open once signed in, after each submitted session, when the browser comes back online, and on Sync now. It never blocks: state shows quietly next to the account button ("Synced 2 min ago", "Offline, will sync later").
 150. Cloud copies of packs are opt-in ("Back up my packs" in Data): one private `packs.zip` per account in the `backups` bucket, excluding Library packs, restored through the normal backup restore.
+151. Mistakes notebook (`#/pack/<id>/notebook`) prints as a study sheet: outlines not fills, single column, 11 pt body, the signature at the foot. The `tab-outline` logo file is not in `brand/`; the light lockup stands in, and the outline is picked up automatically once added.
+152. Any paper can have its question paper and mark scheme PDFs attached later (paper dialog > PDFs), so typed packs made in an AI chat also get "View in PDF".
+153. Per-question times are labelled approximate wherever shown: they count time on screen, including returns to a question.

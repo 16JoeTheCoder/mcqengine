@@ -136,9 +136,14 @@ export function Library({ onPrompt, onImport }: { onPrompt: () => void; onImport
           </Button>
         </div>
       </section>
-      <div style={{ marginBottom: 'var(--space-6)' }}>
+      <div style={{ marginBottom: backend ? 'var(--space-4)' : 'var(--space-6)' }}>
         <DailyPanel rows={daily} accent={dueNow} />
       </div>
+      {backend && (
+        <div class="home-links">
+          <a class="jy-btn" href={href.school()}><Icon name="folder" size={18} /> School Library</a>
+        </div>
+      )}
       {packs.length > 3 && (
         <div class="lib-tools">
           <label class="sr-only" for="pack-search">Search packs</label>

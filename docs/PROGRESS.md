@@ -38,4 +38,10 @@ Already correct and kept as is: absolute-timestamp countdown with monotonic back
 - [x] 3. Result card, personal best, command palette, tab rise on answers, count-up scores
 - [x] 4. Supabase auth (two tiers), Library (browse, post with resume, star, report, admin), RLS proven in PGlite, mock backend, SUPABASE_SETUP and LIBRARY_POLICY
 - [x] 5. Sync (versions map, pull-push-pull, tombstones, two-device and interruption tests) and opt-in cloud pack backup
-- [ ] 6. Final review pass, docs, CLAUDE.md
+- [x] 6. Mistakes notebook, PDF attach for any paper, approximate-timing labels, e2e (Daily 10, Library, key later, PDFs, card), axe both themes, fresh-eyes review (docs/reviews/v2-review.md), README, CLAUDE.md
+
+## Next
+
+1. Create the Supabase project (docs/SUPABASE_SETUP.md) and test sign-in, posting and download live.
+2. Pilot with a real pack in `pilot/` (ignored) and the CLI validator.
+3. Merge this branch to `main` through a pull request once the live checks pass.
