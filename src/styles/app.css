@@ -504,3 +504,16 @@ main.page { padding-bottom: var(--space-8); }
 .snip-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-1); max-height: 40vh; overflow: auto; }
 .snip-list li { display: flex; align-items: center; justify-content: space-between; }
 .pdf-pane .pdf-page { max-height: 62vh; }
+.share-preview { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: var(--radius-md); }
+/* Personal best: the cap sweeps orange once (the view's one orange point), the score rolls up. */
+.pb { overflow: hidden; display: grid; gap: var(--space-1); border-color: var(--ink); }
+.pb::before { content: ""; position: absolute; inset: 0 0 auto 0; height: var(--cap-h); background: var(--accent); transform-origin: left; animation: cap-sweep var(--dur-sweep) var(--ease-out) both; }
+.pb-score { font-size: 64px; line-height: 64px; font-weight: 300; letter-spacing: -0.04em; }
+@keyframes cap-sweep { from { transform: scaleX(0); } }
+/* Tab rise on answers: lift 2px with the hard shadow, settle on press. */
+@media (hover: hover) { .opt:hover:not(:disabled):not([aria-checked="true"]) { transform: translate(-2px, -2px); box-shadow: var(--shadow-lift); } }
+.opt:active:not(:disabled) { transform: translate(0, 0); box-shadow: none; }
+.palette { list-style: none; margin: var(--space-3) 0 0; padding: 0; display: grid; gap: 2px; max-height: 50vh; overflow: auto; }
+.palette li { display: flex; justify-content: space-between; gap: var(--space-3); align-items: center; min-height: var(--hit-min); padding: 0 var(--space-3); border-radius: var(--radius-md); cursor: pointer; }
+.palette li[aria-selected="true"] { background: var(--inverse); color: var(--on-inverse); }
+.palette li[aria-selected="true"] .subtle { color: inherit; opacity: 0.8; }

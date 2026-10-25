@@ -70,3 +70,27 @@ test('PDF papers: mark scheme read into a grid, practised from the PDF, snipped'
   await expect(snip.getByText('1 of 4 snipped', { exact: false })).toBeVisible();
   await expect(snip.getByLabel('Question number')).toHaveValue('2');
 });
+
+test('third attempt with a new best: personal best moment and a result card PNG', async ({ page }) => {
+  await importViaPaste(page, syntheticDoc([{ id: 'p1', count: 4 }]));
+  for (const right of [2, 3, 4]) {
+    await page.locator('.paper-card').first().click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Start', exact: true }).click();
+    await expect(page.locator('.qcard')).toBeVisible();
+    for (let i = 0; i < 4; i++) {
+      await page.keyboard.press(i < right ? keyFor(i) : 'a' === keyFor(i) ? 'b' : 'a');
+      if (i < 3) await page.keyboard.press('ArrowRight');
+    }
+    await page.getByRole('button', { name: 'Finish' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Submit', exact: true }).click();
+    await expect(page.getByText(`${right}/4`)).toBeVisible();
+    if (right < 4) await page.getByRole('button', { name: /Back to pack/ }).click();
+  }
+  await expect(page.getByText('Personal best', { exact: true })).toBeVisible();
+  await expect(page.getByText('up from 75%', { exact: false })).toBeVisible();
+  await page.getByRole('button', { name: 'Result card' }).click();
+  const img = page.getByRole('dialog').locator('img.share-preview');
+  await expect(img).toBeVisible();
+  expect(await img.evaluate((el: HTMLImageElement) => el.naturalWidth)).toBe(2400);
+  await expect(img).toHaveAttribute('alt', /75% average/);
+});

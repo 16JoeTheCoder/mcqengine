@@ -4,7 +4,7 @@ import { loadSessionQuestions } from '../lib/engine/session';
 import { gradeSession } from '../lib/engine/grade';
 import { formatClock } from '../lib/engine/timer';
 import { detectRushed, type RushedReport } from '../lib/stats/rushed';
-import { median } from '../lib/stats/core';
+import { isComplete, median, paperScore, qualifying } from '../lib/stats/core';
 import { dataVersion, href, navigate, settingsStore, updateSettings, useStore } from '../lib/app-state';
 import { CAUSES, LETTERS, type Cause, type PaperMeta, type Question, type SessionDetail, type SessionSummary } from '../lib/types';
 import { gradeFor } from '../lib/format/merge';
@@ -14,6 +14,22 @@ import { bump } from '../lib/app-state';
 const PaperDialog = lazy(() => import('./paper-dialog').then((m) => m.PaperDialog));
 const PdfViewer = lazy(() => import('./pdf-tools').then((m) => m.PdfViewer));
 const SnipImage = lazy(() => import('./pdf-tools').then((m) => m.SnipImage));
+const ShareCardDialog = lazy(() => import('./share-card').then((m) => m.ShareCardDialog));
+
+/**
+ * A new best on a paper, from the third attempt onward: complete, Exam mode, not partial, scored
+ * higher than every earlier attempt at that paper. Returns the previous best, or null.
+ */
+export function personalBest(s: SessionSummary, history: SessionSummary[]): number | null {
+  if (s.type !== 'paper' || !isComplete(s) || s.mode !== 'exam' || !s.paperId) return null;
+  const attempts = history
+    .filter((x) => x.type === 'paper' && x.paperId === s.paperId && x.mode === 'exam' && isComplete(x) && (x.endedAt ?? 0) <= (s.endedAt ?? 0))
+    .sort((a, b) => (a.endedAt ?? 0) - (b.endedAt ?? 0));
+  const before = attempts.filter((x) => x.id !== s.id);
+  if (attempts.length < 3 || before.length !== attempts.length - 1) return null;
+  const prev = Math.max(...before.map(paperScore));
+  return paperScore(s) > prev ? prev : null;
+}
 import { Badge, Button, CountUp, fmtDate, Ring, Skeleton } from '../ui/kit';
 import { Icon } from '../ui/icons';
 import { focusMainIfLost } from '../ui/kit';
@@ -25,10 +41,11 @@ type Filter = 'all' | 'wrong' | 'flagged' | 'slow' | 'unsure';
 
 export function Results({ id }: { id: string }) {
   const settings = useStore(settingsStore);
-  const [data, setData] = useState<{ s: SessionSummary; d: SessionDetail; q: Map<string, Question>; history: SessionSummary[]; completed: number; paper?: PaperMeta } | null | 'missing'>(null);
+  const [data, setData] = useState<{ s: SessionSummary; d: SessionDetail; q: Map<string, Question>; history: SessionSummary[]; completed: number; packTitle: string; paper?: PaperMeta } | null | 'missing'>(null);
   const [filter, setFilter] = useState<Filter>('all');
   const [fixing, setFixing] = useState<Question | null>(null);
   const [keying, setKeying] = useState(false);
+  const [sharing, setSharing] = useState(false);
   const [viewPdf, setViewPdf] = useState<{ pdfId: string; page: number; title: string } | null>(null);
   const v = useStore(dataVersion);
 
@@ -39,7 +56,7 @@ export function Results({ id }: { id: string }) {
       if (s.status === 'active' || s.status === 'saved') return navigate(href.session(id), true);
       const [q, history, all, pack] = await Promise.all([loadSessionQuestions(d), store.getSessions(s.packId), store.getAllSessions(), store.getPack(s.packId)]);
       const first = data === null;
-      setData({ s, d, q, history, completed: all.filter((x) => x.status === 'submitted' || x.status === 'auto-submitted').length, ...(s.paperId ? { paper: pack?.papers.find((p) => p.id === s.paperId) } : {}) });
+      setData({ s, d, q, history, packTitle: pack?.title ?? s.title, completed: all.filter((x) => x.status === 'submitted' || x.status === 'auto-submitted').length, ...(s.paperId ? { paper: pack?.papers.find((p) => p.id === s.paperId) } : {}) });
       if (first) {
         window.scrollTo(0, 0);
         focusMainIfLost();
@@ -97,6 +114,8 @@ export function Results({ id }: { id: string }) {
     await store.setCause(s.id, qid, s.causes?.[qid] === c ? null : c);
     bump();
   };
+  const pb = personalBest(s, data.history);
+  const canShare = counts && qualifying(data.history).length >= 3;
   const typeLabel = s.type === 'paper' ? 'Paper' : s.type === 'random' ? 'Random session' : s.type === 'daily' ? 'Daily 10' : 'Mistakes drill';
 
   return (
@@ -131,6 +150,14 @@ export function Results({ id }: { id: string }) {
           </div>
         </div>
       </section>
+
+      {pb !== null && (
+        <section class="jy-panel pb" aria-labelledby="pb-h" style={{ marginBottom: 'var(--space-5)' }}>
+          <span class="label">Personal best</span>
+          <h2 id="pb-h" class="pb-score num"><CountUp value={Math.round(score * 100)} format={(x) => `${Math.round(x)}`} />%</h2>
+          <p class="small muted">Your best on this paper, up from {Math.round(pb * 100)}%.</p>
+        </section>
+      )}
 
       {waiting && (
         <div class="notice notice--warn" style={{ marginBottom: 'var(--space-5)' }}>
@@ -199,9 +226,14 @@ export function Results({ id }: { id: string }) {
       )}
 
       <div class="row" style={{ marginBottom: 'var(--space-5)' }}>
-        <Button variant="primary" onClick={() => navigate(href.pack(s.packId))}>
+        <Button variant={pb !== null ? 'default' : 'primary'} onClick={() => navigate(href.pack(s.packId))}>
           <Icon name="left" size={18} /> Back to pack
         </Button>
+        {canShare && (
+          <Button onClick={() => setSharing(true)}>
+            <Icon name="image" size={18} /> Result card
+          </Button>
+        )}
         {wrong > 0 && (
           <Button onClick={() => navigate(href.pack(s.packId, 'start'))}>
             <Icon name="target" size={18} /> Drill mistakes
@@ -294,6 +326,7 @@ export function Results({ id }: { id: string }) {
       {fixing && <FixQuestion packId={s.packId} question={fixing} onClose={() => setFixing(null)} />}
       {keying && s.paperId && <PaperDialog packId={s.packId} paperId={s.paperId} mine={mine} onClose={() => setKeying(false)} />}
       {viewPdf && <PdfViewer {...viewPdf} onClose={() => setViewPdf(null)} />}
+      {sharing && <ShareCardDialog packId={s.packId} exam={data.packTitle} onClose={() => setSharing(false)} />}
       <p class="small subtle" style={{ marginTop: 'var(--space-5)' }}>Correcting a key regrades every session that used it, this one included.</p>
     </main>
   );

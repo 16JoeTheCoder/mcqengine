@@ -19,6 +19,7 @@ const SettingsScreen = lazy(() => import('./screens/settings').then((m) => m.Set
 const AboutDialog = lazy(() => import('./screens/settings').then((m) => m.AboutDialog));
 const ImportWizard = lazy(() => import('./screens/import').then((m) => m.ImportWizard));
 const PromptDialog = lazy(() => import('./screens/prompt').then((m) => m.PromptDialog));
+const CommandPalette = lazy(() => import('./screens/palette').then((m) => m.CommandPalette));
 
 /** Set by main.tsx when a new service worker is waiting. */
 export const updateReady = createStore<(() => void) | null>(null);
@@ -51,6 +52,7 @@ export function App() {
   const [resumeChecked, setResumeChecked] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [crumb, setCrumb] = useState<Pack | null>(null);
+  const [palette, setPalette] = useState(false);
   const firstRoute = useRef(true);
 
   useEffect(() => {
@@ -103,6 +105,18 @@ export function App() {
     const t = route.name === 'library' ? 'DMC' : route.name === 'settings' ? 'Settings · DMC' : route.name === 'results' ? 'Results · DMC' : route.name === 'session' ? 'Session · DMC' : 'Pack · DMC';
     document.title = t;
   }, [route]);
+
+  // Ctrl+K / Cmd+K opens the command palette (never during a session).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k' && routeStore.get().name !== 'session') {
+        e.preventDefault();
+        setPalette((x) => !x);
+      }
+    };
+    addEventListener('keydown', onKey);
+    return () => removeEventListener('keydown', onKey);
+  }, []);
 
   // Drag and drop anywhere.
   useEffect(() => {
@@ -209,6 +223,9 @@ export function App() {
               )}
             </nav>
             <span class="spacer" />
+            <button type="button" class="jy-btn jy-btn--ghost jy-btn--icon hide-sm" onClick={() => setPalette(true)} aria-label="Go to (Ctrl+K)" title="Go to (Ctrl+K)">
+              <Icon name="search" />
+            </button>
             <a class="jy-btn jy-btn--ghost jy-btn--icon" href={href.settings()} aria-label="Settings">
               <Icon name="settings" />
             </a>
@@ -249,6 +266,15 @@ export function App() {
       )}
       {importing && <ImportWizard pack={importing.pack} initial={importing.source ?? null} {...(importing.pdfs ? { pdfs: importing.pdfs } : {})} onClose={() => setImporting(null)} />}
       {about && <AboutDialog onClose={() => setAbout(false)} />}
+      {palette && !inSession && (
+        <CommandPalette
+          onClose={() => setPalette(false)}
+          actions={[
+            { id: 'import', label: 'Import', hint: 'pack, zip, PDFs or backup', run: () => openImport() },
+            { id: 'prompt', label: 'Make a pack with AI', hint: 'prompt', run: () => openPrompt() },
+          ]}
+        />
+      )}
       {top && !inSession && (
         <Modal title="Resume your session?" onClose={() => setResume([])} describedBy="resume-desc">
           <div class="stack" id="resume-desc">
