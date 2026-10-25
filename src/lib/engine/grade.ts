@@ -15,6 +15,8 @@ export interface GradeResult {
   timeMs: number;
   items: GradedItem[];
   agg: SessionAggregates;
+  /** Answered questions with no key yet: the session waits for a key before it is graded. */
+  unkeyed: number;
 }
 
 /**
@@ -41,12 +43,16 @@ export function gradeSession(
   const changes = { helped: 0, hurt: 0, neutral: 0 };
   const hist = new Array<number>(TIME_BINS.length + 1).fill(0);
   let timeMs = 0;
+  let unkeyed = 0;
 
   answers.forEach((a, index) => {
     timeMs += Math.max(0, a.timeMs);
     if (a.choice === null) return;
     const k = key(a.qid);
-    if (k === null || k === undefined) return;
+    if (k === null || k === undefined) {
+      unkeyed++;
+      return;
+    }
     const correct = a.choice === k;
     items.push({ qid: a.qid, index, correct, unsure: a.unsure, timeMs: a.timeMs });
     const t = thirds[Math.min(2, Math.floor((index * 3) / Math.max(1, total)))] as [number, number];
@@ -77,7 +83,7 @@ export function gradeSession(
     if (it.correct) b[0]++;
   });
 
-  const answered = items.length;
+  const answered = items.length + unkeyed;
   const correct = items.filter((i) => i.correct).length;
   return {
     answered,
@@ -87,5 +93,6 @@ export function gradeSession(
     timeMs,
     items,
     agg: { thirds, sure, unsureAcc, changes, slowest, rest, hist },
+    unkeyed,
   };
 }

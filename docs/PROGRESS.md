@@ -33,7 +33,7 @@ Already correct and kept as is: absolute-timestamp countdown with monotonic back
 ## Stages
 
 - [x] 0. Audit and gap list
-- [ ] 1. Correctness: timer colour, awaiting key and regrade, boundaries, causes, Daily 10
+- [x] 1. Correctness: timer colour, awaiting key and regrade, boundaries, causes, Daily 10 (key dialog, mark scheme reader, View in PDF viewer component added early)
 - [ ] 2. PDFs, snips, key parsing, CLI validator, zip guards, pack for friends
 - [ ] 3. Result card, personal best, command palette, polish
 - [ ] 4. Supabase auth, library, posting, RLS tests, docs

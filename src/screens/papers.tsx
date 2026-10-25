@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'preact/hooks';
-import { paperReady } from '../lib/format/merge';
+import { paperComplete } from '../lib/format/merge';
 import type { PaperMeta } from '../lib/types';
 import { Badge, relDay, Ring } from '../ui/kit';
 import { Icon } from '../ui/icons';
@@ -41,7 +41,7 @@ export function PapersBrowser({ rows, inProgress, onPick }: { rows: LadderRow[];
   const match = (r: LadderRow) => {
     if (q.trim() && !`${r.paper.title} ${r.paper.group.join(' ')} ${r.paper.id}`.toLowerCase().includes(q.trim().toLowerCase())) return false;
     if (!filters.size) return true;
-    const ready = paperReady(r.paper);
+    const ready = paperComplete(r.paper);
     return [...filters].some((f) =>
       f === 'not-started' ? ready && !r.attempts && !inProgress.has(r.paper.id) : f === 'in-progress' ? inProgress.has(r.paper.id) : f === 'done' ? r.attempts > 0 : f === 'weak' ? r.latest !== null && r.latest < WEAK : !ready,
     );
@@ -107,7 +107,7 @@ export function PapersBrowser({ rows, inProgress, onPick }: { rows: LadderRow[];
         <span class="m">
           {inProgress.has(p.id) && <Badge status="ink">In progress</Badge>}
           {p.present < p.questionCount && <Badge status="warn">{p.present}/{p.questionCount} questions</Badge>}
-          {p.present >= p.questionCount && p.keyed < p.questionCount && <Badge status="warn">Needs answer key</Badge>}
+          {p.present >= p.questionCount && p.keyed < p.questionCount && <Badge status="warn">No key: Exam only</Badge>}
           {p.figuresNeeded > 0 && <Badge status="warn">{p.figuresNeeded} need figure</Badge>}
           {r.latest !== null && r.latest < WEAK && <Badge status="bad">Weak</Badge>}
         </span>

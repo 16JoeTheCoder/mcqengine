@@ -5,9 +5,15 @@ import { gradeSession } from '../lib/engine/grade';
 import { formatClock } from '../lib/engine/timer';
 import { detectRushed, type RushedReport } from '../lib/stats/rushed';
 import { median } from '../lib/stats/core';
-import { href, navigate, settingsStore, updateSettings, useStore } from '../lib/app-state';
-import { LETTERS, type Question, type SessionDetail, type SessionSummary } from '../lib/types';
-import { Badge, Button, fmtDate, Ring, Skeleton } from '../ui/kit';
+import { dataVersion, href, navigate, settingsStore, updateSettings, useStore } from '../lib/app-state';
+import { CAUSES, LETTERS, type Cause, type PaperMeta, type Question, type SessionDetail, type SessionSummary } from '../lib/types';
+import { gradeFor } from '../lib/format/merge';
+import { lazy } from '../ui/lazy';
+import { bump } from '../lib/app-state';
+
+const PaperDialog = lazy(() => import('./paper-dialog').then((m) => m.PaperDialog));
+const PdfViewer = lazy(() => import('./pdf-tools').then((m) => m.PdfViewer));
+import { Badge, Button, CountUp, fmtDate, Ring, Skeleton } from '../ui/kit';
 import { Icon } from '../ui/icons';
 import { focusMainIfLost } from '../ui/kit';
 import { FigureView, OptionBody, QuestionImage, Rich } from '../ui/content';
@@ -18,21 +24,27 @@ type Filter = 'all' | 'wrong' | 'flagged' | 'slow' | 'unsure';
 
 export function Results({ id }: { id: string }) {
   const settings = useStore(settingsStore);
-  const [data, setData] = useState<{ s: SessionSummary; d: SessionDetail; q: Map<string, Question>; history: SessionSummary[]; completed: number } | null | 'missing'>(null);
+  const [data, setData] = useState<{ s: SessionSummary; d: SessionDetail; q: Map<string, Question>; history: SessionSummary[]; completed: number; paper?: PaperMeta } | null | 'missing'>(null);
   const [filter, setFilter] = useState<Filter>('all');
   const [fixing, setFixing] = useState<Question | null>(null);
+  const [keying, setKeying] = useState(false);
+  const [viewPdf, setViewPdf] = useState<{ pdfId: string; page: number; title: string } | null>(null);
+  const v = useStore(dataVersion);
 
   useEffect(() => {
     void (async () => {
       const [s, d] = await Promise.all([store.getSession(id), store.getDetail(id)]);
       if (!s || !d) return setData('missing');
       if (s.status === 'active' || s.status === 'saved') return navigate(href.session(id), true);
-      const [q, history, all] = await Promise.all([loadSessionQuestions(d), store.getSessions(s.packId), store.getAllSessions()]);
-      setData({ s, d, q, history, completed: all.filter((x) => x.status === 'submitted' || x.status === 'auto-submitted').length });
-      window.scrollTo(0, 0);
-      focusMainIfLost();
+      const [q, history, all, pack] = await Promise.all([loadSessionQuestions(d), store.getSessions(s.packId), store.getAllSessions(), store.getPack(s.packId)]);
+      const first = data === null;
+      setData({ s, d, q, history, completed: all.filter((x) => x.status === 'submitted' || x.status === 'auto-submitted').length, ...(s.paperId ? { paper: pack?.papers.find((p) => p.id === s.paperId) } : {}) });
+      if (first) {
+        window.scrollTo(0, 0);
+        focusMainIfLost();
+      }
     })();
-  }, [id]);
+  }, [id, v]);
 
   const derived = useMemo(() => {
     if (!data || data === 'missing') return null;
@@ -40,7 +52,7 @@ export function Results({ id }: { id: string }) {
     const times = data.d.answers.filter((a) => a.choice !== null).map((a) => a.timeMs);
     const med = median(times);
     let rushed: RushedReport | null = null;
-    if (settings.rushedAlert && data.s.mode === 'exam' && !data.s.partial && data.s.type !== 'drill') rushed = detectRushed({ current: data.s, items: g.items, history: data.history });
+    if (settings.rushedAlert && data.s.mode === 'exam' && !data.s.partial && !data.s.awaitingKey && (data.s.type === 'paper' || data.s.type === 'random')) rushed = detectRushed({ current: data.s, items: g.items, history: data.history });
     return { g, med, rushed };
   }, [data, settings.rushedAlert]);
 
@@ -75,26 +87,59 @@ export function Results({ id }: { id: string }) {
   const wrong = items.filter(({ a }) => a.choice !== null && a.choice !== keyOf(a.qid)).length;
   const r = derived.rushed;
   const remind = settings.backupReminder && data.completed - settings.lastBackupAtCount >= settings.backupEvery;
+  const waiting = !!s.awaitingKey;
+  const counts = !s.partial && !waiting && s.mode === 'exam' && (s.type === 'paper' || s.type === 'random');
+  const grade = s.type === 'paper' && !s.partial && !waiting ? gradeFor(data.paper?.boundaries, s.correct) : null;
+  // The student's answers in question-number order, for "Mark it myself".
+  const mine = data.paper && s.type === 'paper' ? Array.from({ length: data.paper.questionCount }, (_, i) => d.answers.find((a) => q.get(a.qid)?.n === i + 1)?.choice ?? null) : undefined;
+  const tagCause = async (qid: string, c: Cause) => {
+    await store.setCause(s.id, qid, s.causes?.[qid] === c ? null : c);
+    bump();
+  };
+  const typeLabel = s.type === 'paper' ? 'Paper' : s.type === 'random' ? 'Random session' : s.type === 'daily' ? 'Daily 10' : 'Mistakes drill';
 
   return (
     <main class="page" id="main" tabIndex={-1}>
       <section class="score-hero">
-        <Ring value={score} size={168} stroke={12} label={`Paper score ${Math.round(score * 100)}%`} />
+        <Ring value={waiting ? null : score} size={168} stroke={12} label={waiting ? 'Waiting for the answer key' : `Paper score ${Math.round(score * 100)}%`} text={waiting ? 'Key?' : undefined} />
         <div class="stack-s">
-          <span class="label">{s.type === 'paper' ? 'Paper' : s.type === 'random' ? 'Random session' : 'Mistakes drill'} · {s.mode === 'exam' ? 'Exam' : 'Practice'} · {fmtDate(s.endedAt)}</span>
+          <span class="label">{typeLabel} · {s.mode === 'exam' ? 'Exam' : 'Practice'} · {fmtDate(s.endedAt)}</span>
           <h1 class="display" style={{ overflowWrap: 'anywhere' }}>{s.title}</h1>
           <div class="row" style={{ gap: 'var(--space-5)' }}>
-            <span><b class="num" style={{ fontSize: '24px' }}>{s.correct}/{s.total}</b> <span class="muted">paper score</span></span>
-            <span><b class="num" style={{ fontSize: '24px' }}>{Math.round(acc * 100)}%</b> <span class="muted">accuracy on {s.answered} answered</span></span>
+            {waiting ? (
+              <span><b class="num" style={{ fontSize: '24px' }}>{s.answered}/{s.total}</b> <span class="muted">answered, waiting for the key</span></span>
+            ) : (
+              <>
+                <span><b class="num" style={{ fontSize: '24px' }}><CountUp value={s.correct} format={(x) => `${Math.round(x)}`} />/{s.total}</b> <span class="muted">paper score</span></span>
+                <span><b class="num" style={{ fontSize: '24px' }}>{Math.round(acc * 100)}%</b> <span class="muted">accuracy on {s.answered} answered</span></span>
+              </>
+            )}
             <span><b class="num" style={{ fontSize: '24px' }}>{formatClock(s.timeMs)}</b> <span class="muted">time</span></span>
           </div>
+          {grade && (
+            <p class="grade-line">
+              {grade.grade ? <>Grade <b>{grade.grade}</b></> : 'Below the lowest boundary'}
+              {grade.next ? <>, <b class="num">{grade.next.marks}</b> mark{grade.next.marks === 1 ? '' : 's'} from {grade.next.grade}</> : grade.grade ? ', the top grade' : ''}
+            </p>
+          )}
           <div class="row">
+            {waiting && <Badge status="warn">Awaiting key</Badge>}
             {s.partial && <Badge status="warn">Partial: {s.total - s.answered} unanswered not graded</Badge>}
             {s.status === 'auto-submitted' && <Badge status="warn">Submitted at time zero</Badge>}
-            {!s.partial && s.mode === 'exam' && s.type !== 'drill' && <Badge status="ok">Counts toward your trend</Badge>}
+            {counts && <Badge status="ok">Counts toward your trend</Badge>}
           </div>
         </div>
       </section>
+
+      {waiting && (
+        <div class="notice notice--warn" style={{ marginBottom: 'var(--space-5)' }}>
+          <Icon name="alert" />
+          <div class="row" style={{ justifyContent: 'space-between' }}>
+            <span>This paper has no answer key yet. Your answers are saved, and this session is graded the moment a key is added.</span>
+            {s.paperId && <Button variant="primary" onClick={() => setKeying(true)}>Add the key</Button>}
+          </div>
+        </div>
+      )}
 
       {remind && (
         <div class="notice" style={{ marginBottom: 'var(--space-5)' }}>
@@ -203,7 +248,22 @@ export function Results({ id }: { id: string }) {
                     <Icon name="pencil" size={16} /> Fix this question
                   </Button>
                 )}
+                {qq && pdfOf(d, qq) && (
+                  <Button variant="ghost" size="sm" onClick={() => setViewPdf({ ...pdfOf(d, qq)!, title: `Question ${qq.n} in the paper` })}>
+                    <Icon name="file" size={16} /> View in PDF
+                  </Button>
+                )}
               </div>
+              {status === 'bad' && (
+                <div class="chips cause-chips" role="group" aria-label={`Why was question ${i + 1} wrong?`}>
+                  <span class="small muted">Why?</span>
+                  {CAUSES.map((c) => (
+                    <button type="button" class="chip" aria-pressed={s.causes?.[a.qid] === c.value} onClick={() => void tagCause(a.qid, c.value)} key={c.value}>
+                      {c.label}
+                    </button>
+                  ))}
+                </div>
+              )}
               {qq && (
                 <details open={status === 'bad'}>
                   <summary class="small muted" style={{ cursor: 'pointer', minHeight: '32px' }}>Show question</summary>
@@ -230,7 +290,9 @@ export function Results({ id }: { id: string }) {
         })}
       </section>
       {fixing && <FixQuestion packId={s.packId} question={fixing} onClose={() => setFixing(null)} />}
-      <p class="small subtle" style={{ marginTop: 'var(--space-5)' }}>A fixed answer key applies to future sessions; this result keeps the key it was graded with.</p>
+      {keying && s.paperId && <PaperDialog packId={s.packId} paperId={s.paperId} mine={mine} onClose={() => setKeying(false)} />}
+      {viewPdf && <PdfViewer {...viewPdf} onClose={() => setViewPdf(null)} />}
+      <p class="small subtle" style={{ marginTop: 'var(--space-5)' }}>Correcting a key regrades every session that used it, this one included.</p>
     </main>
   );
 }
@@ -250,4 +312,10 @@ function Stat({ label, value, ctx }: { label: string; value: string; ctx: string
       <span class="ctx">{ctx}</span>
     </div>
   );
+}
+
+/** The stored question paper PDF and page for a question, when there is one. */
+function pdfOf(_d: SessionDetail, q: Question): { pdfId: string; page: number } | null {
+  if (q.snip) return { pdfId: q.snip.pdfId, page: q.snip.page };
+  return q.pdfId ? { pdfId: q.pdfId, page: q.page ?? 1 } : null;
 }

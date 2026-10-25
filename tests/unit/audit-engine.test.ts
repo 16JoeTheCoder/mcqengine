@@ -204,9 +204,10 @@ describe('grading edge cases', () => {
     expect(g).toMatchObject({ answered: 0, correct: 0, partial: true, timeMs: 20_000 });
     expect(g.items).toEqual([]);
   });
-  it('an answered question whose key is missing is not graded and makes a manual submit partial', () => {
+  it('an answered question whose key is missing is counted as unkeyed, not graded', () => {
     const g = gradeSession([rec('a', 0), rec('b', 1)], (q) => (q === 'a' ? 0 : null), false);
-    expect(g).toMatchObject({ answered: 1, correct: 1, partial: true });
+    expect(g).toMatchObject({ answered: 2, correct: 1, partial: false, unkeyed: 1 });
+    expect(g.items.map((i) => i.qid)).toEqual(['a']);
   });
   it('single-question session puts its only answer in the first third', () => {
     const g = gradeSession([rec('a', 0)], key, false);

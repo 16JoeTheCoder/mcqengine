@@ -3,6 +3,7 @@ import { mergeDoc, mergePaperCopies, type MergeResult, type PaperOverrides } fro
 import { sanitizeSvg } from '../format/svg';
 import { slugify, validateDoc, type NDoc, type ValidationResult } from '../format/validate';
 import { uid } from '../engine/rng';
+import { regradePack } from '../engine/regrade';
 import type { ImageRecord, Pack, Paper } from '../types';
 import * as store from './db';
 import { sha256Hex, type ImportSource } from './files';
@@ -68,6 +69,13 @@ export async function planImport(doc: NDoc, target: ImportTarget, source: Import
 /** Writes a planned import. Refuses when the plan has conflicts. Returns the pack id. */
 export async function commitImport(target: ImportTarget, merge: MergeResult, images: ImageRecord[], now = Date.now()): Promise<string> {
   if (merge.conflicts.length) throw new Error('Resolve the conflicts before importing');
+  const packId = await writeImport(target, merge, images, now);
+  // Keys that arrived with this import grade any session that was waiting for them.
+  if (target.packId) await regradePack(packId, now);
+  return packId;
+}
+
+function writeImport(target: ImportTarget, merge: MergeResult, images: ImageRecord[], now: number): Promise<string> {
   // Read-modify-write of the pack inside one transaction, so concurrent imports cannot drop papers.
   return store.write(async () => {
     const tx = (await store.db()).transaction(['packs', 'papers', 'images'], 'readwrite');

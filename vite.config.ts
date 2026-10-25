@@ -37,7 +37,7 @@ export default defineConfig({
     __BUILD_ID__: JSON.stringify(new Date().toISOString().slice(0, 10)),
   },
   esbuild: { jsx: 'automatic', jsxImportSource: 'preact' },
-  build: { target: 'es2022', sourcemap: false, assetsInlineLimit: 0, chunkSizeWarningLimit: 200 },
+  build: { target: 'es2022', sourcemap: false, assetsInlineLimit: 0, chunkSizeWarningLimit: 500 },
   plugins: [serviceWorker()],
   test: {
     include: ['tests/unit/**/*.test.ts'],

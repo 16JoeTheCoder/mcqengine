@@ -1,4 +1,4 @@
-import type { BankEvent, Pack, QuestionStat, SessionSummary } from '../types';
+import type { BankEvent, Cause, Pack, QuestionStat, SessionSummary } from '../types';
 import { TIME_BINS } from '../types';
 import { accuracy, isComplete, mean, ols, paperScore, qualifying, rolling3, secPerQ, type QualifyOpts } from './core';
 import { bankKpi, packBudgetSec, paceKpi, papersDone, scoreKpi, sessionsKpi } from './kpi';
@@ -103,6 +103,10 @@ export function packAnalytics(pack: Pack, sessions: SessionSummary[], stats: Que
     return { acc: n ? c / n : null, n };
   };
 
+  // Why wrong answers happened, as tagged in review (every finished session).
+  const causes: Record<Cause, number> = { careless: 0, concept: 0, misread: 0, time: 0 };
+  for (const s of all) for (const c of Object.values(s.causes ?? {})) if (c in causes) causes[c]++;
+
   // Mistakes bank over time: one point per day with events, plus today.
   const sortedEvents = events.slice().sort((a, b) => a.at - b.at);
   const bankSeries: { x: number; y: number }[] = [];
@@ -142,6 +146,7 @@ export function packAnalytics(pack: Pack, sessions: SessionSummary[], stats: Que
     hist,
     changes,
     calibration: { sure: cal('sure'), unsure: cal('unsureAcc') },
+    causes,
     slowVsRest: { slow: sumPairs((s) => s.agg?.slowest), rest: sumPairs((s) => s.agg?.rest) },
     speedScore: q.map((s) => ({ x: secPerQ(s), y: paperScore(s) })),
     bankSize,

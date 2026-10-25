@@ -70,6 +70,7 @@
       "required": ["n", "answer"],
       "properties": {
         "n": { "type": "integer", "minimum": 1, "maximum": 200 },
+        "page": { "type": "integer", "minimum": 1, "maximum": 500, "description": "Page of the question paper PDF this question is printed on (1-based), for View in PDF" },
         "stem": { "$ref": "#/definitions/text" },
         "image": { "type": "string", "description": "Whole-question screenshot path inside a zip or folder" },
         "figure": { "$ref": "#/definitions/figure" },
@@ -108,6 +109,11 @@
         "questionCount": { "type": "integer", "minimum": 1, "maximum": 200 },
         "timeLimitMinutes": { "oneOf": [{ "type": "integer", "minimum": 1, "maximum": 600 }, { "type": "null" }] },
         "optionCount": { "type": "integer", "minimum": 2, "maximum": 5 },
+        "gradeBoundaries": {
+          "type": "object",
+          "description": "Minimum raw marks per grade, e.g. { \"A\": 31, \"B\": 27 }",
+          "additionalProperties": { "type": "integer", "minimum": 0, "maximum": 200 }
+        },
         "questions": { "type": "array", "maxItems": 200, "items": { "$ref": "#/definitions/question" } }
       }
     }

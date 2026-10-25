@@ -46,6 +46,7 @@ function toFigure(f: RawFigure | undefined, images: ReadonlyMap<string, string>)
 
 export function toQuestion(paperId: string, optionCount: number, q: NQuestion, images: ReadonlyMap<string, string>): Question {
   const out: Question = { id: questionId(paperId, q.n), n: q.n, optionCount, answer: q.answer, hash: '' };
+  if (q.page) out.page = q.page;
   if (q.stem !== undefined) out.stem = q.stem;
   if (q.image) {
     const id = images.get(q.image);
@@ -118,6 +119,9 @@ export function metaOf(p: Paper): PaperMeta {
     keyed: p.questions.filter((q) => q.answer !== null).length,
     figuresNeeded: p.questions.filter((q) => q.figure?.kind === 'needed' || q.options?.some((o) => o.figure?.kind === 'needed')).length,
     addedAt: p.addedAt,
+    ...(p.boundaries ? { boundaries: p.boundaries } : {}),
+    ...(p.pdf ? { pdf: p.pdf } : {}),
+    ...(p.bare ? { bare: true } : {}),
   };
 }
 
@@ -137,8 +141,12 @@ export function mergePaperCopies(base: Paper, other: Paper): Paper {
   return { ...merged, ...metaOf(merged) };
 }
 
-/** A paper can be started only when every question is present and keyed. */
-export const paperReady = (m: PaperMeta) => m.present >= m.questionCount && m.keyed >= m.questionCount;
+/** Every question is present: the paper can be sat in Exam mode, keyed or not. */
+export const paperComplete = (m: PaperMeta) => m.present >= m.questionCount;
+/** Every question has a key. */
+export const paperKeyed = (m: PaperMeta) => m.keyed >= m.questionCount;
+/** Complete and keyed: Practice mode (instant feedback) needs both. */
+export const paperReady = (m: PaperMeta) => paperComplete(m) && paperKeyed(m);
 
 /**
  * Merges a validated document into a pack's existing papers. Chunks of the same paper merge by
@@ -182,6 +190,7 @@ export function mergeDoc(
           addedAt: now,
           questions: [],
         };
+    if (np.boundaries) base.boundaries = np.boundaries;
     if (ov.title) base.title = ov.title;
     if (ov.group) base.group = ov.group;
     if (ov.questionCount) base.questionCount = ov.questionCount;
@@ -271,4 +280,14 @@ export function mergeDoc(
   });
 
   return { papers: [...out.values()], plan, answersApplied, conflicts };
+}
+
+/** Grade reached with `marks`, and how many marks the next grade up needs. */
+export function gradeFor(boundaries: { grade: string; min: number }[] | undefined, marks: number): { grade: string | null; next: { grade: string; marks: number } | null } | null {
+  if (!boundaries?.length) return null;
+  const sorted = boundaries.slice().sort((a, b) => b.min - a.min);
+  const reached = sorted.find((b) => marks >= b.min) ?? null;
+  const above = sorted.filter((b) => b.min > marks);
+  const nx = above[above.length - 1];
+  return { grade: reached?.grade ?? null, next: nx ? { grade: nx.grade, marks: nx.min - marks } : null };
 }

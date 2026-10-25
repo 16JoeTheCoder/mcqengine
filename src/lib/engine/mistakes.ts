@@ -43,12 +43,17 @@ export function applyAnswer(
       s.lastWrongAt = a.at;
     }
     s.streak = 0;
-    if (!s.inBank) event = 'in';
+    if (!s.inBank) {
+      event = 'in';
+      s.stage = 0;
+    } else s.stage = a.correct ? (s.stage ?? 0) + 1 : 0;
     s.inBank = true;
   } else {
     s.streak += 1;
+    if (s.inBank) s.stage = (s.stage ?? 0) + 1;
     if (s.inBank && s.streak >= CLEAR_STREAK) {
       s.inBank = false;
+      delete s.stage;
       event = 'out';
     }
   }
@@ -80,4 +85,41 @@ export function bankSizeAt(currentSize: number, events: { at: number; kind: 'in'
   let size = currentSize;
   for (const e of events) if (e.at > at) size += e.kind === 'in' ? -1 : 1;
   return Math.max(0, size);
+}
+
+// ---------- Daily 10 ----------
+
+/** Days after the last answer before a banked question is due again, by schedule stage. */
+export const DAILY_INTERVALS = [1, 3, 7, 14];
+export const DAILY_MS = 10 * 60_000;
+export const DAILY_MIN = 3;
+export const DAILY_MAX = 20;
+
+/** Whole local calendar days from a to b (so 23:50 to 00:10 is one day). */
+export function dayDiff(a: number, b: number): number {
+  const da = new Date(a);
+  const db = new Date(b);
+  const ua = Date.UTC(da.getFullYear(), da.getMonth(), da.getDate());
+  const ub = Date.UTC(db.getFullYear(), db.getMonth(), db.getDate());
+  return Math.round((ub - ua) / 86_400_000);
+}
+
+/** Days overdue (0 = due today, negative = not due yet). */
+export function overdueDays(s: QuestionStat, now: number): number {
+  const interval = DAILY_INTERVALS[Math.min(DAILY_INTERVALS.length - 1, Math.max(0, s.stage ?? 0))] as number;
+  return dayDiff(s.lastAnsweredAt ?? 0, now) - interval;
+}
+
+/** Banked, viewable questions due today: most overdue first, then most missed. */
+export function dueForDaily(stats: QuestionStat[], now: number, viewable: ReadonlySet<string>): string[] {
+  return stats
+    .filter((s) => s.inBank && viewable.has(s.qid) && overdueDays(s, now) >= 0)
+    .sort((a, b) => overdueDays(b, now) - overdueDays(a, now) || b.missed - a.missed || a.qid.localeCompare(b.qid))
+    .map((s) => s.qid);
+}
+
+/** How many questions fit in ten minutes at the student's pace, within 3 to 20. */
+export function dailySize(secPerQ: number): number {
+  const pace = Number.isFinite(secPerQ) && secPerQ > 0 ? secPerQ : 90;
+  return Math.min(DAILY_MAX, Math.max(DAILY_MIN, Math.floor(DAILY_MS / 1000 / pace)));
 }

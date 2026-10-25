@@ -11,6 +11,18 @@ import { FigureView, OptionBody, QuestionImage, Rich } from '../ui/content';
 import { FixQuestion } from './fix';
 
 const PRACTICE_STAY_CAP = 5 * 60_000;
+
+/**
+ * Timer bar colour: ink above half, then ink to warn (50% to 25%) and warn to bad (25% to 10%),
+ * mixed in OKLCH. Ink is achromatic, so no hue sweeps through. Never orange: orange is the action.
+ * The last 10% is bad plus stripes, a pulse and a "Low" word, so colour is never the only signal.
+ */
+export function timerColour(frac: number): string {
+  if (frac > 0.5) return 'var(--ink)';
+  if (frac <= 0.1) return 'var(--status-bad)';
+  if (frac > 0.25) return `color-mix(in oklch, var(--status-warn) ${Math.round(((0.5 - frac) / 0.25) * 100)}%, var(--ink))`;
+  return `color-mix(in oklch, var(--status-bad) ${Math.round(((0.25 - frac) / 0.15) * 100)}%, var(--status-warn))`;
+}
 const PERSIST_DEBOUNCE = 150;
 
 interface Loaded {
@@ -391,8 +403,7 @@ function Runner({ initial }: { initial: Loaded }) {
   const flaggedCount = d.answers.filter((x) => x.flagged).length;
   const frac = timer ? Math.max(0, Math.min(1, remaining / timer.config.totalMs)) : 1;
   const low = frac <= 0.1;
-  // ok (blue) above half, then amber shading to red; the last 10% adds stripes, pulse and "Low".
-  const colour = frac > 0.5 ? 'var(--status-ok)' : frac <= 0.1 ? 'var(--status-bad)' : `color-mix(in srgb, var(--status-bad) ${Math.round(((0.5 - frac) / 0.4) * 100)}%, var(--status-warn))`;
+  const colour = timerColour(frac);
   const perQ = timer?.config.kind === 'perq' && !strict ? timer.config.perQMs ?? 0 : 0;
   const used = timer ? timer.config.totalMs - remaining : 0;
   const aheadMs = perQ ? cur * perQ - used : 0;
@@ -447,7 +458,7 @@ function Runner({ initial }: { initial: Loaded }) {
             </span>
           )}
           {strict && <span class="small num" aria-label="Time left on this question">Q {formatClock(qRemaining)}</span>}
-          {timer && low && <span class="jy-badge jy-badge--bad">Low</span>}
+          {timer && low && <span class="jy-badge jy-badge--bad">Low: {remaining >= 60_000 ? `${Math.ceil(remaining / 60_000)} min` : `${Math.ceil(remaining / 1000)} s`} left</span>}
           {timer && (
             <span class={`clock${low ? ' low' : ''}`} role="timer" aria-label={`Time remaining ${formatClock(remaining)}`}>
               {formatClock(remaining)}

@@ -1,4 +1,4 @@
-import { LETTERS } from '../types';
+import { LETTERS, type GradeBoundary } from '../types';
 import { sanitizeSvg } from './svg';
 
 export const FORMAT_ID = 'dmc-pack/1';
@@ -22,6 +22,7 @@ export interface NOption {
 
 export interface NQuestion {
   n: number;
+  page?: number;
   stem?: string;
   image?: string; // file path of a whole-question screenshot
   figure?: RawFigure;
@@ -41,6 +42,7 @@ export interface NPaper {
   timeLimitMin: number | null;
   optionCount: number;
   questions: NQuestion[];
+  boundaries?: GradeBoundary[];
 }
 
 export interface NDoc {
@@ -119,9 +121,29 @@ const KEY_ALIASES: Record<string, string> = {
   table: 'table', columns: 'columns', rows: 'rows', header: 'columns', headers: 'columns',
   answer: 'answer', correct: 'answer', correctanswer: 'answer', correct_answer: 'answer',
   figure: 'figure', diagram: 'figure', image: 'image', svg: 'svg', alt: 'alt', needed: 'needed', note: 'note',
-  file: 'file', topic: 'topic', explanation: 'explanation', uncertain: 'uncertain', key: 'key',
+  file: 'file', page: 'page', pg: 'page', topic: 'topic', explanation: 'explanation', uncertain: 'uncertain', key: 'key',
   paperid: 'paper', paper_id: 'paper',
+  gradeboundaries: 'gradeBoundaries', grade_boundaries: 'gradeBoundaries', boundaries: 'gradeBoundaries',
 };
+
+/** Grade boundaries as { "A": 31, "B": 27 } or [{ "grade": "A", "min": 31 }], in raw marks. */
+export function parseBoundaries(v: unknown, max: number): GradeBoundary[] | string {
+  const list: [string, unknown][] = Array.isArray(v)
+    ? v.map((x) => (isObj(x) ? [String(x.grade ?? ''), x.min ?? x.marks] : ['', null]))
+    : isObj(v)
+      ? Object.entries(v)
+      : [];
+  if (!list.length) return 'Expected grade boundaries like { "A": 31, "B": 27 }';
+  const out: GradeBoundary[] = [];
+  for (const [g, m] of list) {
+    const grade = g.trim().slice(0, 8);
+    const min = Number(m);
+    if (!grade || !Number.isInteger(min) || min < 0 || min > max) return `Boundary "${g}" needs whole marks from 0 to ${max}`;
+    out.push({ grade, min });
+  }
+  out.sort((a, b) => b.min - a.min);
+  return out;
+}
 
 type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -342,6 +364,11 @@ export function validateDoc(input: unknown, files: ReadonlySet<string> = new Set
       }
 
       const paper: NPaper = { id, title, group, questionCount, timeLimitMin, optionCount, questions: [] };
+      if (p.gradeBoundaries !== undefined && p.gradeBoundaries !== null) {
+        const b = parseBoundaries(p.gradeBoundaries, Number.isInteger(questionCount) ? questionCount : LIMITS.questionsPerPaper);
+        if (typeof b === 'string') err(`${pp}.gradeBoundaries`, b);
+        else paper.boundaries = b;
+      }
       const seenN = new Map<number, number>();
       const sig = new Map<string, number>();
       qsRaw.forEach((rq, qi) => {
@@ -362,6 +389,11 @@ export function validateDoc(input: unknown, files: ReadonlySet<string> = new Set
         seenN.set(n, qi);
 
         const out: NQuestion = { n, answer: null };
+        if (q.page !== undefined && q.page !== null) {
+          const pg = Number(q.page);
+          if (!Number.isInteger(pg) || pg < 1 || pg > 500) err(`${qp}.page`, 'Expected the PDF page number, a whole number from 1');
+          else out.page = pg;
+        }
         const text = (v: unknown, path: string, required: boolean, max = LIMITS.text): string | undefined => {
           if (v === undefined || v === null || v === '') {
             if (required) err(path, 'Missing text');

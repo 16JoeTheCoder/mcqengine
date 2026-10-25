@@ -1,6 +1,6 @@
 import { bankSizeAt } from '../engine/mistakes';
 import type { BankEvent, PaperMeta, SessionSummary } from '../types';
-import { isComplete, mean, paperScore, qualifying, secPerQ, type QualifyOpts } from './core';
+import { isComplete, mean, median, paperScore, qualifying, secPerQ, type QualifyOpts } from './core';
 
 const DAY = 86_400_000;
 
@@ -91,4 +91,15 @@ export function packBudgetSec(papers: PaperMeta[]): number {
   const valid = papers.filter((p) => p.questionCount > 0);
   if (!valid.length) return 90;
   return mean(valid.map((p) => (p.timeLimitMin * 60) / p.questionCount));
+}
+
+/** The student's typical seconds per question (median of the last 8 complete paper or random sessions). */
+export function typicalPace(sessions: SessionSummary[], papers: PaperMeta[]): number {
+  const recent = sessions
+    .filter((s) => isComplete(s) && (s.type === 'paper' || s.type === 'random'))
+    .sort((a, b) => (b.endedAt ?? 0) - (a.endedAt ?? 0))
+    .slice(0, 8)
+    .map(secPerQ)
+    .filter((x) => x > 0);
+  return recent.length ? median(recent) : packBudgetSec(papers);
 }
