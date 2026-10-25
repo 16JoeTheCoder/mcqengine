@@ -42,11 +42,15 @@ export function PromptDialog({ pack, onClose, onImport }: { pack?: Pack; onClose
   const [from, setFrom] = useDraft('from', '1');
   const [to, setTo] = useDraft('to', '20');
   const [explanations, setExplanations] = useDraft('explanations', false);
+  const [papers, setPapers] = useDraft<'one' | 'many'>('papers', 'one');
+  const [zipCrop, setZipCrop] = useDraft<'question' | 'diagram'>('zipCrop', 'question');
+  const multi = papers === 'many';
+  const zip = diagrams === 'zip';
   const [keyPaper, setKeyPaper] = useState(pack?.papers.find((p) => p.keyed < p.questionCount)?.id ?? pack?.papers[0]?.id ?? '');
   const [copied, setCopied] = useState(false);
 
   const num = (s: string) => (/^\d+$/.test(s.trim()) ? Number(s) : undefined);
-  const ready = tab === 'paper' ? !!paperTitle.trim() && (!!pack || !!packTitle.trim()) : !!keyPaper;
+  const ready = tab === 'paper' ? (multi || !!paperTitle.trim()) && (!!pack || !!packTitle.trim()) : !!keyPaper;
   const prompt = useMemo(() => {
     if (tab === 'key') {
       const p = pack?.papers.find((x) => x.id === keyPaper);
@@ -62,11 +66,13 @@ export function PromptDialog({ pack, onClose, onImport }: { pack?: Pack; onClose
       ...(num(count) ? { questionCount: num(count) } : {}),
       ...(num(minutes) ? { timeLimitMin: num(minutes) } : {}),
       diagrams,
+      ...(zip ? { zipCrop } : {}),
+      multi,
       answerKey,
-      ...(chunk && num(from) && num(to) && num(to)! >= num(from)! ? { from: num(from), to: num(to) } : {}),
+      ...(!multi && chunk && num(from) && num(to) && num(to)! >= num(from)! ? { from: num(from), to: num(to) } : {}),
       explanations,
     });
-  }, [tab, subject, pack, packTitle, paperTitle, paperId, group, optionCount, count, minutes, diagrams, answerKey, chunk, from, to, explanations, keyPaper]);
+  }, [tab, subject, pack, packTitle, paperTitle, paperId, group, optionCount, count, minutes, diagrams, zipCrop, multi, zip, answerKey, chunk, from, to, explanations, keyPaper]);
 
   const copy = async () => {
     if (!ready) return;
@@ -81,8 +87,17 @@ export function PromptDialog({ pack, onClose, onImport }: { pack?: Pack; onClose
       <div class="stack">
         <ol class="steps">
           <li><span>Fill in the details below and copy the prompt.</span></li>
-          <li><span>Open any AI chat (ChatGPT, Claude, Gemini…), attach the question paper PDF{answerKey === 'attached' ? ' and its mark scheme' : ''}, and paste the prompt.</span></li>
-          <li><span>Copy the JSON it replies with and import it here. DMC checks it and tells you exactly what to fix.</span></li>
+          <li>
+            <span>
+              Open {zip ? 'an AI chat that can run code (ChatGPT with data analysis, or Claude with code execution)' : 'any AI chat (ChatGPT, Claude, Gemini…)'}, attach {multi ? 'all the question paper PDFs' : 'the question paper PDF'}
+              {answerKey === 'attached' ? (multi ? ' and their mark schemes' : ' and its mark scheme') : ''}, and paste the prompt.
+            </span>
+          </li>
+          <li>
+            <span>
+              {zip ? 'Download the dmc-pack.zip it makes and import that file here.' : multi ? 'Copy all of its replies (one paper per code block; say "continue" if it stops) and paste them into Import together.' : 'Copy the JSON it replies with and import it here.'} DMC checks it, including that every diagram belongs to its question, and tells you exactly what to fix.
+            </span>
+          </li>
         </ol>
         {pack && (
           <Seg label="Prompt type" value={tab} onChange={setTab} options={[{ value: 'paper', label: 'New paper' }, { value: 'key', label: 'Answer key for a paper' }]} />
@@ -100,6 +115,12 @@ export function PromptDialog({ pack, onClose, onImport }: { pack?: Pack; onClose
                   </Field>
                 </div>
               )}
+              <div class="jy-field">
+                <span>Papers in this prompt</span>
+                <Seg label="Papers in this prompt" value={papers} onChange={setPapers} options={[{ value: 'one', label: 'One paper' }, { value: 'many', label: 'Several papers' }]} />
+                <small>{multi ? 'The AI reads each title, id, question count and time limit from the covers, and pairs mark schemes by paper code.' : 'Give the details of one paper below.'}</small>
+              </div>
+              {!multi && (<>
               <div class="grid-even">
                 <Field label="Paper title" hint="As you want it listed">
                   <input class="input" value={paperTitle} onInput={(e) => setPaperTitle((e.target as HTMLInputElement).value)} placeholder="May/June 2025 Paper 12" />
@@ -119,6 +140,7 @@ export function PromptDialog({ pack, onClose, onImport }: { pack?: Pack; onClose
               <Field label="Paper id" hint="Stable id so re-imports merge. Auto from the title.">
                 <input class="input num" value={paperId} onInput={(e) => setPaperId((e.target as HTMLInputElement).value)} placeholder={slugify(paperTitle) || 'may-june-2025-paper-12'} />
               </Field>
+              </>)}
               <div class="jy-field">
                 <span>Options per question</span>
                 <Seg label="Options per question" value={optionCount} onChange={setOptionCount} options={[{ value: '4', label: 'A–D' }, { value: '5', label: 'A–E' }]} />
@@ -130,12 +152,37 @@ export function PromptDialog({ pack, onClose, onImport }: { pack?: Pack; onClose
                   value={diagrams}
                   onChange={setDiagrams}
                   options={[
+                    { value: 'zip', label: 'Crop into a ZIP' },
                     { value: 'draw', label: 'Draw simple ones' },
                     { value: 'placeholder', label: 'Mark for screenshots' },
                     { value: 'none', label: 'No diagrams' },
                   ]}
                 />
+                <small>
+                  {zip
+                    ? 'The AI crops each diagram from the PDF with code and names it by paper and question, for example images/9702-s25-12/q07.png. DMC rejects any image attached to the wrong question.'
+                    : diagrams === 'draw'
+                      ? 'Simple diagrams are redrawn as vector graphics; detailed ones are marked for a screenshot.'
+                      : diagrams === 'placeholder'
+                        ? 'Questions with diagrams get a "Needs figure" badge; attach a screenshot with one click.'
+                        : 'Use only when the papers have no diagrams.'}
+                </small>
               </div>
+              {zip && (
+                <div class="jy-field">
+                  <span>What to crop</span>
+                  <Seg
+                    label="What to crop"
+                    value={zipCrop}
+                    onChange={setZipCrop}
+                    options={[
+                      { value: 'question', label: 'Whole question (most reliable)' },
+                      { value: 'diagram', label: 'Diagram only, text typed' },
+                    ]}
+                  />
+                  <small>{zipCrop === 'question' ? 'Diagram questions are shown as an exact picture of the printed question. Cutting between question numbers is the crop least likely to go wrong.' : 'Question text is typed and only the diagram is cropped. Nicer to read, but crops can miss labels; check the preview.'}</small>
+                </div>
+              )}
               <div class="jy-field">
                 <span>Answer key</span>
                 <Seg
@@ -149,8 +196,8 @@ export function PromptDialog({ pack, onClose, onImport }: { pack?: Pack; onClose
                   ]}
                 />
               </div>
-              <Toggle label="Split a long paper" hint="Ask for a range of questions; import each part into the same paper." checked={chunk} onChange={setChunk} />
-              {chunk && (
+              {!multi && <Toggle label="Split a long paper" hint="Ask for a range of questions; import each part into the same paper." checked={chunk} onChange={setChunk} />}
+              {!multi && chunk && (
                 <div class="grid-even">
                   <Field label="From question">
                     <input class="input num" inputMode="numeric" value={from} onInput={(e) => setFrom((e.target as HTMLInputElement).value)} />
@@ -179,7 +226,7 @@ export function PromptDialog({ pack, onClose, onImport }: { pack?: Pack; onClose
           <div class="stack sticky-col">
             <div class="jy-code">
               <div class="bar">
-                <Icon name="sparkles" size={14} /> Paste into any AI chat
+                <Icon name="sparkles" size={14} /> {zip ? 'Paste into an AI chat that can run code' : 'Paste into any AI chat'}
               </div>
               <pre tabIndex={0} aria-label="Generated prompt">{ready ? prompt : tab === 'paper' ? 'Enter a pack name and paper title to build the prompt.' : 'Choose a paper.'}</pre>
             </div>
