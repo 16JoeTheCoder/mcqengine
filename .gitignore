@@ -4,3 +4,6 @@ test-results/
 playwright-report/
 .vite/
 *.log
+pilot/
+*.local.*
+*.dmc.zip

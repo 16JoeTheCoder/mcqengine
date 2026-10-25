@@ -69,12 +69,12 @@ export function BackupPanel() {
   );
 }
 
-export function RestoreDialog({ source, onClose }: { source: { manifest: string; data: string; images: Map<string, Blob> }; onClose: () => void }) {
+export function RestoreDialog({ source, onClose }: { source: { manifest: string; data: string; images: Map<string, Blob>; pdfs?: Map<string, Blob> }; onClose: () => void }) {
   const [plan, setPlan] = useState<RestorePlan | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
-    planRestore(source.manifest, source.data, source.images)
+    planRestore(source.manifest, source.data, source.images, source.pdfs)
       .then(setPlan)
       .catch((e) => setError(e instanceof BackupError ? e.message : 'This backup could not be read.'));
   }, [source]);

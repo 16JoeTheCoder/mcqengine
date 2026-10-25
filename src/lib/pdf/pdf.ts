@@ -17,7 +17,7 @@ export async function openPdf(data: Blob | ArrayBuffer): Promise<PDFDocumentProx
   const bytes = new Uint8Array(data instanceof Blob ? await data.arrayBuffer() : data.slice(0));
   if (bytes.byteLength > MAX_PDF_BYTES) throw new Error('PDF is larger than 60 MB');
   const m = await pdfjs();
-  return m.getDocument({ data: bytes, useWasm: false, enableXfa: false, useSystemFonts: false, stopAtErrors: false }).promise;
+  return m.getDocument({ data: bytes, useWasm: false, enableXfa: false, useSystemFonts: true, stopAtErrors: false }).promise;
 }
 
 /** Plain text of every page, items separated by spaces, lines by newlines. */

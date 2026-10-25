@@ -494,3 +494,13 @@ main.page { padding-bottom: var(--space-8); }
 .key-row .seg button { min-width: 36px; }
 .pdf-page { padding: 0; display: block; overflow: auto; }
 .pdf-page canvas { display: block; max-width: 100%; height: auto; }
+.snip-layout { display: grid; gap: var(--space-5); grid-template-columns: 1fr; }
+@media (min-width: 900px) { .snip-layout { grid-template-columns: minmax(0, 1fr) 280px; } }
+.snip-stage { position: relative; touch-action: none; user-select: none; }
+.snip-overlay { position: absolute; inset: 0; cursor: crosshair; }
+.snip-box { position: absolute; border: 2px solid var(--ink); background: color-mix(in srgb, var(--ink) 8%, transparent); }
+.snip-box--saved { border-style: dashed; border-color: var(--line-strong); }
+.snip-box span { position: absolute; top: 2px; left: 4px; font-size: 12px; background: var(--surface-raised); color: var(--ink); padding: 0 4px; border-radius: var(--radius-sm); }
+.snip-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-1); max-height: 40vh; overflow: auto; }
+.snip-list li { display: flex; align-items: center; justify-content: space-between; }
+.pdf-pane .pdf-page { max-height: 62vh; }

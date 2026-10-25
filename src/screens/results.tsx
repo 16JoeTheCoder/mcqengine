@@ -13,6 +13,7 @@ import { bump } from '../lib/app-state';
 
 const PaperDialog = lazy(() => import('./paper-dialog').then((m) => m.PaperDialog));
 const PdfViewer = lazy(() => import('./pdf-tools').then((m) => m.PdfViewer));
+const SnipImage = lazy(() => import('./pdf-tools').then((m) => m.SnipImage));
 import { Badge, Button, CountUp, fmtDate, Ring, Skeleton } from '../ui/kit';
 import { Icon } from '../ui/icons';
 import { focusMainIfLost } from '../ui/kit';
@@ -269,6 +270,7 @@ export function Results({ id }: { id: string }) {
                   <summary class="small muted" style={{ cursor: 'pointer', minHeight: '32px' }}>Show question</summary>
                   <div class="stack-s" style={{ marginTop: 'var(--space-3)' }}>
                     {qq.image && <QuestionImage imageId={qq.image} n={qq.n} />}
+                    {qq.snip && !qq.image && <SnipImage snip={qq.snip} label={`Question ${qq.n} as printed`} />}
                     {qq.stem && <div style={{ maxWidth: '72ch' }}><Rich text={qq.stem} /></div>}
                     {qq.figure && <FigureView figure={qq.figure} />}
                     <ol style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: '6px' }}>

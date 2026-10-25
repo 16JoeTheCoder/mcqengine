@@ -1,6 +1,6 @@
 # DMC pack format, version 1 (`dmc-pack/1`)
 
-DMC never reads PDFs. You run a question paper through any AI chat with a prompt that DMC generates ("Make a pack with AI"), then import the JSON it returns. This document is the full specification. The machine-readable schema is [`schema/dmc-pack-1.schema.json`](../schema/dmc-pack-1.schema.json); the importer is `src/lib/format/` (lenient reader, validator, merge).
+The primary path: an AI agent (Claude Code with [PACK_BUILDER_GUIDE.md](PACK_BUILDER_GUIDE.md), or any AI chat with the prompt DMC generates under "Make a pack with AI") turns a question paper PDF into typed questions in this format, and DMC validates them. A pack zip may also carry the PDFs themselves, so every typed question can open its page ("View in PDF"), and imports are cross-checked against the PDF text. The lighter path, a bare PDF plus a key, uses the same format with `"bare": true` (section 9). This document is the full specification. The machine-readable schema is [`schema/dmc-pack-1.schema.json`](../schema/dmc-pack-1.schema.json); the importer is `src/lib/format/` (lenient reader, validator, merge).
 
 The design goals, in order: an LLM can produce it reliably, the intake forgives common LLM mistakes, every remaining error points to an exact path with a fix, and silent mis-transcription is caught before it reaches practice.
 
@@ -44,6 +44,9 @@ The design goals, in order: an LLM can produce it reliably, the intake forgives 
 | `papers[].questionCount` | yes | The number of questions printed on the paper. Used to detect dropped questions. |
 | `papers[].timeLimitMinutes` | no | The hard time cap. If absent, the import wizard asks for it; no timer can exceed it. |
 | `papers[].optionCount` | no | 2 to 5. If absent, the most common option count in the paper is used. |
+| `papers[].gradeBoundaries` | no | Minimum raw marks per grade: `{ "A": 31, "B": 27 }`. Results then show the marks to the next grade. |
+| `papers[].pdf` | no | `{ "questionPaper": "pdfs/9702_s23_qp_12.pdf", "markScheme": "pdfs/9702_s23_ms_12.pdf" }`: PDFs inside the zip or folder, stored on the device. |
+| `papers[].bare` | no | `true` for a paper practised from its PDF without typed content (section 9). Needs `pdf.questionPaper`. |
 | `answers[]` | no | Answer keys applied after the questions (see 4). |
 
 ### Question
@@ -51,6 +54,8 @@ The design goals, in order: an LLM can produce it reliably, the intake forgives 
 | Field | Required | Meaning |
 | --- | --- | --- |
 | `n` | yes | Question number as printed, 1 to `questionCount`. |
+| `page` | no | Page of the question paper PDF the question starts on (1-based). "View in PDF" opens it there. |
+| `snip` | no | `{ "page": 3, "x": 0.08, "y": 0.12, "w": 0.84, "h": 0.3 }`: the question's rectangle on the question paper PDF, as fractions of the page. Rendered at runtime. |
 | `stem` | yes, unless `image` | Full question text in DMC markup (see 3). |
 | `options` | one of `options`, `table`, `image` | Exactly `optionCount` entries, in order A, B, C…. Each is a string, or an object `{ "text": "…", "svg": "<svg…>" }`, `{ "file": "images/q5a.png" }` or `{ "figure": { "needed": true, "note": "…" } }` when the options are pictures. |
 | `table` | | Options laid out as a table: `{ "columns": ["force", "energy"], "rows": [["N", "J"], …] }`, with one row per option and one cell per column. Leave out the letter column. |
@@ -142,7 +147,11 @@ When validation fails, **Copy fix prompt** produces a prompt with the exact erro
 
 ## 6. Limits and safety
 
-All content is untrusted. Text reaches the page through text nodes only. Limits: 15 MB of JSON, 100 MB zip, 500 papers and 20 000 questions per import, 200 questions per paper, 5 000 characters per text field, 4 group levels. `__proto__`, `constructor` and `prototype` keys are dropped. Doctype and entity declarations in SVG are refused.
+All content is untrusted, including packs from the school Library. Text reaches the page through text nodes only. Limits: 15 MB of JSON, 100 MB zip, 2 000 entries per zip, 60 MB per decompressed entry and 300 MB in total (counted while inflating, so a zip bomb or a header that lies about sizes stops at the limit), 60 MB per PDF, 5 MB per image, 500 papers and 20 000 questions per import, 200 questions per paper, 5 000 characters per text field, 4 group levels. Zip entries with `..`, absolute paths or drive letters are refused. `__proto__`, `constructor` and `prototype` keys are dropped. Doctype and entity declarations in SVG are refused. PDFs must start with a PDF signature and open with scripting, XFA and WebAssembly off.
+
+**Transcription cross-check.** When a zip carries the question paper PDF, every number in each typed question (stem, options, table) is looked up in the PDF text. A question where two or more numbers, and more than half, are missing is listed in the review step to compare with the paper before import. Scanned PDFs (no text) skip the check.
+
+**Command line.** The same validator runs outside the app. From the repository root, in any terminal: `node tools/validate-pack.mjs <pack.zip | folder | pack.json>` (add `--json` for machine output). Exit code 0 means the pack would import.
 
 ## 7. Ids, hashes and re-import
 
@@ -155,11 +164,24 @@ All content is untrusted. Text reaches the page through text nodes only. Limits:
 ```
 my-paper.zip
 ├── pack.json          (or any single .json file)
-└── images/
-    ├── q5.png
-    └── q12.png
+├── images/
+│   ├── 9702-s23-12/q05.png
+│   └── 9702-s23-12/q12.png
+└── pdfs/              (optional)
+    ├── 9702_s23_qp_12.pdf
+    └── 9702_s23_ms_12.pdf
 ```
 
 A single top-level folder inside the zip is ignored, so `my-paper/pack.json` works too. `__MACOSX/` and dotfiles are skipped. DMC's own **Export pack** writes exactly this layout, so exports round-trip through the same importer.
 
 Backups (`dmc-backup/1`) are a separate format: a zip with `dmc-backup.json` (manifest with a SHA-256 checksum) and `data.json`, or a single JSON file for the progress-only tier. Drop either into the same import box.
+
+## 9. Bare PDF papers (the lighter path)
+
+A paper can be practised straight from its PDF: the question screen shows the page beside letter buttons. Choose **PDF papers** in Import (or drop PDFs on the page): file names like `9702_s23_qp_12.pdf` fill in the title, group, id and time cap, and a mark scheme named like the paper (`9702_s23_ms_12.pdf`) is read for the key, which you confirm in a letter grid. Without a key the paper runs in Exam mode and is graded when a key arrives.
+
+In the format this is a paper with `"bare": true`, `pdf.questionPaper`, and questions that may be just `{ "n": 1, "answer": "B" }` (missing numbers are filled in up to `questionCount`). Bare questions are not individually viewable until snipped: drag a rectangle on the page (**Snip questions** in the paper's start dialog) and assign the question number. Snipped questions enter drills and Daily 10; a paper becomes Random-eligible once every question is snipped. Snips export as `snip` rectangles, never as images, so nothing is duplicated.
+
+## 10. Pack for friends
+
+**Export pack** writes this format: papers, keys, typed content, PDFs, snips and boundaries, with your fixes applied. It never includes sessions, stats or settings. Packs downloaded from the school Library cannot be exported this way; they are shared through the Library only.

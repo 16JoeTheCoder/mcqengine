@@ -502,10 +502,14 @@ function DataSection({ data }: { data: PackData }) {
   }, [fix, pack.id]);
 
   const exportPack = async () => {
-    const [papers, ovs] = await Promise.all([store.getPapers(pack.id), store.getOverrides(pack.id)]);
-    const { blob, name } = await exportPackZip(pack, papers, ovs);
-    downloadBlob(blob, name);
-    toast(`Exported ${name}. Anyone can import it into DMC.`);
+    try {
+      const [papers, ovs, snips] = await Promise.all([store.getPapers(pack.id), store.getOverrides(pack.id), store.getSnips(pack.id)]);
+      const { blob, name } = await exportPackZip(pack, papers, ovs, snips);
+      downloadBlob(blob, name);
+      toast(`Exported ${name}. Anyone can import it into DMC.`);
+    } catch (e) {
+      toast((e as Error).message || 'Could not export the pack.');
+    }
   };
   const del = async () => {
     if (await sessionLockHeld()) {
@@ -529,9 +533,15 @@ function DataSection({ data }: { data: PackData }) {
       </div>
       <div class="grid-even">
         <div class="jy-panel stack-s">
-          <h3>Share this pack</h3>
-          <p class="small muted">A zip in the documented pack format, with your fixes applied. Progress is not included.</p>
-          <div><Button onClick={exportPack}><Icon name="download" size={18} /> Export pack</Button></div>
+          <h3>Pack for friends</h3>
+          {pack.origin?.kind === 'library' ? (
+            <p class="small muted">This pack came from the school Library, so it is shared through the Library only. Friends at school can download it there.</p>
+          ) : (
+            <>
+              <p class="small muted">A zip with papers, keys, typed questions, PDFs and snips, with your fixes applied. Never your sessions or progress.</p>
+              <div><Button onClick={exportPack}><Icon name="download" size={18} /> Export pack</Button></div>
+            </>
+          )}
         </div>
         <div class="jy-panel stack-s">
           <h3>Reported questions</h3>

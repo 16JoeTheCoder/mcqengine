@@ -1,4 +1,4 @@
-import type { Figure, OptionContent, Paper, PaperMeta, Question, QuestionOverride } from '../types';
+import type { Figure, OptionContent, Paper, PaperMeta, PdfRecord, Question, QuestionOverride, Snip } from '../types';
 import { LETTERS } from '../types';
 import type { Issue, NDoc, NPaper, NQuestion, RawFigure } from './validate';
 
@@ -103,6 +103,9 @@ export interface MergeResult {
   plan: PaperPlan[];
   answersApplied: number;
   conflicts: Issue[];
+  /** PDFs and snips that arrive with a zip (set by the importer). */
+  pdfs?: PdfRecord[];
+  snips?: Snip[];
 }
 
 export const DEFAULT_SEC_PER_Q = 90;

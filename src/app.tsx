@@ -45,7 +45,7 @@ export function App() {
   const update = useStore(updateReady);
   const [ready, setReady] = useState(false);
   const [prompt, setPrompt] = useState<{ pack?: Pack } | null>(null);
-  const [importing, setImporting] = useState<{ pack?: Pack; source?: ImportSource | null } | null>(null);
+  const [importing, setImporting] = useState<{ pack?: Pack; source?: ImportSource | null; pdfs?: File[] } | null>(null);
   const [about, setAbout] = useState(false);
   const [resume, setResume] = useState<SessionSummary[]>([]);
   const [resumeChecked, setResumeChecked] = useState(false);
@@ -127,9 +127,10 @@ export function App() {
       const files = [...(e.dataTransfer?.files ?? [])];
       if (!files.length) return;
       try {
-        const source = await readFiles(files);
         const r = routeStore.get();
         const pack = r.name === 'pack' ? await store.getPack(r.id) : undefined;
+        if (files.every((f) => /\.pdf$/i.test(f.name) || f.type === 'application/pdf')) return setImporting({ ...(pack ? { pack } : {}), pdfs: files });
+        const source = await readFiles(files);
         setImporting({ ...(pack ? { pack } : {}), source });
       } catch (err) {
         toast((err as Error).message || 'Could not read the dropped files.');
@@ -246,7 +247,7 @@ export function App() {
           }}
         />
       )}
-      {importing && <ImportWizard pack={importing.pack} initial={importing.source ?? null} onClose={() => setImporting(null)} />}
+      {importing && <ImportWizard pack={importing.pack} initial={importing.source ?? null} {...(importing.pdfs ? { pdfs: importing.pdfs } : {})} onClose={() => setImporting(null)} />}
       {about && <AboutDialog onClose={() => setAbout(false)} />}
       {top && !inSession && (
         <Modal title="Resume your session?" onClose={() => setResume([])} describedBy="resume-desc">
@@ -286,7 +287,7 @@ export function App() {
       )}
       {dragging && (
         <div class="dropzone" aria-hidden="true">
-          <span>Drop a pack, zip, folder or backup to import</span>
+          <span>Drop a pack, zip, folder, PDFs or backup to import</span>
         </div>
       )}
     </>

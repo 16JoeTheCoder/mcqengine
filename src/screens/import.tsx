@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import * as store from '../lib/data/db';
 import { readFiles, type ImportSource } from '../lib/data/files';
+import { PdfImport } from './pdf-import';
+import { crossCheck, type CrossCheckIssue } from '../lib/format/crosscheck';
 import { commitImport, parseImport, planImport, type ParseOutcome } from '../lib/data/importer';
 import { readProgressJson } from '../lib/data/backup';
 import { buildFixPrompt } from '../lib/format/prompt';
@@ -29,11 +31,16 @@ function numField(v: string, max: number): number | undefined {
 export interface ImportProps {
   pack?: Pack;
   initial?: ImportSource | null;
+  /** Question paper and mark scheme PDFs: opens the bare PDF path. */
+  pdfs?: File[];
   onClose: () => void;
 }
 
-export function ImportWizard({ pack, initial, onClose }: ImportProps) {
+const onlyPdfs = (files: File[]) => files.length > 0 && files.every((f) => /\.pdf$/i.test(f.name) || f.type === 'application/pdf');
+
+export function ImportWizard({ pack, initial, pdfs, onClose }: ImportProps) {
   const [source, setSource] = useState<ImportSource | null>(initial ?? null);
+  const [pdfFiles, setPdfFiles] = useState<File[] | null>(pdfs ?? null);
   // The pasted text survives closing the dialog (Esc, backdrop, Cancel) until an import succeeds.
   const [text, setTextState] = useState(initial?.text ?? draft.text);
   const setText = (t: string) => {
@@ -42,9 +49,10 @@ export function ImportWizard({ pack, initial, onClose }: ImportProps) {
   };
   const [outcome, setOutcome] = useState<ParseOutcome | null>(null);
   const [step, setStep] = useState<'input' | 'review'>('input');
-  const [restore, setRestore] = useState<{ manifest: string; data: string; images: Map<string, Blob> } | null>(initial?.backup ?? null);
+  const [restore, setRestore] = useState<{ manifest: string; data: string; images: Map<string, Blob>; pdfs?: Map<string, Blob> } | null>(initial?.backup ?? null);
   const fileRef = useRef<HTMLInputElement>(null);
   const dirRef = useRef<HTMLInputElement>(null);
+  const pdfRef = useRef<HTMLInputElement>(null);
 
   // Live validation, debounced.
   useEffect(() => {
@@ -55,12 +63,13 @@ export function ImportWizard({ pack, initial, onClose }: ImportProps) {
         setRestore({ ...progress, images: new Map() });
         return;
       }
-      setOutcome(parseImport(text, new Set(source?.files.keys() ?? [])));
+      setOutcome(parseImport(text, new Set([...(source?.files.keys() ?? []), ...(source?.pdfs.keys() ?? [])])));
     }, 250);
     return () => clearTimeout(t);
   }, [text, source]);
 
   const load = async (files: File[]) => {
+    if (onlyPdfs(files)) return setPdfFiles(files);
     try {
       const src = await readFiles(files);
       if (src.backup) return setRestore(src.backup);
@@ -77,6 +86,7 @@ export function ImportWizard({ pack, initial, onClose }: ImportProps) {
   };
 
   if (restore) return <RestoreDialog source={restore} onClose={onClose} />;
+  if (pdfFiles) return <PdfImport files={pdfFiles} {...(pack ? { pack } : {})} onClose={onClose} />;
 
   const errors = outcome?.ok ? outcome.result.errors : [];
   const canReview = outcome?.ok && !errors.length;
@@ -88,11 +98,15 @@ export function ImportWizard({ pack, initial, onClose }: ImportProps) {
   return (
     <Modal title={pack ? `Import into ${pack.title}` : 'Import a pack'} size="wide" onClose={onClose}>
       <div class="stack">
-        <p class="small muted">Paste the AI's reply, or choose a .json file, a .zip (JSON plus an images folder) or a folder. You can also drop files anywhere on the page.</p>
+        <p class="small muted">Paste the AI's reply, or choose a .json file, a .zip (JSON plus images and PDFs) or a folder. Or choose question paper PDFs with their mark schemes to practise straight from the PDF. You can also drop files anywhere on the page.</p>
         <div class="row">
           <Button onClick={() => fileRef.current?.click()}>
             <Icon name="file" size={18} /> Choose file
           </Button>
+          <Button onClick={() => pdfRef.current?.click()}>
+            <Icon name="upload" size={18} /> PDF papers
+          </Button>
+          <input ref={pdfRef} type="file" accept=".pdf,application/pdf" multiple hidden onChange={(e) => load([...((e.target as HTMLInputElement).files ?? [])])} />
           <Button onClick={() => dirRef.current?.click()}>
             <Icon name="folder" size={18} /> Choose folder
           </Button>
@@ -188,6 +202,31 @@ function Review({ pack, doc, warnings, source, onBack, onClose }: { pack?: Pack;
   const [plan, setPlan] = useState<{ merge: MergeResult; images: ImageRecord[]; imageMap: Map<string, string> } | null>(null);
   const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [checks, setChecks] = useState<{ title: string; issues: CrossCheckIssue[] }[] | null>(null);
+
+  // Cross-check typed questions against the question paper PDF, when the zip carries one.
+  useEffect(() => {
+    const withPdf = doc.papers.filter((p) => !p.bare && p.pdf?.questionPaper && source?.pdfs.has(p.pdf.questionPaper));
+    if (!withPdf.length) return;
+    let live = true;
+    void (async () => {
+      const { openPdf, pdfText } = await import('../lib/pdf/pdf');
+      const out: { title: string; issues: CrossCheckIssue[] }[] = [];
+      for (const p of withPdf) {
+        try {
+          const pdf = await openPdf(source!.pdfs.get(p.pdf!.questionPaper!)!);
+          out.push({ title: p.title, issues: crossCheck(p, await pdfText(pdf)) });
+          void pdf.loadingTask.destroy();
+        } catch {
+          /* unreadable PDF: nothing to compare */
+        }
+      }
+      if (live) setChecks(out);
+    })();
+    return () => {
+      live = false;
+    };
+  }, [doc, source]);
 
   useEffect(() => {
     if (!pack) void store.getPacks().then((p) => setPacks(p.sort((a, b) => b.updatedAt - a.updatedAt)));
@@ -287,6 +326,23 @@ function Review({ pack, doc, warnings, source, onBack, onClose }: { pack?: Pack;
                     <input class="input" value={newSubject} onInput={(e) => setNewSubject((e.target as HTMLInputElement).value)} />
                   </Field>
                 </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {checks && (
+          <div class={`notice ${checks.some((c) => c.issues.length) ? 'notice--warn' : 'notice--ok'}`}>
+            <div class="stack-s small">
+              <Badge status={checks.some((c) => c.issues.length) ? 'warn' : 'ok'}>{checks.some((c) => c.issues.length) ? 'Check against the PDF' : 'Numbers match the PDF'}</Badge>
+              {checks.every((c) => !c.issues.length) ? (
+                <span>Every number in the typed questions appears in the question paper.</span>
+              ) : (
+                <ul style={{ margin: 0, paddingLeft: '18px' }}>
+                  {checks.flatMap((c) => c.issues.map((i) => (
+                    <li key={`${c.title}-${i.n}`}>{c.title} Q{i.n}: {i.missing.slice(0, 4).join(', ')} not found in the PDF ({i.missing.length} of {i.checked} numbers). Compare it with the paper before importing.</li>
+                  )))}
+                </ul>
               )}
             </div>
           </div>

@@ -36,12 +36,15 @@ function withRuntime(q: Question, p: Paper, snip?: Snip): Question {
 /** Random pool: keyed questions from every paper. */
 export function poolOf(papers: Paper[], stats: Map<string, { timesSeen: number; lastResult?: string; lastUnsure?: boolean }>): PoolItem[] {
   const out: PoolItem[] = [];
-  for (const p of papers)
+  for (const p of papers) {
+    // A bare PDF paper joins Random only once every question is snipped.
+    if (p.bare && !p.questions.every(isViewable)) continue;
     for (const q of p.questions)
-      if (q.answer !== null) {
+      if (q.answer !== null && isViewable(q)) {
         const s = stats.get(q.id);
         out.push({ qid: q.id, timesSeen: s?.timesSeen ?? 0, lastWrong: s?.lastResult === 'wrong', lastUnsure: !!s?.lastUnsure });
       }
+  }
   return out;
 }
 

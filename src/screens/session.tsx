@@ -9,6 +9,12 @@ import { Badge, Button, Modal } from '../ui/kit';
 import { Icon } from '../ui/icons';
 import { FigureView, OptionBody, QuestionImage, Rich } from '../ui/content';
 import { FixQuestion } from './fix';
+import { lazy } from '../ui/lazy';
+import { isViewable } from '../lib/engine/session';
+
+const SnipImage = lazy(() => import('./pdf-tools').then((m) => m.SnipImage), <div class="skel" style={{ height: '200px' }} />);
+const PdfPane = lazy(() => import('./pdf-tools').then((m) => m.PdfPane), <div class="skel" style={{ height: '50vh' }} />);
+const PdfViewer = lazy(() => import('./pdf-tools').then((m) => m.PdfViewer));
 
 const PRACTICE_STAY_CAP = 5 * 60_000;
 
@@ -123,6 +129,11 @@ function Runner({ initial }: { initial: Loaded }) {
   const [busy, setBusy] = useState(false);
   const [announce, setAnnounce] = useState('');
   const [qAnnounce, setQAnnounce] = useState('');
+  const [pdfPage, setPdfPage] = useState(q?.page ?? 1);
+  const [viewPdf, setViewPdf] = useState(false);
+  useEffect(() => {
+    if (q?.page) setPdfPage(q.page);
+  }, [q?.id]);
 
   // ----- timing -----
   const countdown = useRef<Countdown | null>(null);
@@ -489,6 +500,11 @@ function Runner({ initial }: { initial: Loaded }) {
               {a.unsure && <Badge status="warn">Unsure</Badge>}
               {a.locked && <Badge status="neutral">Locked</Badge>}
               <span class="spacer" />
+              {q?.pdfId && isViewable(q) && (
+                <Button variant="ghost" size="sm" onClick={() => setViewPdf(true)}>
+                  <Icon name="file" size={16} /> View in PDF
+                </Button>
+              )}
               <Button variant="ghost" size="sm" onClick={() => setFixOpen(true)}>
                 <Icon name="pencil" size={16} /> Fix this question
               </Button>
@@ -498,6 +514,8 @@ function Runner({ initial }: { initial: Loaded }) {
             ) : (
               <>
                 {q.image && <QuestionImage imageId={q.image} n={q.n} />}
+                {q.snip && !q.image && <SnipImage snip={q.snip} label={`Question ${q.n} as printed`} />}
+                {!isViewable(q) && q.pdfId && <PdfPane pdfId={q.pdfId} page={pdfPage} onPage={setPdfPage} />}
                 {q.stem && (
                   <div class="qtext">
                     <Rich text={q.stem} />
@@ -516,7 +534,7 @@ function Runner({ initial }: { initial: Loaded }) {
                   </div>
                 )}
                 <div
-                  class={q.image && !q.options && !q.table ? 'opts-letters' : `options${shortOpts ? ' cols-2' : ''}`}
+                  class={!q.options && !q.table ? 'opts-letters' : `options${shortOpts ? ' cols-2' : ''}`}
                   role="radiogroup"
                   aria-labelledby="qhead"
                   onKeyDown={(e) => {
@@ -613,6 +631,7 @@ function Runner({ initial }: { initial: Loaded }) {
         <span class="small muted">{flaggedCount ? `${flaggedCount} flagged` : ''}</span>
       </footer>
 
+      {viewPdf && q?.pdfId && <PdfViewer pdfId={q.snip?.pdfId ?? q.pdfId} page={q.snip?.page ?? q.page ?? 1} title={`Question ${q.n} in the paper`} onClose={() => setViewPdf(false)} />}
       {gridOpen && (
         <Modal title="Questions" onClose={() => setGridOpen(false)}>
           {grid}

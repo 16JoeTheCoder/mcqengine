@@ -4,6 +4,9 @@ import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 
 const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as { version: string };
+// The production Content-Security-Policy from netlify.toml, also served by `vite preview`, so the
+// end-to-end tests run under the same policy as the deployed site.
+const csp = /Content-Security-Policy = "([^"]+)"/.exec(readFileSync(new URL('./netlify.toml', import.meta.url), 'utf8'))?.[1];
 
 /**
  * Generates sw.js after the bundle is written: a precache list of every emitted file and a
@@ -39,6 +42,7 @@ export default defineConfig({
   esbuild: { jsx: 'automatic', jsxImportSource: 'preact' },
   build: { target: 'es2022', sourcemap: false, assetsInlineLimit: 0, chunkSizeWarningLimit: 500 },
   plugins: [serviceWorker()],
+  preview: { headers: csp ? { 'Content-Security-Policy': csp } : {} },
   test: {
     include: ['tests/unit/**/*.test.ts'],
     environment: 'happy-dom',
