@@ -282,3 +282,48 @@ describe('prompts', () => {
     expect(Array.isArray(lenientParse(t).value)).toBe(true);
   });
 });
+
+describe('several papers and ZIP diagrams', () => {
+  const base = { subject: 'Physics', paperTitle: '', group: [], optionCount: 4, answerKey: 'attached' as const, explanations: false };
+  const exampleOf = (p: string) => /```json\n([\s\S]+?)```/.exec(p)![1]!;
+  it('multi-paper prompt pairs mark schemes by code and splits replies per paper', () => {
+    const p = buildPrompt({ ...base, multi: true, diagrams: 'draw' });
+    for (const s of ['EVERY attached', 'Pair each question paper with its mark scheme', '9702-s25-12', 'ONE paper per code block', 'CONTINUE', 'Never move a diagram'])
+      expect(p).toContain(s);
+    expect(ok(exampleOf(p)).errors).toEqual([]);
+  });
+  it('ZIP prompt requires code, strict file names and a per-image check', () => {
+    const p = buildPrompt({ ...base, multi: true, diagrams: 'zip', zipCrop: 'question' });
+    for (const s of ['run code', 'PyMuPDF', 'images/<paper id>/q<NN>.png', 'REJECTS', 'dmc-pack.zip', 'stack both parts'])
+      expect(p).toContain(s);
+    const files = ['images/9702-s25-12/q01.png'];
+    const r = ok(exampleOf(p), files);
+    expect(r.errors).toEqual([]);
+    const d = buildPrompt({ ...base, diagrams: 'zip', zipCrop: 'diagram', paperTitle: 'P' });
+    expect(d).toContain('crop ONLY that diagram');
+    expect(ok(exampleOf(d), ['images/example-paper-1/q01.png']).errors).toEqual([]);
+  });
+  const zipDoc = (file: string, n = 7, paper = 'p1') => ({
+    format: 'dmc-pack/1',
+    papers: [{ id: paper, title: 'T', questionCount: 10, timeLimitMinutes: 20, questions: [{ n, stem: 's', figure: { file }, options: ['a', 'b', 'c', 'd'], answer: 'A' }] }],
+  });
+  it('rejects a diagram named for another question or paper', () => {
+    const wrongQ = validateDoc(zipDoc('images/p1/q08.png'), new Set(['images/p1/q08.png']));
+    expect(paths(wrongQ).join()).toMatch(/named for paper "p1" question 8, but it is attached to paper "p1" question 7/);
+    const wrongP = validateDoc(zipDoc('images/p2/q07.png'), new Set(['images/p2/q07.png']));
+    expect(paths(wrongP).join()).toMatch(/probably on the wrong question/);
+    expect(validateDoc(zipDoc('images/p1/q07.png'), new Set(['images/p1/q07.png'])).errors).toEqual([]);
+    expect(validateDoc(zipDoc('images/p1/q07-B.png'), new Set(['images/p1/q07-B.png'])).errors).toEqual([]);
+  });
+  it('flags images in the zip that no question uses (needs confirmation)', () => {
+    const r = validateDoc(zipDoc('images/p1/q07.png'), new Set(['images/p1/q07.png', 'images/p1/q09.png']));
+    expect(r.warnings.find((w) => w.confirm && /used by no question: images\/p1\/q09.png/.test(w.message))).toBeTruthy();
+  });
+  it('the source field is accepted and multiple JSON blocks combine into one import', () => {
+    const one = (id: string) => JSON.stringify({ format: 'dmc-pack/1', papers: [{ ...syntheticPaper(id, 2), source: { questionPaper: `${id}.pdf` } }] });
+    const r = ok('```json\n' + one('p1') + '\n```\nCONTINUE\n```json\n' + one('p2') + '\n```');
+    expect(r.errors).toEqual([]);
+    expect(r.doc.papers.map((p) => p.id)).toEqual(['p1', 'p2']);
+  });
+});
+

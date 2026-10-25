@@ -39,6 +39,7 @@ The design goals, in order: an LLM can produce it reliably, the intake forgives 
 | `papers[]` | `papers` or `answers` | One object per paper. One AI response normally holds exactly one paper. |
 | `papers[].id` | yes | Stable id: lowercase letters, digits, hyphens, at most 64 characters. Re-importing the same id merges instead of duplicating. |
 | `papers[].title` | yes | Display title. |
+| `papers[].source` | no | `{ "questionPaper": "<file>", "markScheme": "<file>" }`: the files it was transcribed from, for traceability. |
 | `papers[].group` | no | Path for the papers browser, most general first, at most 4 levels: `["2025", "Oct/Nov"]`. |
 | `papers[].questionCount` | yes | The number of questions printed on the paper. Used to detect dropped questions. |
 | `papers[].timeLimitMinutes` | no | The hard time cap. If absent, the import wizard asks for it; no timer can exceed it. |
@@ -67,6 +68,14 @@ The design goals, in order: an LLM can produce it reliably, the intake forgives 
 * **Placeholder**: `{ "needed": true, "note": "…" }`. The question shows a "Needs figure" badge with a one-click attach (file picker or paste a screenshot). A referenced file that is missing from the import becomes a placeholder automatically.
 
 Figures and screenshots always sit on a light paper panel and are never colour-inverted.
+
+### Diagram files must name their question
+
+Image files follow one naming rule: `images/<paper id>/q<NN>.png` (two-digit question number), with `-A`, `-B`… for option pictures (`images/9702-s25-12/q07-B.png`). The importer enforces it:
+
+* A file whose name gives a different paper id or question number than the question that uses it is an **error** ("named for paper p1 question 8, but attached to question 7"). A diagram on the wrong question can never import silently.
+* An image in the zip that no question uses needs explicit confirmation, because that usually means a diagram was attached to the wrong question or dropped.
+* Files with other names are accepted without the name check.
 
 ## 3. Markup
 
@@ -97,6 +106,13 @@ Why not a maths library: exam MCQs need superscripts, subscripts, simple fractio
 
   `key` has exactly `questionCount` letters in question order; `?` marks an unknown answer. The importer also accepts `"1A 2C 3D"`, `"A, C, D"`, lowercase letters and `{ "1": "A", "2": "C" }`. A key fills `null` answers; a key letter that contradicts an existing answer is a conflict. Keys are remembered, so chunks that arrive after the key are keyed on arrival.
 * A paper can be started only when all `questionCount` questions are present and keyed. The UI says which is missing.
+
+## 4a. Several papers in one go
+
+The prompt dialog's "Several papers" mode asks the AI to transcribe every attached paper. It identifies each paper by the code on its cover, not by file order, and builds stable ids from it (`9702-s25-12`: subject code, series letter m/s/w with a two-digit year, paper number). It pairs each mark scheme with its question paper by that same code.
+
+* **Plain JSON:** one paper per code block, and the AI writes `CONTINUE` and waits if it runs out of space. Paste all the replies into Import at once; the code blocks are combined.
+* **ZIP** (needs an AI that can run code, such as ChatGPT with data analysis or Claude with code execution): the AI locates question boundaries in the PDF text, crops either the whole question (recommended) or just the diagram, and names each crop by the rule above. It checks every crop against its question, writes one file per paper so nothing is cut off, and returns `dmc-pack.zip` (`pack.json` plus `images/`).
 
 ## 5. Tolerant intake, strict validation
 

@@ -138,3 +138,11 @@ One line each: what was decided and why. Grouped by area.
 102. Kept after UX round 3: the inverse-filled Next button (the design review asked for it, so there is still one orange point; the grid's answered cells share the fill, but position and label tell them apart). Timer live regions sit in the header and may be hidden while a dialog is open; the clock is visible in the dialog's backdrop and the session never ends while End session is open, except by auto-submit at time zero.
 103. Design review round 3 caught a regression that hid every figure (a fit-content well with a percentage image width). Figures now use a fixed well width with a full-width image, and an end-to-end test asserts figures have a real size.
 104. Kept after design round 3: no tap-to-zoom on image-only questions (the well is trimmed on phones instead), and the gear stays in the top bar beside the signature at 390 px. Pinch zoom works for scans.
+
+## Several papers and ZIP diagrams (user request after delivery)
+
+105. The prompt dialog supports several papers per prompt. Papers are identified and ids built from the cover code (not file order), and mark schemes are paired by code.
+106. Plain-JSON multi-paper output is one paper per code block with a CONTINUE protocol. About 400 questions in one reply would exceed every chat's output limit and invite silently dropped questions; the importer already combines several blocks.
+107. ZIP mode is offered, labelled as needing an AI that can run code. Chats without code execution cannot produce real crops, so the dialog says so rather than letting them fake it.
+108. ZIP crop default is the whole question, cut between question numbers found in the PDF text. That is the crop least likely to be wrong; "diagram only" is offered for nicer typed text.
+109. Diagram mapping is enforced by the importer, not trusted to the prompt: files must be named `images/<paper id>/q<NN>.png`; a name that disagrees with its question is an error, and unused images need confirmation.

@@ -220,6 +220,18 @@ export function validateDoc(input: unknown, files: ReadonlySet<string> = new Set
   const err = (path: string, message: string) => errors.push({ path, message });
   const warn = (path: string, message: string, confirm = false) => warnings.push({ path, message, confirm });
   const doc: NDoc = { papers: [], answers: [] };
+  const referenced = new Set<string>();
+  /**
+   * Strict diagram mapping: a file named images/<paper id>/q<NN>[-X].png must belong to that
+   * paper and question number. A mismatch is an error, because it means a diagram is attached
+   * to the wrong question.
+   */
+  const checkName = (file: string, paperId: string, n: number, path: string) => {
+    const m = /^images\/([^/]+)\/q(\d+)(?:-[A-E])?\.[a-z]+$/i.exec(file);
+    if (!m) return;
+    if (slugify(m[1] as string) !== paperId || Number(m[2]) !== n)
+      err(path, `Image "${file}" is named for paper "${m[1]}" question ${Number(m[2])}, but it is attached to paper "${paperId}" question ${n}. The diagram is probably on the wrong question.`);
+  };
 
   let root: unknown = input;
   if (Array.isArray(root)) {
@@ -370,6 +382,8 @@ export function validateDoc(input: unknown, files: ReadonlySet<string> = new Set
         if (q.image !== undefined) {
           if (typeof q.image === 'string' && q.image.trim()) {
             out.image = q.image.trim();
+            referenced.add(out.image);
+            checkName(out.image, id, n, `${qp}.image`);
             if (!files.has(out.image)) err(`${qp}.image`, `Image "${out.image}" was not found. Import a zip or folder that contains it.`);
           } else err(`${qp}.image`, 'Expected an image file path');
         }
@@ -398,6 +412,8 @@ export function validateDoc(input: unknown, files: ReadonlySet<string> = new Set
           }
           const file = typeof f.file === 'string' ? f.file : typeof f.image === 'string' ? f.image : undefined;
           if (file) {
+            referenced.add(file.trim());
+            checkName(file.trim(), id, n as number, path);
             if (!files.has(file.trim())) {
               warn(path, `Image "${file}" was not found; the question is marked "needs figure".`);
               return { kind: 'needed', note: `Missing image ${file}` };
@@ -520,6 +536,10 @@ export function validateDoc(input: unknown, files: ReadonlySet<string> = new Set
         doc.answers.push({ paper: pid, key, path: ap });
       });
   }
+  // Images in the zip that no question uses usually mean a diagram went to the wrong question.
+  const unused = [...files].filter((f) => /\.(png|jpe?g|webp|gif|svg)$/i.test(f) && !referenced.has(f));
+  if (unused.length)
+    warn('images', `${unused.length} image${unused.length === 1 ? ' is' : 's are'} in the zip but used by no question: ${unused.slice(0, 8).join(', ')}${unused.length > 8 ? '…' : ''}. Check that every diagram is attached to the right question.`, true);
   if (!doc.papers.length && !doc.answers.length && !errors.length) err('papers', 'Nothing to import: no papers and no answers found');
   return { doc, errors, warnings, notes: [...notes] };
 }
