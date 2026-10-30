@@ -99,6 +99,7 @@ export function buildPrompt(o: PromptOptions): string {
       '- Paper "id": lowercase letters, digits and hyphens built from the code: <subject code>-<series letter><two-digit year>-<paper number>. Series letters: m = Feb/March, s = May/June, w = Oct/Nov (for other boards use a similar short, stable code). Example: 9702 May/June 2025 paper 12 → "9702-s25-12". The same paper must always get the same id.',
       '- "title": like "May/June 2025 Paper 12". "group": ["<year>", "<series>"], e.g. ["2025", "May/June"].',
       '- "questionCount" and "timeLimitMinutes": read them from that paper\'s front cover.',
+      '- "gradeBoundaries": only if a grade threshold table for that paper is attached: minimum raw marks per grade, e.g. { "A": 31, "B": 27 }. Never guess boundaries.',
       '- "source": the file names you used, { "questionPaper": "<file>"' + (keyed ? ', "markScheme": "<file>"' : '') + ' }, so the student can trace every paper.',
     );
   } else {
@@ -148,6 +149,7 @@ export function buildPrompt(o: PromptOptions): string {
     '',
     'Each question object:',
     `- "n": the question number as printed (1, 2, 3...).`,
+    `- "page": the page of the question paper PDF the question starts on (1 = the first page of the file, the cover). The app uses it to open the PDF at that question.`,
     cropWhole
       ? `- For a question WITH a diagram, graph or picture: "image": the path of its cropped picture (see Diagrams), and no "stem" or "options". For every other question: "stem" and "options" as below.`
       : `- "stem": the full question text, copied exactly, including every sentence, value and unit.`,

@@ -1,4 +1,4 @@
-import { LETTERS } from '../types';
+import { LETTERS, type GradeBoundary } from '../types';
 import { sanitizeSvg } from './svg';
 
 export const FORMAT_ID = 'dmc-pack/1';
@@ -20,8 +20,19 @@ export interface NOption {
   figure?: RawFigure;
 }
 
+export interface NRect {
+  page: number;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 export interface NQuestion {
   n: number;
+  page?: number;
+  /** Bare papers: the question's rectangle on the question paper PDF. */
+  snip?: NRect;
   stem?: string;
   image?: string; // file path of a whole-question screenshot
   figure?: RawFigure;
@@ -41,6 +52,11 @@ export interface NPaper {
   timeLimitMin: number | null;
   optionCount: number;
   questions: NQuestion[];
+  boundaries?: GradeBoundary[];
+  /** PDF paths inside the zip or folder. */
+  pdf?: { questionPaper?: string; markScheme?: string };
+  /** No typed content: practised from the PDF, snipped question by question. */
+  bare?: boolean;
 }
 
 export interface NDoc {
@@ -119,9 +135,31 @@ const KEY_ALIASES: Record<string, string> = {
   table: 'table', columns: 'columns', rows: 'rows', header: 'columns', headers: 'columns',
   answer: 'answer', correct: 'answer', correctanswer: 'answer', correct_answer: 'answer',
   figure: 'figure', diagram: 'figure', image: 'image', svg: 'svg', alt: 'alt', needed: 'needed', note: 'note',
-  file: 'file', topic: 'topic', explanation: 'explanation', uncertain: 'uncertain', key: 'key',
+  file: 'file', page: 'page', pg: 'page', snip: 'snip', bare: 'bare', pdf: 'pdf', pdfs: 'pdf', topic: 'topic',
+  questionpaper: 'questionPaper', question_paper: 'questionPaper', qp: 'questionPaper',
+  markscheme: 'markScheme', mark_scheme: 'markScheme', ms: 'markScheme', explanation: 'explanation', uncertain: 'uncertain', key: 'key',
   paperid: 'paper', paper_id: 'paper',
+  gradeboundaries: 'gradeBoundaries', grade_boundaries: 'gradeBoundaries', boundaries: 'gradeBoundaries',
 };
+
+/** Grade boundaries as { "A": 31, "B": 27 } or [{ "grade": "A", "min": 31 }], in raw marks. */
+export function parseBoundaries(v: unknown, max: number): GradeBoundary[] | string {
+  const list: [string, unknown][] = Array.isArray(v)
+    ? v.map((x) => (isObj(x) ? [String(x.grade ?? ''), x.min ?? x.marks] : ['', null]))
+    : isObj(v)
+      ? Object.entries(v)
+      : [];
+  if (!list.length) return 'Expected grade boundaries like { "A": 31, "B": 27 }';
+  const out: GradeBoundary[] = [];
+  for (const [g, m] of list) {
+    const grade = g.trim().slice(0, 8);
+    const min = Number(m);
+    if (!grade || !Number.isInteger(min) || min < 0 || min > max) return `Boundary "${g}" needs whole marks from 0 to ${max}`;
+    out.push({ grade, min });
+  }
+  out.sort((a, b) => b.min - a.min);
+  return out;
+}
 
 type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -297,7 +335,8 @@ export function validateDoc(input: unknown, files: ReadonlySet<string> = new Set
       if (group.length > LIMITS.groupDepth) err(`${pp}.group`, `Group path is deeper than ${LIMITS.groupDepth} levels`);
       group = group.map((g) => g.slice(0, 60));
 
-      const qsRaw = p.questions;
+      const bare = p.bare === true;
+      const qsRaw = p.questions === undefined && bare ? [] : p.questions;
       if (!Array.isArray(qsRaw)) {
         err(`${pp}.questions`, 'Expected an array of questions');
         return;
@@ -341,7 +380,27 @@ export function validateDoc(input: unknown, files: ReadonlySet<string> = new Set
         optionCount = [...freq.entries()].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0]?.[0] ?? 4;
       }
 
-      const paper: NPaper = { id, title, group, questionCount, timeLimitMin, optionCount, questions: [] };
+      const paper: NPaper = { id, title, group, questionCount, timeLimitMin, optionCount, questions: [], ...(bare ? { bare } : {}) };
+      if (p.pdf !== undefined) {
+        const pd = isObj(p.pdf) ? canon(p.pdf, notes, 'other') : null;
+        if (!pd) err(`${pp}.pdf`, 'Expected { "questionPaper": "pdfs/….pdf", "markScheme": "pdfs/….pdf" }');
+        else {
+          paper.pdf = {};
+          for (const k of ['questionPaper', 'markScheme'] as const) {
+            const v = pd[k];
+            if (v === undefined) continue;
+            if (typeof v !== 'string' || !/\.pdf$/i.test(v)) err(`${pp}.pdf.${k}`, 'Expected a .pdf path inside the zip');
+            else if (!files.has(v)) err(`${pp}.pdf.${k}`, `PDF "${v}" was not found in the zip or folder`);
+            else paper.pdf[k] = v;
+          }
+        }
+      }
+      if (bare && !paper.pdf?.questionPaper) err(`${pp}.pdf.questionPaper`, 'A bare paper needs its question paper PDF');
+      if (p.gradeBoundaries !== undefined && p.gradeBoundaries !== null) {
+        const b = parseBoundaries(p.gradeBoundaries, Number.isInteger(questionCount) ? questionCount : LIMITS.questionsPerPaper);
+        if (typeof b === 'string') err(`${pp}.gradeBoundaries`, b);
+        else paper.boundaries = b;
+      }
       const seenN = new Map<number, number>();
       const sig = new Map<string, number>();
       qsRaw.forEach((rq, qi) => {
@@ -362,6 +421,11 @@ export function validateDoc(input: unknown, files: ReadonlySet<string> = new Set
         seenN.set(n, qi);
 
         const out: NQuestion = { n, answer: null };
+        if (q.page !== undefined && q.page !== null) {
+          const pg = Number(q.page);
+          if (!Number.isInteger(pg) || pg < 1 || pg > 500) err(`${qp}.page`, 'Expected the PDF page number, a whole number from 1');
+          else out.page = pg;
+        }
         const text = (v: unknown, path: string, required: boolean, max = LIMITS.text): string | undefined => {
           if (v === undefined || v === null || v === '') {
             if (required) err(path, 'Missing text');
@@ -387,7 +451,16 @@ export function validateDoc(input: unknown, files: ReadonlySet<string> = new Set
             if (!files.has(out.image)) err(`${qp}.image`, `Image "${out.image}" was not found. Import a zip or folder that contains it.`);
           } else err(`${qp}.image`, 'Expected an image file path');
         }
-        out.stem = text(q.stem, `${qp}.stem`, !out.image);
+        if (q.snip !== undefined) {
+          const r = isObj(q.snip) ? q.snip : {};
+          const fr = (v: unknown) => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 1;
+          const pg = Number(r.page);
+          if (!Number.isInteger(pg) || pg < 1 || pg > 500 || !fr(r.x) || !fr(r.y) || !fr(r.w) || !fr(r.h) || (r.w as number) <= 0 || (r.h as number) <= 0 || (r.x as number) + (r.w as number) > 1.0001 || (r.y as number) + (r.h as number) > 1.0001)
+            err(`${qp}.snip`, 'Expected { "page": 1, "x": 0-1, "y": 0-1, "w": 0-1, "h": 0-1 } inside the page');
+          else if (!paper.pdf?.questionPaper) err(`${qp}.snip`, 'A snip needs the paper\'s "pdf.questionPaper"');
+          else out.snip = { page: pg, x: r.x as number, y: r.y as number, w: r.w as number, h: r.h as number };
+        }
+        out.stem = text(q.stem, `${qp}.stem`, !out.image && !bare);
 
         const fig = (v: unknown, path: string): RawFigure | undefined => {
           if (v === undefined || v === null) return undefined;
@@ -479,7 +552,7 @@ export function validateDoc(input: unknown, files: ReadonlySet<string> = new Set
               return {};
             });
           }
-        } else if (!out.table && !out.image) err(`${qp}.options`, `Missing options (expected ${optionCount})`);
+        } else if (!out.table && !out.image && !bare) err(`${qp}.options`, `Missing options (expected ${optionCount})`);
 
         const a = parseAnswer(q.answer, notes);
         if (a === undefined) err(`${qp}.answer`, `Expected a letter ${LETTERS.slice(0, optionCount).join('/')} or null, found ${JSON.stringify(q.answer)}`);
@@ -507,6 +580,11 @@ export function validateDoc(input: unknown, files: ReadonlySet<string> = new Set
       });
 
       paper.questions.sort((a, b) => a.n - b.n);
+      if (bare && Number.isInteger(questionCount)) {
+        const have = new Set(paper.questions.map((q) => q.n));
+        for (let k = 1; k <= questionCount; k++) if (!have.has(k)) paper.questions.push({ n: k, answer: null });
+        paper.questions.sort((a, b) => a.n - b.n);
+      }
       if (Number.isInteger(questionCount)) {
         const have = new Set(paper.questions.map((q) => q.n));
         const maxN = Math.max(0, ...have);

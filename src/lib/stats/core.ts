@@ -52,7 +52,7 @@ export function trimmedMean(xs: number[]): number {
 }
 
 export const isComplete = (s: SessionSummary) =>
-  (s.status === 'submitted' || s.status === 'auto-submitted') && !s.partial && s.answered > 0;
+  (s.status === 'submitted' || s.status === 'auto-submitted') && !s.partial && !s.awaitingKey && s.answered > 0;
 
 export const isFinished = (s: SessionSummary) => s.status === 'submitted' || s.status === 'auto-submitted';
 
@@ -71,6 +71,7 @@ export function qualifying(sessions: SessionSummary[], o: QualifyOpts = {}): Ses
     .filter(
       (s) =>
         isFinished(s) &&
+        !s.awaitingKey &&
         (o.includePartial || !s.partial) &&
         (s.type === 'paper' || s.type === 'random') &&
         (o.includePractice || s.mode === 'exam') &&

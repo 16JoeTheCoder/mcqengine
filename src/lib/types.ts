@@ -25,6 +25,8 @@ export interface Question {
   /** Stable id: `${paperId}#${n}`. */
   id: string;
   n: number;
+  /** Page of the stored question paper PDF (1-based), for View in PDF. */
+  page?: number;
   stem?: string;
   /** Whole-question screenshot (image id). When present, options may be letters only. */
   image?: string;
@@ -40,6 +42,10 @@ export interface Question {
   uncertain?: string;
   /** Content hash, used to detect re-imports and conflicts. */
   hash: string;
+  /** Runtime only, set on load (never stored): the paper's question paper PDF. */
+  pdfId?: string;
+  /** Runtime only: a snip of this question from a stored PDF. */
+  snip?: Snip;
 }
 
 export interface PaperMeta {
@@ -57,6 +63,17 @@ export interface PaperMeta {
   /** Questions that still need a figure attached. */
   figuresNeeded: number;
   addedAt: number;
+  /** Grade boundaries in raw marks, highest grade first. */
+  boundaries?: GradeBoundary[];
+  /** Stored PDFs (ids in the pdfs store): question paper and mark scheme. */
+  pdf?: { qp?: string; ms?: string };
+  /** Bare PDF paper: questions have no typed content until snipped; practice reads the PDF. */
+  bare?: boolean;
+}
+
+export interface GradeBoundary {
+  grade: string;
+  min: number;
 }
 
 export interface Paper extends PaperMeta {
@@ -78,9 +95,20 @@ export interface Pack {
   papers: PaperMeta[];
   /** ISO date (yyyy-mm-dd), optional. */
   examDate?: string;
+  /** Where the pack came from. Library packs cannot be re-shared with "pack for friends". */
+  origin?: { kind: 'library'; setId: string; title?: string };
 }
 
-export type SessionType = 'paper' | 'random' | 'drill';
+export type SessionType = 'paper' | 'random' | 'drill' | 'daily';
+
+/** Why a wrong answer happened, tagged by the student in review. */
+export type Cause = 'careless' | 'concept' | 'misread' | 'time';
+export const CAUSES: { value: Cause; label: string }[] = [
+  { value: 'careless', label: 'Careless' },
+  { value: 'concept', label: 'Concept gap' },
+  { value: 'misread', label: 'Misread' },
+  { value: 'time', label: 'Ran out of time' },
+];
 export type SessionMode = 'exam' | 'practice';
 export type SessionStatus = 'active' | 'saved' | 'submitted' | 'auto-submitted';
 
@@ -155,6 +183,10 @@ export interface SessionSummary {
   timeMs: number;
   timer?: TimerConfig;
   agg?: SessionAggregates;
+  /** Submitted before every answered question had a key; graded when a key arrives. */
+  awaitingKey?: boolean;
+  /** Cause tags for wrong answers, by question id. */
+  causes?: Record<string, Cause>;
 }
 
 export interface SessionDetail {
@@ -187,6 +219,8 @@ export interface QuestionStat {
   inBank: boolean;
   /** Sum of answer time, ms, and count, for the heat grid. */
   timeSum: number;
+  /** Daily 10 schedule step while in the bank (0 → due after 1 day, then 3, 7, 14). */
+  stage?: number;
 }
 
 export interface BankEvent {
@@ -207,6 +241,28 @@ export interface QuestionOverride {
   figure?: Figure;
   reported?: boolean;
   note?: string;
+  updatedAt: number;
+}
+
+export interface PdfRecord {
+  id: string; // sha-256 hex of the bytes
+  name: string;
+  size: number;
+  blob: Blob;
+  addedAt: number;
+}
+
+/** A question cropped from a stored PDF page; coordinates are fractions of the page (0-1). */
+export interface Snip {
+  key: string; // `${packId}::${qid}`
+  packId: string;
+  qid: string;
+  pdfId: string;
+  page: number;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
   updatedAt: number;
 }
 
@@ -234,6 +290,8 @@ export interface Settings {
   lastBackupAt?: number;
   dismissedTips: string[];
   theme: 'system' | 'light' | 'dark';
+  /** Last change, for sync (newest settings win across devices). */
+  updatedAt?: number;
 }
 
 export const DEFAULT_SETTINGS: Settings = {

@@ -70,6 +70,16 @@
       "required": ["n", "answer"],
       "properties": {
         "n": { "type": "integer", "minimum": 1, "maximum": 200 },
+        "page": { "type": "integer", "minimum": 1, "maximum": 500, "description": "Page of the question paper PDF this question is printed on (1-based), for View in PDF" },
+        "snip": {
+          "type": "object", "additionalProperties": false, "required": ["page", "x", "y", "w", "h"],
+          "description": "Bare papers: the question's rectangle on the question paper PDF, as fractions of the page",
+          "properties": {
+            "page": { "type": "integer", "minimum": 1, "maximum": 500 },
+            "x": { "type": "number", "minimum": 0, "maximum": 1 }, "y": { "type": "number", "minimum": 0, "maximum": 1 },
+            "w": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 }, "h": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 }
+          }
+        },
         "stem": { "$ref": "#/definitions/text" },
         "image": { "type": "string", "description": "Whole-question screenshot path inside a zip or folder" },
         "figure": { "$ref": "#/definitions/figure" },
@@ -108,6 +118,16 @@
         "questionCount": { "type": "integer", "minimum": 1, "maximum": 200 },
         "timeLimitMinutes": { "oneOf": [{ "type": "integer", "minimum": 1, "maximum": 600 }, { "type": "null" }] },
         "optionCount": { "type": "integer", "minimum": 2, "maximum": 5 },
+        "bare": { "type": "boolean", "description": "No typed content: practised from the PDF; questions may be just { n, answer }" },
+        "pdf": {
+          "type": "object", "additionalProperties": false,
+          "properties": { "questionPaper": { "type": "string", "pattern": "\\.pdf$" }, "markScheme": { "type": "string", "pattern": "\\.pdf$" } }
+        },
+        "gradeBoundaries": {
+          "type": "object",
+          "description": "Minimum raw marks per grade, e.g. { \"A\": 31, \"B\": 27 }",
+          "additionalProperties": { "type": "integer", "minimum": 0, "maximum": 200 }
+        },
         "questions": { "type": "array", "maxItems": 200, "items": { "$ref": "#/definitions/question" } }
       }
     }

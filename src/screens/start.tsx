@@ -6,6 +6,11 @@ import { bump, href, navigate, settingsStore, toast, useStore } from '../lib/app
 import type { Pack, PaperMeta, SessionMode, SessionType, TimerKind } from '../lib/types';
 import { Badge, Button, Field, Modal, Seg } from '../ui/kit';
 import { Icon } from '../ui/icons';
+import { paperKeyed } from '../lib/format/merge';
+import { lazy } from '../ui/lazy';
+
+const PaperDialog = lazy(() => import('./paper-dialog').then((m) => m.PaperDialog));
+const SnipEditor = lazy(() => import('./pdf-tools').then((m) => m.SnipEditor));
 
 export interface StartRequest {
   type: SessionType;
@@ -27,6 +32,9 @@ export function StartDialog({ pack, req, blocked, onClose }: { pack: Pack; req: 
   const [strict, setStrict] = useState(false);
   const [shuffle, setShuffle] = useState(settings.shuffleDefault);
   const [busy, setBusy] = useState(false);
+  const [details, setDetails] = useState(false);
+  const [snipping, setSnipping] = useState(false);
+  const keyed = !req.paper || paperKeyed(req.paper);
   const clampMin = (v: number) => Math.min(capMin, Math.max(1, Math.round(v) || 1));
   const clampSec = (v: number) => Math.min(perQMax, Math.max(1, Math.round(v) || 1));
 
@@ -93,8 +101,11 @@ export function StartDialog({ pack, req, blocked, onClose }: { pack: Pack; req: 
         )}
         <div class="jy-field">
           <span>Mode</span>
-          <Seg label="Mode" value={mode} onChange={setMode} options={[{ value: 'exam', label: 'Exam' }, { value: 'practice', label: 'Practice' }]} />
-          <small>{mode === 'exam' ? 'Timed, results at the end, like the real paper.' : 'No timer. See if you are right after each answer.'}</small>
+          <Seg label="Mode" value={mode} onChange={setMode} options={[{ value: 'exam', label: 'Exam' }, ...(keyed ? [{ value: 'practice' as SessionMode, label: 'Practice' }] : [])]} />
+          <small>
+            {mode === 'exam' ? 'Timed, results at the end, like the real paper.' : 'No timer. See if you are right after each answer.'}
+            {!keyed && ' No answer key yet, so Exam only: the session is graded when you add the key.'}
+          </small>
         </div>
         {mode === 'exam' && (
           <div class="jy-field" style={{ minHeight: kind === 'none' ? undefined : '160px' }}>
@@ -148,6 +159,20 @@ export function StartDialog({ pack, req, blocked, onClose }: { pack: Pack; req: 
             </small>
           </div>
         )}
+        {req.paper && (
+          <div class="row">
+            <Button variant="ghost" size="sm" onClick={() => setDetails(true)}>
+              <Icon name="pencil" size={16} /> Answer key and grade boundaries
+            </Button>
+            {req.paper.pdf?.qp && (
+              <Button variant="ghost" size="sm" onClick={() => setSnipping(true)}>
+                <Icon name="image" size={16} /> Snip questions
+              </Button>
+            )}
+          </div>
+        )}
+        {details && req.paper && <PaperDialog packId={pack.id} paperId={req.paper.id} onClose={() => setDetails(false)} />}
+        {snipping && req.paper && <SnipEditor packId={pack.id} paperId={req.paper.id} onClose={() => setSnipping(false)} />}
         {req.type === 'paper' && (
           <label class="check">
             <input type="checkbox" checked={shuffle} onChange={(e) => setShuffle((e.target as HTMLInputElement).checked)} /> Shuffle question order

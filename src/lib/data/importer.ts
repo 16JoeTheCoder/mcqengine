@@ -3,6 +3,7 @@ import { mergeDoc, mergePaperCopies, type MergeResult, type PaperOverrides } fro
 import { sanitizeSvg } from '../format/svg';
 import { slugify, validateDoc, type NDoc, type ValidationResult } from '../format/validate';
 import { uid } from '../engine/rng';
+import { regradePack } from '../engine/regrade';
 import type { ImageRecord, Pack, Paper } from '../types';
 import * as store from './db';
 import { sha256Hex, type ImportSource } from './files';
@@ -53,26 +54,69 @@ export async function prepareImages(doc: NDoc, files: ReadonlyMap<string, Blob>)
 
 export interface ImportTarget {
   packId: string | null;
-  newPack?: { title: string; subject: string };
+  /** `id` fixes the new pack's id (Library downloads use `lib-<set id>`, so every device agrees). */
+  newPack?: { title: string; subject: string; id?: string; origin?: Pack['origin'] };
 }
 
 export async function planImport(doc: NDoc, target: ImportTarget, source: ImportSource | null, overrides: Record<string, PaperOverrides>) {
-  const packId = target.packId ?? '__new__';
-  const existing = target.packId ? await store.getPapers(target.packId) : [];
-  const qov = target.packId ? new Map((await store.getOverrides(target.packId)).map((o) => [o.key, o] as const)) : new Map();
+  const known = target.packId ?? (target.newPack?.id && (await store.getPack(target.newPack.id)) ? target.newPack.id : null);
+  const packId = known ?? '__new__';
+  const existing = known ? await store.getPapers(known) : [];
+  const qov = known ? new Map((await store.getOverrides(known)).map((o) => [o.key, o] as const)) : new Map();
   const imgs = source ? await prepareImages(doc, source.files) : { map: new Map<string, string>(), records: [] };
   const merge = mergeDoc(doc, packId, new Map(existing.map((p) => [p.id, p] as const)), imgs.map, overrides, qov);
+  if (source?.pdfs.size) await attachPdfs(doc, merge, source.pdfs);
   return { merge, images: imgs.records, imageMap: imgs.map };
+}
+
+/** PDFs stored by content hash and linked to their papers; snips become snip records. */
+async function attachPdfs(doc: NDoc, merge: MergeResult, pdfs: ReadonlyMap<string, Blob>) {
+  const ids = new Map<string, string>();
+  merge.pdfs = [];
+  merge.snips = [];
+  const idOf = async (path?: string) => {
+    if (!path) return undefined;
+    if (ids.has(path)) return ids.get(path);
+    const blob = pdfs.get(path);
+    if (!blob) return undefined;
+    const buf = await blob.arrayBuffer();
+    if (!new TextDecoder().decode(new Uint8Array(buf, 0, Math.min(1024, buf.byteLength))).includes('%PDF-')) return undefined;
+    const id = await sha256Hex(buf);
+    ids.set(path, id);
+    merge.pdfs!.push({ id, name: (path.split('/').pop() ?? path).slice(0, 200), size: buf.byteLength, blob: new Blob([buf], { type: 'application/pdf' }), addedAt: Date.now() });
+    return id;
+  };
+  for (const np of doc.papers) {
+    const paper = merge.papers.find((p) => p.id === np.id);
+    if (!paper) continue;
+    const qp = await idOf(np.pdf?.questionPaper);
+    const ms = await idOf(np.pdf?.markScheme);
+    if (qp || ms) paper.pdf = { ...paper.pdf, ...(qp ? { qp } : {}), ...(ms ? { ms } : {}) };
+    if (np.bare) paper.bare = true;
+    for (const q of np.questions)
+      if (q.snip && qp) merge.snips.push({ key: '', packId: '', qid: `${np.id}#${q.n}`, pdfId: qp, ...q.snip, updatedAt: Date.now() });
+  }
 }
 
 /** Writes a planned import. Refuses when the plan has conflicts. Returns the pack id. */
 export async function commitImport(target: ImportTarget, merge: MergeResult, images: ImageRecord[], now = Date.now()): Promise<string> {
   if (merge.conflicts.length) throw new Error('Resolve the conflicts before importing');
+  const packId = await writeImport(target, merge, images, now);
+  // Keys that arrived with this import grade any session that was waiting for them.
+  if (target.packId || target.newPack?.id) await regradePack(packId, now);
+  return packId;
+}
+
+function writeImport(target: ImportTarget, merge: MergeResult, images: ImageRecord[], now: number): Promise<string> {
   // Read-modify-write of the pack inside one transaction, so concurrent imports cannot drop papers.
   return store.write(async () => {
-    const tx = (await store.db()).transaction(['packs', 'papers', 'images'], 'readwrite');
+    const tx = (await store.db()).transaction(['packs', 'papers', 'images', 'pdfs', 'snips'], 'readwrite');
     const packs = tx.objectStore('packs');
-    let pack: Pack | undefined = target.packId ? await packs.get(target.packId) : undefined;
+    let pack: Pack | undefined = target.packId ? await packs.get(target.packId) : target.newPack?.id ? await packs.get(target.newPack.id) : undefined;
+    if (!pack && target.newPack?.id) {
+      const t = target.newPack;
+      pack = { id: t.id!, title: t.title.trim() || 'Untitled pack', subject: t.subject.trim(), createdAt: now, updatedAt: now, papers: [], ...(t.origin ? { origin: t.origin } : {}) };
+    }
     if (!pack) {
       const title = target.newPack?.title.trim() || 'Untitled pack';
       const base = slugify(title) || 'pack';
@@ -98,6 +142,8 @@ export async function commitImport(target: ImportTarget, merge: MergeResult, ima
     await packs.put({ ...pack, papers: [...metas.values()], updatedAt: now });
     for (const p of papers) await tx.objectStore('papers').put(p);
     for (const i of images) await tx.objectStore('images').put(i);
+    for (const f of merge.pdfs ?? []) if (!(await tx.objectStore('pdfs').get(f.id))) await tx.objectStore('pdfs').put(f);
+    for (const sn of merge.snips ?? []) await tx.objectStore('snips').put({ ...sn, packId, key: `${packId}::${sn.qid}` });
     await tx.done;
     return packId;
   });

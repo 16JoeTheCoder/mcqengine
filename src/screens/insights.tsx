@@ -4,7 +4,7 @@ import { paperScore, secPerQ } from '../lib/stats/core';
 import { fmtMinSec } from '../lib/stats/kpi';
 import * as store from '../lib/data/db';
 import type { Pack, Paper, QuestionStat, SessionSummary } from '../lib/types';
-import { TIME_BINS } from '../lib/types';
+import { CAUSES, TIME_BINS, type Cause } from '../lib/types';
 import { ActivityHeatmap, Bars, LineChart, QuestionHeat } from '../ui/charts';
 import { fmtDate, pct } from '../ui/kit';
 
@@ -108,11 +108,11 @@ function PaceTab({ a }: { a: Analytics }) {
           )}
         </div>
         <div class="jy-panel">
-          <h3 style={{ marginBottom: 'var(--space-3)' }}>Time per question</h3>
+          <h3 style={{ marginBottom: 'var(--space-3)' }}>Time per question (approximate)</h3>
           {a.hist.some((x) => x > 0) ? (
             <>
               <Bars label="Histogram of seconds per question" bars={a.hist.map((v, i) => ({ label: binLabels[i]!, value: v }))} format={(x) => `${Math.round(x)}`} height={200} xLabel="time per question (s)" />
-              <p class="chart-sentence">How long you spend on each question across qualifying sessions.</p>
+              <p class="chart-sentence">How long each question was on screen across qualifying sessions. Approximate: time spent looking back at a question counts toward it.</p>
             </>
           ) : (
             <p class="small muted">No data yet.</p>
@@ -125,7 +125,7 @@ function PaceTab({ a }: { a: Analytics }) {
           <Bars label="Accuracy by third of the paper" bars={a.thirds.map((x, i) => ({ label: ['First', 'Middle', 'Last'][i]!, value: x.acc }))} yMax={1} format={(x) => `${Math.round(x * 100)}%`} height={200} />
         </div>
         <div class="jy-panel stack-s">
-          <h3>Are your slowest questions the wrong ones?</h3>
+          <h3>Are your slowest questions the wrong ones? (approximate)</h3>
           {slow !== null && rest !== null ? (
             <>
               <Bars label="Accuracy on slowest quarter vs the rest" bars={[{ label: 'Slowest 25%', value: slow }, { label: 'The rest', value: rest }]} yMax={1} format={(x) => `${Math.round(x * 100)}%`} height={170} highlight={0} />
@@ -222,6 +222,17 @@ function QuestionsTab({ pack, a, stats }: { pack: Pack; a: Analytics; stats: Que
           <p class="chart-sentence">Now {a.bankSize} question{a.bankSize === 1 ? '' : 's'}. Each leaves after two correct, sure answers in a row.</p>
         </div>
         <div class="jy-panel stack-s">
+          <h3>Why answers were wrong</h3>
+          {Object.values(a.causes).some(Boolean) ? (
+            <>
+              <Bars label="Tagged causes of wrong answers" bars={CAUSES.map((c) => ({ label: c.label, value: a.causes[c.value] }))} format={(x) => `${Math.round(x)}`} height={170} highlight={CAUSES.findIndex((c) => a.causes[c.value] === Math.max(...Object.values(a.causes)))} />
+              <p class="chart-sentence">{causeSentence(a.causes)}</p>
+            </>
+          ) : (
+            <p class="small muted">Tag wrong answers on the results page (careless, concept gap, misread, ran out of time) to see the split.</p>
+          )}
+        </div>
+        <div class="jy-panel stack-s">
           <h3>Changing answers</h3>
           {total ? (
             <>
@@ -271,4 +282,17 @@ function CalibrationTab({ a }: { a: Analytics }) {
       </div>
     </div>
   );
+}
+
+function causeSentence(c: Record<Cause, number>): string {
+  const total = Object.values(c).reduce((x, y) => x + y, 0);
+  const top = CAUSES.slice().sort((x, y) => c[y.value] - c[x.value])[0]!;
+  const share = Math.round((c[top.value] / total) * 100);
+  const advice: Record<Cause, string> = {
+    careless: 'Slow down on the final check of each answer.',
+    concept: 'Revise those topics before more timed papers.',
+    misread: 'Underline what the question actually asks.',
+    time: 'Practise pacing: aim to reach the last question with time to spare.',
+  };
+  return `${top.label} accounts for ${share}% of the ${total} tagged. ${advice[top.value]}`;
 }

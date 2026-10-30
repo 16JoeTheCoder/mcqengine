@@ -4,6 +4,7 @@ import { imageType, MAX_IMAGE_BYTES, sha256Hex } from '../lib/data/files';
 import { statKey } from '../lib/engine/mistakes';
 import { LETTERS, type Figure, type Question, type QuestionOverride } from '../lib/types';
 import { bump, toast } from '../lib/app-state';
+import { regradePack } from '../lib/engine/regrade';
 import { Button, Field, Modal } from '../ui/kit';
 import { FigureView, Rich } from '../ui/content';
 import { Icon } from '../ui/icons';
@@ -203,4 +204,7 @@ export async function refreshPackMeta(packId: string) {
     };
   });
   await store.putPack({ ...pack, papers: metas, updatedAt: Date.now() });
+  // A corrected key regrades every past session that used it.
+  const n = await regradePack(packId);
+  if (n) toast(`Regraded ${n} session${n === 1 ? '' : 's'} with the corrected key.`);
 }

@@ -13,12 +13,18 @@ import { Library } from './screens/library';
 import { PackScreen } from './screens/pack';
 import { SessionScreen } from './screens/session';
 import { lazy } from './ui/lazy';
+import { authStore, backend, initAuth } from './lib/backend';
+import { syncLabel, syncNow, syncStore } from './lib/sync/sync';
+import { AccountButton } from './screens/account';
 
 const Results = lazy(() => import('./screens/results').then((m) => m.Results));
 const SettingsScreen = lazy(() => import('./screens/settings').then((m) => m.SettingsScreen));
 const AboutDialog = lazy(() => import('./screens/settings').then((m) => m.AboutDialog));
 const ImportWizard = lazy(() => import('./screens/import').then((m) => m.ImportWizard));
 const PromptDialog = lazy(() => import('./screens/prompt').then((m) => m.PromptDialog));
+const CommandPalette = lazy(() => import('./screens/palette').then((m) => m.CommandPalette));
+const Notebook = lazy(() => import('./screens/notebook').then((m) => m.Notebook));
+const SchoolLibrary = lazy(() => import('./screens/school-library').then((m) => m.SchoolLibrary));
 
 /** Set by main.tsx when a new service worker is waiting. */
 export const updateReady = createStore<(() => void) | null>(null);
@@ -45,17 +51,19 @@ export function App() {
   const update = useStore(updateReady);
   const [ready, setReady] = useState(false);
   const [prompt, setPrompt] = useState<{ pack?: Pack } | null>(null);
-  const [importing, setImporting] = useState<{ pack?: Pack; source?: ImportSource | null } | null>(null);
+  const [importing, setImporting] = useState<{ pack?: Pack; source?: ImportSource | null; pdfs?: File[] } | null>(null);
   const [about, setAbout] = useState(false);
   const [resume, setResume] = useState<SessionSummary[]>([]);
   const [resumeChecked, setResumeChecked] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [crumb, setCrumb] = useState<Pack | null>(null);
+  const [palette, setPalette] = useState(false);
   const firstRoute = useRef(true);
 
   useEffect(() => {
     void (async () => {
       await loadSettings();
+      initAuth();
       await recoverSessions();
       void store.requestPersistence();
       setReady(true);
@@ -84,7 +92,7 @@ export function App() {
 
   // Breadcrumb pack title.
   useEffect(() => {
-    const id = route.name === 'pack' ? route.id : null;
+    const id = route.name === 'pack' || route.name === 'notebook' ? route.id : null;
     if (!id) return setCrumb(null);
     void store.getPack(id).then((p) => setCrumb(p ?? null));
   }, [route]);
@@ -100,9 +108,49 @@ export function App() {
       if (!firstRoute.current) document.getElementById('main')?.focus({ preventScroll: true });
       firstRoute.current = false;
     });
-    const t = route.name === 'library' ? 'DMC' : route.name === 'settings' ? 'Settings · DMC' : route.name === 'results' ? 'Results · DMC' : route.name === 'session' ? 'Session · DMC' : 'Pack · DMC';
+    const t = route.name === 'library' ? 'DMC' : route.name === 'school' ? 'Library · DMC' : route.name === 'settings' ? 'Settings · DMC' : route.name === 'results' ? 'Results · DMC' : route.name === 'session' ? 'Session · DMC' : 'Pack · DMC';
     document.title = t;
   }, [route]);
+
+  // Sync: on app open (once signed in), after each submitted session, when back online, and on
+  // "Sync now". Always in the background; the app never waits for it.
+  const sync = useStore(syncStore);
+  useEffect(() => {
+    if (!backend) return;
+    const run = () => {
+      const a = authStore.get().account;
+      if (a) void syncNow(backend, a.id);
+    };
+    let last: string | null = null;
+    const off = authStore.sub((s) => {
+      const id = s.account?.id ?? null;
+      if (id && id !== last) run();
+      if (!id) syncStore.set({ state: 'off' });
+      last = id;
+    });
+    const synced = () => bump();
+    addEventListener('dmc:submitted', run);
+    addEventListener('online', run);
+    addEventListener('dmc:synced', synced);
+    return () => {
+      off();
+      removeEventListener('dmc:submitted', run);
+      removeEventListener('online', run);
+      removeEventListener('dmc:synced', synced);
+    };
+  }, []);
+
+  // Ctrl+K / Cmd+K opens the command palette (never during a session).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k' && routeStore.get().name !== 'session') {
+        e.preventDefault();
+        setPalette((x) => !x);
+      }
+    };
+    addEventListener('keydown', onKey);
+    return () => removeEventListener('keydown', onKey);
+  }, []);
 
   // Drag and drop anywhere.
   useEffect(() => {
@@ -127,9 +175,10 @@ export function App() {
       const files = [...(e.dataTransfer?.files ?? [])];
       if (!files.length) return;
       try {
-        const source = await readFiles(files);
         const r = routeStore.get();
         const pack = r.name === 'pack' ? await store.getPack(r.id) : undefined;
+        if (files.every((f) => /\.pdf$/i.test(f.name) || f.type === 'application/pdf')) return setImporting({ ...(pack ? { pack } : {}), pdfs: files });
+        const source = await readFiles(files);
         setImporting({ ...(pack ? { pack } : {}), source });
       } catch (err) {
         toast((err as Error).message || 'Could not read the dropped files.');
@@ -187,11 +236,23 @@ export function App() {
             </a>
             <nav class="crumbs hide-sm" aria-label="Breadcrumb">
               <span aria-hidden="true">/</span>
-              <a href={href.library()} aria-current={route.name === 'library' ? 'page' : undefined}>Library</a>
+              <a href={href.library()} aria-current={route.name === 'library' ? 'page' : undefined}>Packs</a>
               {crumb && (
                 <>
                   <span aria-hidden="true">/</span>
                   <a href={href.pack(crumb.id)} aria-current={route.name === 'pack' ? 'page' : undefined}>{crumb.title}</a>
+                  {route.name === 'notebook' && (
+                    <>
+                      <span aria-hidden="true">/</span>
+                      <span aria-current="page">Notebook</span>
+                    </>
+                  )}
+                </>
+              )}
+              {route.name === 'school' && (
+                <>
+                  <span aria-hidden="true">/</span>
+                  <a href={href.school()} aria-current="page">Library</a>
                 </>
               )}
               {route.name === 'settings' && (
@@ -208,6 +269,13 @@ export function App() {
               )}
             </nav>
             <span class="spacer" />
+            {backend && route.name !== 'school' && (
+              <a class="jy-btn jy-btn--ghost hide-sm" href={href.school()}>Library</a>
+            )}
+            <AccountButton syncLabel={syncLabel(sync)} onSync={() => { const a = authStore.get().account; if (a) void syncNow(backend, a.id); }} />
+            <button type="button" class="jy-btn jy-btn--ghost jy-btn--icon hide-sm" onClick={() => setPalette(true)} aria-label="Go to (Ctrl+K)" title="Go to (Ctrl+K)">
+              <Icon name="search" />
+            </button>
             <a class="jy-btn jy-btn--ghost jy-btn--icon" href={href.settings()} aria-label="Settings">
               <Icon name="settings" />
             </a>
@@ -223,6 +291,8 @@ export function App() {
       {route.name === 'session' && <SessionScreen id={route.id} />}
       {route.name === 'results' && <Results id={route.id} />}
       {route.name === 'settings' && <SettingsScreen onImport={() => openImport()} onAbout={() => setAbout(true)} />}
+      {route.name === 'school' && <SchoolLibrary />}
+      {route.name === 'notebook' && <Notebook packId={route.id} />}
 
       {!inSession && (
         <footer class="footer">
@@ -230,7 +300,7 @@ export function App() {
             <button type="button" class="signature" onClick={() => setAbout(true)} aria-label="About DMC, built by josef">
               <Signature height={40} />
             </button>
-            <span class="small subtle">DMC {__APP_VERSION__} · Your packs and progress stay on this device.</span>
+            <span class="small subtle">DMC {__APP_VERSION__} · Your packs and progress live on this device{backend ? '; signing in syncs your progress' : ''}.</span>
           </div>
         </footer>
       )}
@@ -246,8 +316,17 @@ export function App() {
           }}
         />
       )}
-      {importing && <ImportWizard pack={importing.pack} initial={importing.source ?? null} onClose={() => setImporting(null)} />}
+      {importing && <ImportWizard pack={importing.pack} initial={importing.source ?? null} {...(importing.pdfs ? { pdfs: importing.pdfs } : {})} onClose={() => setImporting(null)} />}
       {about && <AboutDialog onClose={() => setAbout(false)} />}
+      {palette && !inSession && (
+        <CommandPalette
+          onClose={() => setPalette(false)}
+          actions={[
+            { id: 'import', label: 'Import', hint: 'pack, zip, PDFs or backup', run: () => openImport() },
+            { id: 'prompt', label: 'Make a pack with AI', hint: 'prompt', run: () => openPrompt() },
+          ]}
+        />
+      )}
       {top && !inSession && (
         <Modal title="Resume your session?" onClose={() => setResume([])} describedBy="resume-desc">
           <div class="stack" id="resume-desc">
@@ -286,7 +365,7 @@ export function App() {
       )}
       {dragging && (
         <div class="dropzone" aria-hidden="true">
-          <span>Drop a pack, zip, folder or backup to import</span>
+          <span>Drop a pack, zip, folder, PDFs or backup to import</span>
         </div>
       )}
     </>

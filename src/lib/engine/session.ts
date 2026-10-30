@@ -1,12 +1,12 @@
 import * as store from '../data/db';
-import { applyOverride, paperReady } from '../format/merge';
-import type { AnswerRecord, Pack, Paper, Question, QuestionOverride, SessionDetail, SessionMode, SessionSummary, SessionType, TimerConfig } from '../types';
+import { applyOverride, paperComplete, paperKeyed } from '../format/merge';
+import type { AnswerRecord, Pack, Paper, Question, QuestionOverride, Snip, SessionDetail, SessionMode, SessionSummary, SessionType, TimerConfig } from '../types';
 import { gradeSession, type GradeResult } from './grade';
-import { applyAnswer, drillBudgetMs, emptyStat, selectDrill, statKey } from './mistakes';
+import { applyAnswer, DAILY_MS, dailySize, drillBudgetMs, dueForDaily, emptyStat, selectDrill, statKey } from './mistakes';
 import { drawRandom, standardLength, type PoolItem } from './random';
 import { cryptoRng, shuffle, uid } from './rng';
 import { buildTimer } from './timer';
-import { packBudgetSec } from '../stats/kpi';
+import { packBudgetSec, typicalPace } from '../stats/kpi';
 
 export const blankAnswer = (qid: string): AnswerRecord => ({
   qid,
@@ -22,20 +22,29 @@ export const blankAnswer = (qid: string): AnswerRecord => ({
 
 /** Loads every paper of a pack with overrides applied. */
 export async function loadPackContent(packId: string): Promise<{ papers: Paper[]; overrides: Map<string, QuestionOverride> }> {
-  const [papers, ovs] = await Promise.all([store.getPapers(packId), store.getOverrides(packId)]);
+  const [papers, ovs, snips] = await Promise.all([store.getPapers(packId), store.getOverrides(packId), store.getSnips(packId)]);
   const overrides = new Map(ovs.map((o) => [o.qid, o] as const));
-  return { papers: papers.map((p) => ({ ...p, questions: p.questions.map((q) => applyOverride(q, overrides.get(q.id))) })), overrides };
+  const sn = new Map(snips.map((x) => [x.qid, x] as const));
+  return { papers: papers.map((p) => ({ ...p, questions: p.questions.map((q) => withRuntime(applyOverride(q, overrides.get(q.id)), p, sn.get(q.id))) })), overrides };
+}
+
+function withRuntime(q: Question, p: Paper, snip?: Snip): Question {
+  const r = p.pdf?.qp ? { ...q, pdfId: p.pdf.qp } : q;
+  return snip ? { ...r, snip } : r;
 }
 
 /** Random pool: keyed questions from every paper. */
 export function poolOf(papers: Paper[], stats: Map<string, { timesSeen: number; lastResult?: string; lastUnsure?: boolean }>): PoolItem[] {
   const out: PoolItem[] = [];
-  for (const p of papers)
+  for (const p of papers) {
+    // A bare PDF paper joins Random only once every question is snipped.
+    if (p.bare && !p.questions.every(isViewable)) continue;
     for (const q of p.questions)
-      if (q.answer !== null) {
+      if (q.answer !== null && isViewable(q)) {
         const s = stats.get(q.id);
         out.push({ qid: q.id, timesSeen: s?.timesSeen ?? 0, lastWrong: s?.lastResult === 'wrong', lastUnsure: !!s?.lastUnsure });
       }
+  }
   return out;
 }
 
@@ -58,6 +67,18 @@ export interface StartOptions {
   timer?: { kind: TimerConfig['kind']; minutes?: number; perQSec?: number; strict?: boolean };
   shuffle?: boolean;
   smart?: boolean;
+  /** Daily 10: the student's seconds per question, used to size the session. */
+  paceSec?: number;
+}
+
+/** Typed content, a whole-question image or a snip: the question can be shown on its own. */
+export const isViewable = (q: Question) => !!(q.stem || q.image || q.options?.length || q.table || q.snip);
+
+/** Questions a student can see on their own: typed content or a whole-question image. */
+export function viewableIds(papers: Paper[]): string[] {
+  const out: string[] = [];
+  for (const p of papers) for (const q of p.questions) if (q.answer !== null && isViewable(q)) out.push(q.id);
+  return out;
 }
 
 /** Ids locked by the pack's in-progress or saved sessions (never drawn by another session). */
@@ -74,6 +95,8 @@ export async function createSession(o: StartOptions, now = Date.now()): Promise<
   // One open (active or saved) session per pack, enforced in the engine, not only the UI.
   if ((await store.getOpenSessions()).some((s) => s.packId === o.pack.id))
     throw new OpenSessionError('This pack has a saved session. Resume, submit or discard it first.');
+  // Daily 10 always gives instant feedback; it is a review, not a mock exam.
+  if (o.type === 'daily') o = { ...o, mode: 'practice' };
   const { papers } = await loadPackContent(o.pack.id);
   const byQ = new Map<string, Paper>();
   for (const p of papers) for (const q of p.questions) byQ.set(q.id, p);
@@ -85,7 +108,8 @@ export async function createSession(o: StartOptions, now = Date.now()): Promise<
     const paper = papers.find((p) => p.id === o.paperId);
     if (!paper) throw new Error('Paper not found');
     const meta = o.pack.papers.find((m) => m.id === paper.id);
-    if (meta && !paperReady(meta)) throw new Error('This paper is not complete or not fully keyed yet');
+    if (meta && !paperComplete(meta)) throw new Error('This paper is not complete yet');
+    if (meta && o.mode === 'practice' && !paperKeyed(meta)) throw new Error('Practice mode needs the answer key. Use Exam mode, or add the key first.');
     ids = paper.questions.map((q) => q.id);
     if (o.shuffle) ids = shuffle(ids, cryptoRng);
     title = paper.title;
@@ -97,17 +121,22 @@ export async function createSession(o: StartOptions, now = Date.now()): Promise<
     if (o.type === 'random') {
       ids = drawRandom(poolOf(papers, stats), size, locked, cryptoRng, o.smart);
       title = 'Random session';
+    } else if (o.type === 'daily') {
+      const viewable = new Set(viewableIds(papers).filter((q) => !locked.has(q)));
+      ids = dueForDaily([...stats.values()], now, viewable).slice(0, dailySize(o.paceSec ?? typicalPace(await store.getSessions(o.pack.id), o.pack.papers)));
+      title = 'Daily 10';
     } else {
       const eligible = new Set(poolOf(papers, new Map()).map((p) => p.qid).filter((q) => !locked.has(q)));
-      ids = selectDrill([...stats.values()], size, eligible);
+      ids = selectDrill([...stats.values()], size, new Set(viewableIds(papers).filter((q) => eligible.has(q))));
       title = 'Mistakes drill';
     }
-    capMin = sessionCapMin(o.pack, o.type, ids.length);
+    capMin = o.type === 'daily' ? DAILY_MS / 60_000 : sessionCapMin(o.pack, o.type, ids.length);
   }
-  if (!ids.length) throw new Error('No questions available for this session');
+  if (!ids.length) throw new Error(o.type === 'daily' ? 'Nothing is due today' : 'No questions available for this session');
 
   let timer: TimerConfig | undefined;
-  if (o.mode === 'exam') {
+  if (o.type === 'daily') timer = { kind: 'total', capMs: DAILY_MS, totalMs: DAILY_MS };
+  else if (o.mode === 'exam') {
     timer = buildTimer({ kind: o.timer?.kind ?? 'none', capMin, questions: ids.length, minutes: o.timer?.minutes, perQSec: o.timer?.perQSec, strict: o.timer?.strict });
     if (o.type === 'drill' && timer.kind === 'none') timer = { kind: 'total', capMs: timer.capMs, totalMs: timer.capMs };
   }
@@ -148,13 +177,17 @@ export async function createSession(o: StartOptions, now = Date.now()): Promise<
   return { summary, detail };
 }
 
+/** Drills and Daily 10 never touch random's seen counts. */
+export const countsSeen = (t: SessionType) => t === 'paper' || t === 'random';
+
 /** Questions for a session, with overrides applied, keyed by id. */
 export async function loadSessionQuestions(detail: SessionDetail): Promise<Map<string, Question>> {
   const keys = [...new Set(Object.values(detail.sources))];
-  const [papers, ovs] = await Promise.all([Promise.all(keys.map((k) => store.getPaper(k))), store.getOverrides(detail.packId)]);
+  const [papers, ovs, snips] = await Promise.all([Promise.all(keys.map((k) => store.getPaper(k))), store.getOverrides(detail.packId), store.getSnips(detail.packId)]);
   const overrides = new Map(ovs.map((o) => [o.qid, o] as const));
+  const sn = new Map(snips.map((x) => [x.qid, x] as const));
   const map = new Map<string, Question>();
-  for (const p of papers) if (p) for (const q of p.questions) map.set(q.id, applyOverride(q, overrides.get(q.id)));
+  for (const p of papers) if (p) for (const q of p.questions) map.set(q.id, withRuntime(applyOverride(q, overrides.get(q.id)), p, sn.get(q.id)));
   return map;
 }
 
@@ -178,11 +211,13 @@ export async function submitSession(sessionId: string, auto: boolean, now = Date
       await tx.done;
       return current ? { summary: current, grade } : null;
     }
+    const awaitingKey = grade.unkeyed > 0;
     const statsStore = tx.objectStore('questionStats');
-    for (const it of grade.items) {
+    // A session waiting for its key changes no stats until it is graded (regrade.ts).
+    for (const it of awaitingKey ? [] : grade.items) {
       const key = statKey(detail.packId, it.qid);
       const prev = (await statsStore.get(key)) ?? emptyStat(detail.packId, it.qid);
-      const { stat, event } = applyAnswer(prev, { correct: it.correct, unsure: it.unsure, timeMs: it.timeMs, at: now, countSeen: current.type !== 'drill' });
+      const { stat, event } = applyAnswer(prev, { correct: it.correct, unsure: it.unsure, timeMs: it.timeMs, at: now, countSeen: countsSeen(current.type) });
       await statsStore.put(stat);
       if (event) await tx.objectStore('bankEvents').add({ packId: detail.packId, qid: it.qid, at: now, kind: event });
     }
@@ -191,7 +226,8 @@ export async function submitSession(sessionId: string, auto: boolean, now = Date
       status: auto ? 'auto-submitted' : 'submitted',
       partial: grade.partial,
       answered: grade.answered,
-      correct: grade.correct,
+      correct: awaitingKey ? 0 : grade.correct,
+      ...(awaitingKey ? { awaitingKey: true } : {}),
       // Recorded time never exceeds the session budget (a sleep past time zero is not time spent).
       timeMs: current.timer ? Math.min(grade.timeMs, current.timer.totalMs) : grade.timeMs,
       agg: grade.agg,
@@ -208,4 +244,14 @@ export async function submitSession(sessionId: string, auto: boolean, now = Date
     await tx.done;
     return { summary, grade };
   });
+}
+
+/** Daily 10 for a pack today: how many questions are due and how many fit in ten minutes. */
+export async function dailyPlan(pack: Pack, now = Date.now()): Promise<{ due: number; size: number }> {
+  const stats = await store.getStats(pack.id);
+  if (!stats.some((s) => s.inBank)) return { due: 0, size: 0 };
+  const { papers } = await loadPackContent(pack.id);
+  const due = dueForDaily(stats, now, new Set(viewableIds(papers))).length;
+  const size = dailySize(typicalPace(await store.getSessions(pack.id), pack.papers));
+  return { due, size: Math.min(due, size) };
 }

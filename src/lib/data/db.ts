@@ -3,6 +3,8 @@ import {
   DEFAULT_SETTINGS,
   type BankEvent,
   type ImageRecord,
+  type PdfRecord,
+  type Snip,
   type Pack,
   type Paper,
   type QuestionOverride,
@@ -22,12 +24,14 @@ export interface DmcSchema extends DBSchema {
   bankEvents: { key: number; value: BankEvent; indexes: { packId: string } };
   overrides: { key: string; value: QuestionOverride; indexes: { packId: string } };
   meta: { key: string; value: unknown };
+  pdfs: { key: string; value: PdfRecord };
+  snips: { key: string; value: Snip; indexes: { packId: string } };
 }
 
-export type StoreName = 'packs' | 'papers' | 'images' | 'sessions' | 'sessionDetail' | 'questionStats' | 'bankEvents' | 'overrides' | 'meta';
-export const STORES: StoreName[] = ['packs', 'papers', 'images', 'sessions', 'sessionDetail', 'questionStats', 'bankEvents', 'overrides', 'meta'];
+export type StoreName = 'packs' | 'papers' | 'images' | 'sessions' | 'sessionDetail' | 'questionStats' | 'bankEvents' | 'overrides' | 'meta' | 'pdfs' | 'snips';
+export const STORES: StoreName[] = ['packs', 'papers', 'images', 'sessions', 'sessionDetail', 'questionStats', 'bankEvents', 'overrides', 'meta', 'pdfs', 'snips'];
 
-export const DB_VERSION = 1;
+export const DB_VERSION = 2;
 let dbName = 'dmc';
 let dbp: Promise<IDBPDatabase<DmcSchema>> | null = null;
 
@@ -45,6 +49,10 @@ const MIGRATIONS: ((db: IDBPDatabase<DmcSchema>) => void)[] = [
     db.createObjectStore('bankEvents', { keyPath: 'id', autoIncrement: true }).createIndex('packId', 'packId');
     db.createObjectStore('overrides', { keyPath: 'key' }).createIndex('packId', 'packId');
     db.createObjectStore('meta');
+  },
+  (db) => {
+    db.createObjectStore('pdfs', { keyPath: 'id' });
+    db.createObjectStore('snips', { keyPath: 'key' }).createIndex('packId', 'packId');
   },
 ];
 
@@ -132,7 +140,7 @@ export async function putPack(pack: Pack) {
 /** Deletes a pack and everything that belongs to it. Images may be shared, so they are swept separately. */
 export async function deletePack(packId: string) {
   const d = await db();
-  const stores = ['papers', 'sessions', 'sessionDetail', 'questionStats', 'bankEvents', 'overrides'] as const;
+  const stores = ['papers', 'sessions', 'sessionDetail', 'questionStats', 'bankEvents', 'overrides', 'snips'] as const;
   const tx = d.transaction(['packs', ...stores], 'readwrite');
   await tx.objectStore('packs').delete(packId);
   for (const name of stores) {
@@ -141,6 +149,39 @@ export async function deletePack(packId: string) {
   }
   await tx.done;
   await sweepImages();
+  await sweepPdfs();
+}
+
+/** Removes PDFs no paper or snip references. */
+export async function sweepPdfs() {
+  const d = await db();
+  const used = new Set<string>();
+  for (const p of await d.getAll('papers')) {
+    if (p.pdf?.qp) used.add(p.pdf.qp);
+    if (p.pdf?.ms) used.add(p.pdf.ms);
+  }
+  for (const s of await d.getAll('snips')) used.add(s.pdfId);
+  const tx = d.transaction('pdfs', 'readwrite');
+  for (let c = await tx.store.openCursor(); c; c = await c.continue()) if (!used.has(c.key)) await c.delete();
+  await tx.done;
+}
+
+export const getPdf = async (id: string) => (await db()).get('pdfs', id);
+export async function putPdf(r: PdfRecord) {
+  await write(async () => (await db()).put('pdfs', r));
+}
+export const getSnips = async (packId: string) => (await db()).getAllFromIndex('snips', 'packId', packId);
+export async function putSnip(s: Snip) {
+  await write(async () => (await db()).put('snips', s));
+}
+/** Deletes a snip and leaves a tombstone, so the deletion syncs to other devices. */
+export async function deleteSnip(key: string, now = Date.now()) {
+  const tx = (await db()).transaction(['snips', 'meta'], 'readwrite');
+  await tx.objectStore('snips').delete(key);
+  const t = ((await tx.objectStore('meta').get('tombstones')) as Record<string, number> | undefined) ?? {};
+  t[`snips|${key}`] = now;
+  await tx.objectStore('meta').put(t, 'tombstones');
+  await tx.done;
 }
 
 /** Removes images no paper or override references. */
@@ -232,4 +273,18 @@ export async function wipeAll() {
   const d = await db();
   const tx = d.transaction(STORES, 'readwrite');
   await Promise.all([...STORES.map((s) => tx.objectStore(s).clear()), tx.done]);
+}
+
+/** Tags (or untags) why a wrong answer happened. Stored on the summary so dashboards read one row. */
+export async function setCause(sessionId: string, qid: string, cause: import('../types').Cause | null, now = Date.now()) {
+  await write(async () => {
+    const tx = (await db()).transaction('sessions', 'readwrite');
+    const s = await tx.store.get(sessionId);
+    if (!s) return;
+    const causes = { ...s.causes };
+    if (cause) causes[qid] = cause;
+    else delete causes[qid];
+    await tx.store.put({ ...s, causes, updatedAt: now });
+    await tx.done;
+  });
 }

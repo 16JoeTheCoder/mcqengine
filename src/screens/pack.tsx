@@ -2,8 +2,9 @@ import { useEffect, useMemo, useState } from 'preact/hooks';
 import * as store from '../lib/data/db';
 import { exportPackZip } from '../lib/data/backup';
 import { downloadBlob } from '../lib/data/files';
-import { paperReady } from '../lib/format/merge';
-import { loadPackContent, packStandardLength, submitSession } from '../lib/engine/session';
+import { paperComplete } from '../lib/format/merge';
+import { dailyPlan, loadPackContent, packStandardLength, submitSession } from '../lib/engine/session';
+import { startDaily } from './daily';
 import { selectDrill } from '../lib/engine/mistakes';
 import { packAnalytics, trend, type Filters, type Metric, type Range } from '../lib/stats/dashboard';
 import { bump, dataVersion, href, navigate, settingsStore, toast, updateSettings, useStore } from '../lib/app-state';
@@ -48,6 +49,8 @@ export function PackScreen({ id, section, onImport, onPrompt }: { id: string; se
   const [active, setActive] = useState('overview');
   const [tipHidden, setTipHidden] = useState(false);
   const [lockElsewhere, setLockElsewhere] = useState(false);
+  const [daily, setDaily] = useState<{ due: number; size: number } | null>(null);
+  const [missing, setMissing] = useState(0);
   useEffect(() => {
     void sessionLockHeld().then(setLockElsewhere);
   }, [v]);
@@ -58,7 +61,11 @@ export function PackScreen({ id, section, onImport, onPrompt }: { id: string; se
       const pack = await store.getPack(id);
       if (!pack) return live && setData('missing');
       const [sessions, stats, events, overrides] = await Promise.all([store.getSessions(id), store.getStats(id), store.getBankEvents(id), store.getOverrides(id)]);
+      const have = new Set((await (await store.db()).getAllKeysFromIndex('papers', 'packId', id)).map((k) => String(k).slice(id.length + 2)));
+      if (live) setMissing(pack.papers.filter((m) => !have.has(m.id)).length);
       if (live) setData({ pack, sessions, stats, events, overrides });
+      const plan = await dailyPlan(pack);
+      if (live) setDaily(plan);
     })();
     return () => {
       live = false;
@@ -112,14 +119,14 @@ export function PackScreen({ id, section, onImport, onPrompt }: { id: string; se
   const std = packStandardLength(pack);
   const randomSize = Math.min(std, a.coverage.keyedTotal);
   const drillSize = Math.min(std, selectDrill(stats, std, new Set(stats.map((s) => s.qid))).length);
-  const allPapersDone = a.coverage.papersDone >= pack.papers.filter(paperReady).length && pack.papers.length > 0;
+  const allPapersDone = a.coverage.papersDone >= pack.papers.filter(paperComplete).length && pack.papers.length > 0;
   const showTip = !allPapersDone && !tipHidden && !settings.dismissedTips.includes(`random:${pack.id}`);
   const examDays = settings.examDate ? Math.ceil((Date.parse(settings.examDate) - Date.now()) / 86_400_000) : null;
   const qCount = a.q.length;
 
   const pick = (p: PaperMeta) => {
-    if (!paperReady(p)) {
-      toast(p.present < p.questionCount ? `This paper has ${p.present} of ${p.questionCount} questions. Import the rest to start it.` : 'This paper needs its answer key before you can start it. Use "Add papers" > Answer key.');
+    if (!paperComplete(p)) {
+      toast(`This paper has ${p.present} of ${p.questionCount} questions. Import the rest to start it.`);
       return;
     }
     setStart({ type: 'paper', paper: p });
@@ -191,6 +198,18 @@ export function PackScreen({ id, section, onImport, onPrompt }: { id: string; se
               </Button>
             </div>
           </div>
+          {missing > 0 && (
+            <div class="notice notice--warn" style={{ marginBottom: 'var(--space-4)' }}>
+              <Icon name="alert" />
+              <div class="row" style={{ justifyContent: 'space-between' }}>
+                <span class="small">
+                  {missing === pack.papers.length ? 'This pack' : `${missing} of its papers`} came from your other device: results synced, but questions and PDFs never upload.{' '}
+                  {pack.origin?.kind === 'library' ? 'Download it again from the Library to practise here.' : 'Import the pack file here to practise.'}
+                </span>
+                {pack.origin?.kind === 'library' ? <Button onClick={() => navigate(href.school())}>Open Library</Button> : <Button onClick={() => onImport(pack)}>Import pack file</Button>}
+              </div>
+            </div>
+          )}
           {saved && (
             <div class="notice" style={{ marginBottom: 'var(--space-4)' }}>
               <Icon name="clock" />
@@ -369,11 +388,19 @@ export function PackScreen({ id, section, onImport, onPrompt }: { id: string; se
               <span class="big"><span class="num">{Math.round(a.coverage.unseen * 100)}%</span> unseen</span>
               <span class="small muted">{randomSize ? `${randomSize} questions from across the pack, least-seen first. Once all are seen, questions repeat.` : 'Import keyed papers to use Random.'}</span>
             </button>
+            <button type="button" class="jy-panel jy-panel--link choice" disabled={!daily?.due} onClick={() => void startDaily(pack)}>
+              <span class="label">Daily 10</span>
+              <span class="big"><span class="num">{daily?.due ?? 0}</span> due</span>
+              <span class="small muted">{daily?.due ? `${daily.size} questions in ten minutes, with instant feedback. Mistakes return after 1, 3, 7 and 14 days.` : 'Nothing due today. Mistakes come back here 1, 3, 7 and 14 days after you last saw them.'}</span>
+            </button>
             <button type="button" class="jy-panel jy-panel--link choice" disabled={!drillSize} onClick={() => setStart({ type: 'drill', size: drillSize })}>
               <span class="label">Mistakes drill</span>
               <span class="big"><span class="num">{a.bankSize}</span> in bank</span>
               <span class="small muted">{a.bankSize ? 'Wrong or shaky answers, most-missed first. Two sure, correct answers clear one.' : 'Empty for now. Wrong answers and correct-but-unsure ones land here.'}</span>
             </button>
+          </div>
+          <div style={{ marginTop: 'var(--space-3)' }}>
+            <a class="jy-btn jy-btn--ghost" href={href.notebook(pack.id)}><Icon name="file" size={18} /> Mistakes notebook</a>
           </div>
           {showTip && (
             <div class="notice" style={{ marginTop: 'var(--space-4)' }}>
@@ -493,10 +520,14 @@ function DataSection({ data }: { data: PackData }) {
   }, [fix, pack.id]);
 
   const exportPack = async () => {
-    const [papers, ovs] = await Promise.all([store.getPapers(pack.id), store.getOverrides(pack.id)]);
-    const { blob, name } = await exportPackZip(pack, papers, ovs);
-    downloadBlob(blob, name);
-    toast(`Exported ${name}. Anyone can import it into DMC.`);
+    try {
+      const [papers, ovs, snips] = await Promise.all([store.getPapers(pack.id), store.getOverrides(pack.id), store.getSnips(pack.id)]);
+      const { blob, name } = await exportPackZip(pack, papers, ovs, snips);
+      downloadBlob(blob, name);
+      toast(`Exported ${name}. Anyone can import it into DMC.`);
+    } catch (e) {
+      toast((e as Error).message || 'Could not export the pack.');
+    }
   };
   const del = async () => {
     if (await sessionLockHeld()) {
@@ -520,9 +551,15 @@ function DataSection({ data }: { data: PackData }) {
       </div>
       <div class="grid-even">
         <div class="jy-panel stack-s">
-          <h3>Share this pack</h3>
-          <p class="small muted">A zip in the documented pack format, with your fixes applied. Progress is not included.</p>
-          <div><Button onClick={exportPack}><Icon name="download" size={18} /> Export pack</Button></div>
+          <h3>Pack for friends</h3>
+          {pack.origin?.kind === 'library' ? (
+            <p class="small muted">This pack came from the school Library, so it is shared through the Library only. Friends at school can download it there.</p>
+          ) : (
+            <>
+              <p class="small muted">A zip with papers, keys, typed questions, PDFs and snips, with your fixes applied. Never your sessions or progress.</p>
+              <div><Button onClick={exportPack}><Icon name="download" size={18} /> Export pack</Button></div>
+            </>
+          )}
         </div>
         <div class="jy-panel stack-s">
           <h3>Reported questions</h3>

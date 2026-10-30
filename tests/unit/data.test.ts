@@ -57,13 +57,21 @@ describe('import and pack storage', () => {
     expect(p2.present).toBe(4);
     expect(p2.keyed).toBe(4);
   });
-  it('an unkeyed paper cannot be started until keyed', async () => {
+  it('an unkeyed paper runs in Exam mode only, waits for its key, and is regraded when the key arrives', async () => {
     const id = await importPack(doc(syntheticPaper('p1', 4, { answers: false })));
     const pack = (await store.getPack(id))!;
-    await expect(createSession({ pack, type: 'paper', mode: 'exam', paperId: 'p1' })).rejects.toThrow(/not complete or not fully keyed/);
-    await importPack({ answers: [{ paper: 'p1', key: 'ABCD' }] }, id);
-    const keyed = (await store.getPack(id))!;
-    await expect(createSession({ pack: keyed, type: 'paper', mode: 'exam', paperId: 'p1' })).resolves.toBeTruthy();
+    await expect(createSession({ pack, type: 'paper', mode: 'practice', paperId: 'p1' })).rejects.toThrow(/needs the answer key/);
+    const { summary } = await createSession({ pack, type: 'paper', mode: 'exam', paperId: 'p1' });
+    await answerAll(summary.id, () => 1); // B B B B
+    const r = (await submitSession(summary.id, false))!;
+    expect(r.summary).toMatchObject({ awaitingKey: true, answered: 4, correct: 0, partial: false });
+    expect(await store.getStats(id)).toHaveLength(0);
+    await importPack({ answers: [{ paper: 'p1', key: 'BBCD' }] }, id);
+    const after = (await store.getSession(summary.id))!;
+    expect(after.awaitingKey).toBeUndefined();
+    expect(after.correct).toBe(2);
+    const stats = await store.getStats(id);
+    expect(stats.filter((s) => s.inBank).map((s) => s.qid).sort()).toEqual(['p1#3', 'p1#4']);
   });
 });
 

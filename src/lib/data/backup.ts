@@ -1,5 +1,5 @@
 import { FORMAT_ID } from '../format/validate';
-import { DEFAULT_SETTINGS, LETTERS, type Figure, type Pack, type Paper, type QuestionOverride, type Settings, type TimerConfig, type TimerState } from '../types';
+import { DEFAULT_SETTINGS, LETTERS, type Figure, type Pack, type Paper, type QuestionOverride, type Settings, type Snip, type TimerConfig, type TimerState } from '../types';
 import { sanitizeTimer } from '../engine/timer';
 import { applyOverride, mergePaperCopies, metaOf } from '../format/merge';
 import * as store from './db';
@@ -9,9 +9,9 @@ export const BACKUP_FORMAT = 'dmc-backup/1';
 export type Tier = 'progress' | 'packs' | 'everything';
 
 const TIER_STORES: Record<Tier, store.StoreName[]> = {
-  progress: ['sessions', 'sessionDetail', 'questionStats', 'bankEvents', 'overrides', 'meta'],
-  packs: ['packs', 'papers'],
-  everything: ['packs', 'papers', 'sessions', 'sessionDetail', 'questionStats', 'bankEvents', 'overrides', 'meta'],
+  progress: ['sessions', 'sessionDetail', 'questionStats', 'bankEvents', 'overrides', 'meta', 'snips'],
+  packs: ['packs', 'papers', 'snips'],
+  everything: ['packs', 'papers', 'sessions', 'sessionDetail', 'questionStats', 'bankEvents', 'overrides', 'meta', 'snips'],
 };
 
 export interface BackupManifest {
@@ -22,6 +22,10 @@ export interface BackupManifest {
   checksum: string;
   counts: Record<string, number>;
   images: Record<string, string>; // id -> mime type
+  /** PDF id -> file name (packs and everything tiers). */
+  pdfs?: Record<string, string>;
+  /** Packs from the school Library inside this backup: private, for this student's devices only. */
+  privateLibraryPacks?: string[];
 }
 
 type Dump = Partial<Record<store.StoreName, unknown[]>>;
@@ -39,26 +43,42 @@ async function dumpStores(names: store.StoreName[]): Promise<Dump> {
 }
 
 /** Builds a backup. Progress tier is a JSON file; the others are zips with images. */
-export async function createBackup(tier: Tier, now = Date.now()): Promise<{ blob: Blob; name: string }> {
+export async function createBackup(tier: Tier, now = Date.now(), opts: { excludeLibrary?: boolean } = {}): Promise<{ blob: Blob; name: string }> {
   const dump = await dumpStores(TIER_STORES[tier]);
+  if (opts.excludeLibrary && dump.packs) {
+    // Cloud backups leave Library packs out: they come back from the Library.
+    const lib = new Set((dump.packs as Pack[]).filter((p) => p.origin?.kind === 'library').map((p) => p.id));
+    for (const k of Object.keys(dump) as store.StoreName[]) dump[k] = (dump[k] as { id?: string; packId?: string }[]).filter((r) => !lib.has((k === 'packs' ? r.id : r.packId) ?? ''));
+  }
   const data = JSON.stringify(dump);
   const counts = Object.fromEntries(Object.entries(dump).map(([k, v]) => [k, v?.length ?? 0]));
   const images: Record<string, string> = {};
   const files: Record<string, Uint8Array> = {};
+  const pdfs: Record<string, string> = {};
   if (tier !== 'progress') {
     const d = await store.db();
     for (const img of await d.getAll('images')) {
       images[img.id] = img.type;
       files[`images/${img.id}`] = new Uint8Array(await img.blob.arrayBuffer());
     }
+    const usedPdfs = new Set<string>();
+    for (const p of (dump.papers ?? []) as Paper[]) for (const id of [p.pdf?.qp, p.pdf?.ms]) if (id) usedPdfs.add(id);
+    for (const sn of (dump.snips ?? []) as { pdfId: string }[]) usedPdfs.add(sn.pdfId);
+    for (const pdf of await d.getAll('pdfs')) {
+      if (!usedPdfs.has(pdf.id)) continue;
+      pdfs[pdf.id] = pdf.name;
+      files[`pdfs/${pdf.id}`] = new Uint8Array(await pdf.blob.arrayBuffer());
+    }
   }
-  const manifest: BackupManifest = { format: BACKUP_FORMAT, tier, createdAt: now, app: __APP_VERSION__, checksum: await sha256Hex(data), counts, images };
+  const lib = ((dump.packs ?? []) as Pack[]).filter((p) => p.origin?.kind === 'library').map((p) => p.id);
+  const manifest: BackupManifest = { format: BACKUP_FORMAT, tier, createdAt: now, app: __APP_VERSION__, checksum: await sha256Hex(data), counts, images, ...(tier !== 'progress' ? { pdfs } : {}), ...(lib.length ? { privateLibraryPacks: lib } : {}) };
   const date = new Date(now).toISOString().slice(0, 10);
   if (tier === 'progress') {
     return { blob: new Blob([JSON.stringify({ manifest, data })], { type: 'application/json' }), name: `dmc-progress-${date}.json` };
   }
   const { zipSync, strToU8 } = await import('fflate');
-  const zip = zipSync({ 'dmc-backup.json': strToU8(JSON.stringify(manifest)), 'data.json': strToU8(data), ...files }, { level: 6 });
+  const note: Record<string, Uint8Array> = lib.length ? { 'PRIVATE.txt': strToU8('This backup contains packs from the school Library. It is for your own devices only: do not share it.\n') } : {};
+  const zip = zipSync({ 'dmc-backup.json': strToU8(JSON.stringify(manifest)), 'data.json': strToU8(data), ...note, ...files }, { level: 6 });
   return { blob: new Blob([zip as BlobPart], { type: 'application/zip' }), name: `dmc-${tier}-${date}.zip` };
 }
 
@@ -66,6 +86,7 @@ export interface RestorePlan {
   manifest: BackupManifest;
   dump: Dump;
   images: Map<string, Blob>;
+  pdfs: Map<string, Blob>;
   adds: Record<string, number>;
   merges: Record<string, number>;
   skips: Record<string, number>;
@@ -87,7 +108,7 @@ const timerOk = (t: unknown): boolean => {
 };
 const num = (v: unknown) => typeof v === 'number' && Number.isFinite(v);
 /** Shape checks for restored rows: a recomputed checksum proves integrity, not validity. */
-function validRow(name: store.StoreName, r: Record<string, unknown>): boolean {
+export function validRow(name: store.StoreName, r: Record<string, unknown>): boolean {
   if (!r || typeof r !== 'object') return false;
   switch (name) {
     case 'packs':
@@ -121,13 +142,17 @@ function validRow(name: store.StoreName, r: Record<string, unknown>): boolean {
       return str(r.key) && str(r.packId) && str(r.qid) && r.key === `${r.packId}::${r.qid}` && num(r.updatedAt);
     case 'meta':
       return r.key === 'settings' && typeof r.value === 'object' && r.value !== null;
+    case 'snips': {
+      const fr = (v: unknown) => num(v) && (v as number) >= 0 && (v as number) <= 1;
+      return str(r.key) && str(r.packId) && str(r.qid) && r.key === `${r.packId}::${r.qid}` && typeof r.pdfId === 'string' && /^[0-9a-f]{64}$/.test(r.pdfId) && int(r.page, 1, 500) && fr(r.x) && fr(r.y) && fr(r.w) && fr(r.h) && num(r.updatedAt);
+    }
     default:
       return false;
   }
 }
 
 /** Keeps only known settings whose type matches the default; anything else falls back to the default. */
-function cleanSettings(v: Record<string, unknown>): Settings {
+export function cleanSettings(v: Record<string, unknown>): Settings {
   const out = { ...DEFAULT_SETTINGS } as Record<string, unknown>;
   for (const [k, def] of Object.entries(DEFAULT_SETTINGS)) {
     const x = v?.[k];
@@ -136,6 +161,7 @@ function cleanSettings(v: Record<string, unknown>): Settings {
   }
   if (typeof v?.examDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v.examDate)) out.examDate = v.examDate;
   if (typeof v?.lastBackupAt === 'number') out.lastBackupAt = v.lastBackupAt;
+  if (typeof v?.updatedAt === 'number' && Number.isFinite(v.updatedAt)) out.updatedAt = v.updatedAt;
   if (!['system', 'light', 'dark'].includes(out.theme as string)) out.theme = 'system';
   out.backupEvery = Math.min(100, Math.max(1, Math.round(Number(out.backupEvery)) || 10));
   out.lastBackupAtCount = Math.min(1e6, Math.max(0, Math.round(Number(out.lastBackupAtCount)) || 0));
@@ -172,7 +198,7 @@ const stamp = (name: store.StoreName, r: Record<string, unknown>): number =>
   Number(name === 'questionStats' ? (r.lastAnsweredAt ?? 0) : (r.updatedAt ?? r.addedAt ?? 0));
 
 /** Verifies the checksum and computes what a restore would add or merge. */
-export async function planRestore(manifestText: string, data: string, images: Map<string, Blob>): Promise<RestorePlan> {
+export async function planRestore(manifestText: string, data: string, images: Map<string, Blob>, pdfs: Map<string, Blob> = new Map()): Promise<RestorePlan> {
   let manifest: BackupManifest;
   try {
     manifest = JSON.parse(manifestText);
@@ -207,7 +233,7 @@ export async function planRestore(manifestText: string, data: string, images: Ma
   // Progress for packs that exist nowhere would create ghost sessions and stats: drop it.
   const known = new Set([...(await d.getAllKeys('packs')).map(String), ...((dump.packs ?? []) as Record<string, unknown>[]).map((p) => p.id as string)]);
   let orphans = 0;
-  for (const name of ['sessions', 'sessionDetail', 'questionStats', 'bankEvents', 'overrides'] as const) {
+  for (const name of ['sessions', 'sessionDetail', 'questionStats', 'bankEvents', 'overrides', 'snips'] as const) {
     const rows = dump[name] as Record<string, unknown>[] | undefined;
     if (!rows) continue;
     const kept = rows.filter((r) => known.has(r.packId as string));
@@ -231,7 +257,7 @@ export async function planRestore(manifestText: string, data: string, images: Ma
       else skips[name] = (skips[name] ?? 0) + 1;
     }
   }
-  return { manifest, dump, images, adds, merges, skips, orphans };
+  return { manifest, dump, images, pdfs, adds, merges, skips, orphans };
 }
 
 /** Applies a restore plan: adds new records, replaces older ones by updatedAt, keeps newer local ones. */
@@ -244,6 +270,14 @@ export async function applyRestore(plan: RestorePlan): Promise<void> {
     // Image ids are the SHA-256 of their bytes; anything else was tampered with.
     if ((await sha256Hex(await b.arrayBuffer())) !== id) continue;
     imgs.push({ id, type, blob: new Blob([b], { type }) });
+  }
+  const pdfRecs: { id: string; name: string; size: number; blob: Blob; addedAt: number }[] = [];
+  for (const [id, name] of Object.entries(plan.manifest.pdfs ?? {})) {
+    const b = plan.pdfs.get(id);
+    if (!b || !/^[0-9a-f]{64}$/.test(id) || typeof name !== 'string') continue;
+    const buf = await b.arrayBuffer();
+    if ((await sha256Hex(buf)) !== id) continue;
+    pdfRecs.push({ id, name: name.slice(0, 200), size: buf.byteLength, blob: new Blob([buf], { type: 'application/pdf' }), addedAt: Date.now() });
   }
   // One open session per pack: an incoming open session is skipped if its pack already has one.
   const openPacks = new Set((await store.getOpenSessions()).map((s) => s.packId));
@@ -263,7 +297,7 @@ export async function applyRestore(plan: RestorePlan): Promise<void> {
     const tx = d.transaction(store.STORES, 'readwrite');
     const winners = new Set<string>(); // packs/sessions whose incoming copy won
     const touchedPacks = new Set<string>();
-    const order: store.StoreName[] = ['packs', 'papers', 'sessions', 'sessionDetail', 'questionStats', 'bankEvents', 'overrides', 'meta'];
+    const order: store.StoreName[] = ['packs', 'papers', 'sessions', 'sessionDetail', 'questionStats', 'bankEvents', 'overrides', 'meta', 'snips'];
     for (const name of order) {
       const rows = plan.dump[name] as Record<string, unknown>[] | undefined;
       if (!rows) continue;
@@ -335,6 +369,7 @@ export async function applyRestore(plan: RestorePlan): Promise<void> {
     }
     const imageStore = tx.objectStore('images');
     for (const i of imgs) if (!(await imageStore.get(i.id))) await imageStore.put(i);
+    for (const f of pdfRecs) if (!(await tx.objectStore('pdfs').get(f.id))) await tx.objectStore('pdfs').put(f);
     await tx.done;
   });
 }
@@ -342,9 +377,31 @@ export async function applyRestore(plan: RestorePlan): Promise<void> {
 // ---------- shareable pack export (dmc-pack/1) ----------
 const EXT: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif', 'image/svg+xml': 'svg' };
 
-/** Exports a pack in the documented import format, with fixes applied and images as files. */
-export async function exportPackZip(pack: Pack, papers: Paper[], overrides: QuestionOverride[]): Promise<{ blob: Blob; name: string }> {
+export class ShareError extends Error {}
+
+/**
+ * "Pack for friends": a zip in the documented import format with papers, keys, typed content,
+ * PDFs and snips, and the user's fixes applied. Never personal sessions or stats. Packs that came
+ * from the school Library are refused: they are shared through the Library only.
+ */
+export async function exportPackZip(pack: Pack, papers: Paper[], overrides: QuestionOverride[], snips: Snip[] = []): Promise<{ blob: Blob; name: string }> {
+  if (pack.origin?.kind === 'library') throw new ShareError('This pack came from the school Library. Share it from the Library, not as a file.');
   const ov = new Map(overrides.map((o) => [o.qid, o] as const));
+  const sn = new Map(snips.map((x) => [x.qid, x] as const));
+  const pdfFiles: Record<string, Uint8Array> = {};
+  const pdfPath = new Map<string, string>();
+  const pdfOf = async (id?: string) => {
+    if (!id) return undefined;
+    if (pdfPath.has(id)) return pdfPath.get(id);
+    const rec = await d.get('pdfs', id);
+    if (!rec) return undefined;
+    const base = (rec.name.replace(/\.pdf$/i, '').replace(/[^A-Za-z0-9._-]+/g, '_').slice(0, 80) || id.slice(0, 12)) + '.pdf';
+    let path = `pdfs/${base}`;
+    for (let k = 2; Object.prototype.hasOwnProperty.call(pdfFiles, path); k++) path = `pdfs/${k}-${base}`;
+    pdfFiles[path] = new Uint8Array(await rec.blob.arrayBuffer());
+    pdfPath.set(id, path);
+    return path;
+  };
   const imageIds = new Set<string>();
   const files: Record<string, Uint8Array> = {};
   const types = new Map<string, string>();
@@ -357,24 +414,34 @@ export async function exportPackZip(pack: Pack, papers: Paper[], overrides: Ques
     imageIds.add(f.imageId);
     return { file: f.imageId, ...(f.alt ? { alt: f.alt } : {}) };
   };
+  const sorted = papers.slice().sort((a, b) => a.addedAt - b.addedAt);
+  const paths = new Map<string, { questionPaper?: string; markScheme?: string }>();
+  for (const p of sorted) {
+    const qp = await pdfOf(p.pdf?.qp);
+    const ms = await pdfOf(p.pdf?.ms);
+    if (qp || ms) paths.set(p.id, { ...(qp ? { questionPaper: qp } : {}), ...(ms ? { markScheme: ms } : {}) });
+  }
   const doc = {
     format: FORMAT_ID,
     pack: { title: pack.title, subject: pack.subject },
-    papers: papers
-      .slice()
-      .sort((a, b) => a.addedAt - b.addedAt)
-      .map((p) => ({
+    papers: sorted.map((p) => ({
         id: p.id,
         title: p.title,
         group: p.group,
         questionCount: p.questionCount,
         timeLimitMinutes: p.timeLimitMin,
         optionCount: p.optionCount,
+        ...(p.bare && paths.get(p.id)?.questionPaper ? { bare: true } : {}),
+        ...(paths.has(p.id) ? { pdf: paths.get(p.id) } : {}),
+        ...(p.boundaries?.length ? { gradeBoundaries: Object.fromEntries(p.boundaries.map((b) => [b.grade, b.min])) } : {}),
         questions: p.questions.map((q0) => {
           const q = applyOverride(q0, ov.get(q0.id));
           if (q.image) imageIds.add(q.image);
+          const snip = sn.get(q.id);
           return {
             n: q.n,
+            ...(q.page ? { page: q.page } : {}),
+            ...(snip && snip.pdfId === p.pdf?.qp && paths.get(p.id)?.questionPaper ? { snip: { page: snip.page, x: snip.x, y: snip.y, w: snip.w, h: snip.h } } : {}),
             ...(q.stem !== undefined ? { stem: q.stem } : {}),
             ...(q.image ? { image: q.image } : {}),
             ...(q.figure ? { figure: fig(q.figure) } : {}),
@@ -396,7 +463,7 @@ export async function exportPackZip(pack: Pack, papers: Paper[], overrides: Ques
   // Replace image ids with file paths now that types are known.
   const json = JSON.stringify(doc, null, 2).replace(/"(file|image)": "([0-9a-f]{64})"/g, (_m, k: string, id: string) => `"${k}": "${pathOf(id)}"`);
   const { zipSync, strToU8 } = await import('fflate');
-  const zip = zipSync({ 'pack.json': strToU8(json), ...files }, { level: 6 });
+  const zip = zipSync({ 'pack.json': strToU8(json), ...files, ...Object.fromEntries(Object.entries(pdfFiles).map(([k, v]) => [k, [v, { level: 0 }]])) }, { level: 6 });
   return { blob: new Blob([zip as BlobPart], { type: 'application/zip' }), name: `${pack.id}.dmc.zip` };
 }
 
