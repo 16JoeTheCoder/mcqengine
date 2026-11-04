@@ -1,0 +1,68 @@
+# Deploy the API separately from Pages. Replace placeholders before deployment.
+name = "dmc-api"
+main = "worker/index.ts"
+compatibility_date = "2026-10-01"
+workers_dev = false
+
+[vars]
+APP_ORIGIN = "https://mcq.example.com"
+SUPABASE_URL = "https://your-project-ref.supabase.co"
+SUPABASE_ANON_KEY = "your-public-anon-key"
+NVIDIA_MODEL = "nvidia/llama-3.1-nemotron-nano-vl-8b-v1"
+AI_SHARED_RPM = "30"
+AI_USER_DAILY_REQUESTS = "100"
+AI_CONCURRENCY = "2"
+AI_MAX_PAGES = "4"
+AI_TIMEOUT_MS = "45000"
+AI_MAX_RETRIES = "1"
+
+[[durable_objects.bindings]]
+name = "AI_BUDGET"
+class_name = "AiBudget"
+
+[[migrations]]
+tag = "v1-ai-budget"
+new_sqlite_classes = ["AiBudget"]
+
+# Requires mcq.example.com to be a proxied hostname in the example.com zone.
+[[routes]]
+pattern = "mcq.example.com/api/*"
+zone_name = "example.com"
+
+# Every environment must repeat vars and bindings: Wrangler does not inherit them.
+[env.preview]
+name = "dmc-api-preview"
+workers_dev = true
+routes = []
+[env.preview.vars]
+APP_ORIGIN = "https://preview-mcq.example.com"
+SUPABASE_URL = "https://your-preview-project-ref.supabase.co"
+SUPABASE_ANON_KEY = "your-preview-public-anon-key"
+NVIDIA_MODEL = "nvidia/llama-3.1-nemotron-nano-vl-8b-v1"
+AI_SHARED_RPM = "10"
+AI_USER_DAILY_REQUESTS = "20"
+AI_CONCURRENCY = "1"
+AI_MAX_PAGES = "4"
+AI_TIMEOUT_MS = "45000"
+AI_MAX_RETRIES = "1"
+[[env.preview.durable_objects.bindings]]
+name = "AI_BUDGET"
+class_name = "AiBudget"
+
+[env.development]
+name = "dmc-api-development"
+workers_dev = false
+routes = []
+[env.development.vars]
+APP_ORIGIN = "http://localhost:5173"
+SUPABASE_URL = "https://your-development-project-ref.supabase.co"
+SUPABASE_ANON_KEY = "your-development-public-anon-key"
+AI_SHARED_RPM = "5"
+AI_USER_DAILY_REQUESTS = "10"
+AI_CONCURRENCY = "1"
+AI_MAX_PAGES = "4"
+AI_TIMEOUT_MS = "45000"
+AI_MAX_RETRIES = "0"
+[[env.development.durable_objects.bindings]]
+name = "AI_BUDGET"
+class_name = "AiBudget"

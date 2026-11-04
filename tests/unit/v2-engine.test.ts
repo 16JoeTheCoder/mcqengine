@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import * as store from '../../src/lib/data/db';
 import { createSession, submitSession } from '../../src/lib/engine/session';
-import { applyAnswer, dailySize, dayDiff, dueForDaily, emptyStat, overdueDays } from '../../src/lib/engine/mistakes';
+import { applyAnswer, emptyStat } from '../../src/lib/engine/mistakes';
 import { rebuildStats, replayStats } from '../../src/lib/engine/regrade';
 import { setPaperKey } from '../../src/lib/data/keys';
 import { gradeFor } from '../../src/lib/format/merge';
@@ -42,61 +42,21 @@ describe('mistakes bank: two in a row', () => {
   });
 });
 
-describe('Daily 10 schedule', () => {
-  const banked = (stage: number, lastAt: number, missed = 1, qid = 'q'): QuestionStat => ({ ...emptyStat('p', qid), inBank: true, stage, lastAnsweredAt: lastAt, missed });
-  it('counts local calendar days, not 24-hour spans', () => {
-    const late = new Date(2026, 9, 1, 23, 50).getTime();
-    expect(dayDiff(late, late + 20 * 60_000)).toBe(1);
-    expect(dayDiff(T0, T0 + 10 * 3_600_000)).toBe(0);
-  });
-  it('resurfaces at 1, 3, 7, then 14 days', () => {
-    expect([0, 1, 2, 3, 4].map((st) => overdueDays(banked(st, T0), T0 + 14 * DAY))).toEqual([13, 11, 7, 0, 0]);
-    expect(overdueDays(banked(0, T0), T0)).toBe(-1);
-    expect(overdueDays(banked(1, T0), T0 + 2 * DAY)).toBe(-1);
-    expect(overdueDays(banked(1, T0), T0 + 3 * DAY)).toBe(0);
-  });
-  it('due list: only banked, viewable and due; most overdue first, then most missed', () => {
-    const stats = [banked(0, T0 - 5 * DAY, 1, 'a'), banked(0, T0 - 2 * DAY, 4, 'b'), banked(0, T0 - 2 * DAY, 1, 'c'), banked(0, T0, 9, 'd'), { ...banked(0, T0 - 9 * DAY, 1, 'e'), inBank: false }, banked(0, T0 - 9 * DAY, 1, 'f')];
-    expect(dueForDaily(stats, T0, new Set(['a', 'b', 'c', 'd', 'e']))).toEqual(['a', 'b', 'c']);
-  });
-  it('sizes ten minutes from pace, between 3 and 20', () => {
-    expect(dailySize(60)).toBe(10);
-    expect(dailySize(90)).toBe(6);
-    expect(dailySize(5)).toBe(20);
-    expect(dailySize(600)).toBe(3);
-    expect(dailySize(NaN)).toBe(6);
-  });
-  it('a stage advances on each in-bank answer and a wrong answer resets it', () => {
-    let s = applyAnswer(emptyStat('p', 'q'), { correct: false, unsure: false, timeMs: 1, at: T0, countSeen: true }).stat;
-    expect(s.stage).toBe(0);
-    s = applyAnswer(s, { correct: true, unsure: true, timeMs: 1, at: T0 + DAY, countSeen: false }).stat;
-    expect(s.stage).toBe(1);
-    s = applyAnswer(s, { correct: false, unsure: false, timeMs: 1, at: T0 + 2 * DAY, countSeen: false }).stat;
-    expect(s.stage).toBe(0);
-  });
-});
-
-describe('Daily 10 sessions', () => {
-  it('draws due questions, gives instant feedback with a 10-minute timer, never counts as seen, and clears with a second correct answer the same day', async () => {
+describe('retired Daily 10', () => {
+  it('refuses new sessions while historical summaries and details still replay', async () => {
     const id = await importPack(doc(syntheticPaper('p1', 4)));
     const pack = (await store.getPack(id))!;
+    await expect(createSession({ pack, type: 'daily' as never, mode: 'practice' }, T0)).rejects.toThrow(/retired|no longer|legacy/i);
     const paper = await createSession({ pack, type: 'paper', mode: 'exam', paperId: 'p1' }, T0);
-    await answerAll(paper.summary.id, (i, q) => (i === 0 ? (synthKey(q) + 1) % 4 : synthKey(q)));
-    await submitSession(paper.summary.id, false, T0);
-    await expect(createSession({ pack, type: 'daily', mode: 'exam' }, T0 + 3_600_000)).rejects.toThrow(/Nothing is due/);
-    const day1 = T0 + DAY;
-    const daily = await createSession({ pack, type: 'daily', mode: 'exam' }, day1);
-    expect(daily.summary).toMatchObject({ type: 'daily', mode: 'practice', total: 1, timer: { kind: 'total', totalMs: 600_000 } });
-    expect(daily.detail.questionIds).toEqual(['p1#1']);
-    await answerAll(daily.summary.id, (_i, q) => synthKey(q));
-    await submitSession(daily.summary.id, false, day1);
-    let st = (await store.getStats(id)).find((s) => s.qid === 'p1#1')!;
-    expect(st).toMatchObject({ inBank: true, streak: 1, timesSeen: 1 });
-    const drill = await createSession({ pack, type: 'drill', mode: 'practice' }, day1 + 60_000);
-    await answerAll(drill.summary.id, (_i, q) => synthKey(q));
-    await submitSession(drill.summary.id, false, day1 + 120_000);
-    st = (await store.getStats(id)).find((s) => s.qid === 'p1#1')!;
-    expect(st).toMatchObject({ inBank: false, timesSeen: 1 });
+    await answerAll(paper.summary.id, (_i, q) => synthKey(q));
+    await submitSession(paper.summary.id, false, T0 + 1000);
+    const s = (await store.getSession(paper.summary.id))!;
+    const d = (await store.getDetail(s.id))!;
+    await store.saveSessionState({ ...s, type: 'daily', title: 'Daily 10' }, d);
+    await rebuildStats(id);
+    expect((await store.getSession(s.id))?.type).toBe('daily');
+    expect((await store.getStats(id)).every((q) => q.timesSeen === 0)).toBe(true);
+    expect((await store.getStats(id)).every((q) => q.attempts === 1)).toBe(true);
   });
 });
 

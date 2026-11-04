@@ -1,3 +1,22 @@
+# Revision-tool upgrade
+
+Current source upgrade supersedes the historical implementation notes below.
+
+- Daily 10 navigation, creation controls and scheduling are removed. Historical session types remain compatible with replay, backup, restore and sync.
+- Ordinary papers, Random and mistakes drills remain available.
+- Dashboard summaries describe observed trends with sample size and self-reported-practice caveats. The mistakes-bank rule is not labelled topic mastery.
+- Cloudflare replaces Netlify hosting; deployment and environment setup are documented in `CLOUDFLARE_SETUP.md`.
+- Email OTP, isolated account/guest databases, legacy quarantine/recovery and shared-device backup/cache removal are implemented.
+- CAS sync, deterministic revision pagination, cascading tombstones, split session-pair staging, local conflict export and transactional attempt change tracking are implemented.
+- Board mode, persisted presentation size, fullscreen/theme controls, jump, reveal, elimination, revisit and source-page access are implemented. The writing half is an ordinary empty region.
+- Authenticated NVIDIA extraction, shared Durable Object budget, bounded local PDF processing, recovery/retry/cancellation and editable review are implemented.
+- Reference-filtered bounded backups, worker compression, historical content snapshots and key-correction audit history are implemented.
+- Final verification: `npm run check` passed: frontend + Worker typecheck, lint, 301 unit tests in 22 files, production build. All 28 Chromium tests passed, including account A/guest/B/A, guest adoption, shared-device removal, board blank/theme/fullscreen/keyboard/mobile, mocked AI recovery, offline practice and accessibility.
+- Worker `wrangler deploy --dry-run` validates the bundle/config without publishing. No real SMTP, Supabase project, NVIDIA quota, deployed Durable Object, DNS or HTTPS smoke was run because credentials/configuration were not supplied.
+- See `UPGRADE.md` for implemented behavior, compatibility, known limits, costs and manual setup. Live deployment, production authentication, DNS and data changes still require explicit authorization.
+
+## Historical implementation record
+
 # Progress
 
 Resume from here after a context reset. Each stage ends with `npm run check` green and a commit.

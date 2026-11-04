@@ -4,9 +4,9 @@ import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 
 const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as { version: string };
-// The production Content-Security-Policy from netlify.toml, also served by `vite preview`, so the
+// The production Content-Security-Policy from public/_headers, also served by `vite preview`, so the
 // end-to-end tests run under the same policy as the deployed site.
-const csp = /Content-Security-Policy = "([^"]+)"/.exec(readFileSync(new URL('./netlify.toml', import.meta.url), 'utf8'))?.[1];
+const csp = /Content-Security-Policy: (.+)/.exec(readFileSync(new URL('./public/_headers', import.meta.url), 'utf8'))?.[1];
 
 /**
  * Generates sw.js after the bundle is written: a precache list of every emitted file and a
@@ -35,6 +35,7 @@ function serviceWorker(): Plugin {
 
 export default defineConfig({
   base: './',
+  server: { proxy: { '/api': 'http://127.0.0.1:8787' } },
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
     __BUILD_ID__: JSON.stringify(new Date().toISOString().slice(0, 10)),

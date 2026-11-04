@@ -1,0 +1,32 @@
+import { expect, it } from 'vitest';
+import * as store from '../../src/lib/data/db';
+import { applyRestore, createBackup, planRestore } from '../../src/lib/data/backup';
+import { readZip } from '../../src/lib/data/files';
+import { createSession, submitSession } from '../../src/lib/engine/session';
+import { collectLocal, applyRemote } from '../../src/lib/sync/sync';
+import { doc, syntheticPaper } from '../fixtures/make';
+import { answerAll, importPack, synthKey } from './helpers';
+
+it('preserves a historical Daily 10 through backup, restore and sync without offering new sessions', async () => {
+  store.useDbName('legacy-daily-source');
+  const id = await importPack(doc(syntheticPaper('p1', 4)));
+  const pack = (await store.getPack(id))!;
+  const { summary } = await createSession({ pack, type: 'paper', paperId: 'p1', mode: 'exam' }, 1000);
+  await answerAll(summary.id, (_i, q) => synthKey(q));
+  await submitSession(summary.id, false, 2000);
+  const oldSummary = { ...(await store.getSession(summary.id))!, type: 'daily' as const, title: 'Daily 10' };
+  const oldDetail = (await store.getDetail(summary.id))!;
+  await store.saveSessionState(oldSummary, oldDetail);
+  const storedSummary = (await store.getSession(summary.id))!;
+  const { blob } = await createBackup('everything');
+  const records = await collectLocal();
+  const src = await readZip(blob, 'historical.zip');
+  store.useDbName('legacy-daily-restored');
+  await applyRestore(await planRestore(src.backup!.manifest, src.backup!.data, src.backup!.images, src.backup!.pdfs));
+  expect(await store.getSession(summary.id)).toEqual(storedSummary);
+  expect(await store.getDetail(summary.id)).toEqual(oldDetail);
+  store.useDbName('legacy-daily-synced');
+  await applyRemote(records);
+  expect((await store.getSession(summary.id))?.type).toBe('daily');
+  expect((await store.getDetail(summary.id))?.answers).toEqual(oldDetail.answers);
+});

@@ -37,16 +37,18 @@ export function replayStats(packId: string, rows: { s: SessionSummary; d: Sessio
 /** Replaces a pack's stats and bank events with a replay of its sessions. */
 export async function rebuildStats(packId: string): Promise<void> {
   const d = await store.db();
-  const sessions = await d.getAllFromIndex('sessions', 'packId', packId);
-  const rows: { s: SessionSummary; d: SessionDetail }[] = [];
-  for (const s of sessions) {
-    if (!finished(s)) continue;
-    const det = await d.get('sessionDetail', s.id);
-    if (det) rows.push({ s, d: det });
-  }
-  const { stats, events } = replayStats(packId, rows);
   await store.write(async () => {
-    const tx = d.transaction(['questionStats', 'bankEvents'], 'readwrite');
+    // Read the attempt revision and replace its derived rows under one transaction. A sync
+    // commit or another tab cannot change the source between the replay and its write.
+    const tx = d.transaction(['sessions', 'sessionDetail', 'questionStats', 'bankEvents'], 'readwrite');
+    const sessions = await tx.objectStore('sessions').index('packId').getAll(packId);
+    const rows: { s: SessionSummary; d: SessionDetail }[] = [];
+    for (const s of sessions) {
+      if (!finished(s)) continue;
+      const det = await tx.objectStore('sessionDetail').get(s.id);
+      if (det) rows.push({ s, d: det });
+    }
+    const { stats, events } = replayStats(packId, rows);
     for (const name of ['questionStats', 'bankEvents'] as const) {
       const idx = tx.objectStore(name).index('packId');
       for (let c = await idx.openCursor(IDBKeyRange.only(packId)); c; c = await c.continue()) await c.delete();
@@ -78,7 +80,9 @@ export async function regradePack(packId: string, now = Date.now()): Promise<num
     const awaitingKey = g.unkeyed > 0;
     const { awaitingKey: _a, ...rest } = s;
     const summary: SessionSummary = { ...rest, answered: g.answered, correct: awaitingKey ? 0 : g.correct, partial: g.partial, agg: g.agg, updatedAt: now, ...(awaitingKey ? { awaitingKey } : {}) };
-    await store.saveSessionState(summary, { ...det, key });
+    const previousKey = det.questionIds.map((_q, i) => det.key?.[i] ?? null);
+    const regrades = [...(det.regrades ?? []), { at: now, previousKey, key, previousCorrect: s.correct, correct: summary.correct }].slice(-100);
+    await store.saveSessionState(summary, { ...det, key, regrades });
     changed++;
   }
   if (changed) await rebuildStats(packId);

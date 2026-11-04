@@ -193,3 +193,19 @@ One line each: what was decided and why. Grouped by area.
 151. Mistakes notebook (`#/pack/<id>/notebook`) prints as a study sheet: outlines not fills, single column, 11 pt body, the signature at the foot. The `tab-outline` logo file is not in `brand/`; the light lockup stands in, and the outline is picked up automatically once added.
 152. Any paper can have its question paper and mark scheme PDFs attached later (paper dialog > PDFs), so typed packs made in an AI chat also get "View in PDF".
 153. Per-question times are labelled approximate wherever shown: they count time on screen, including returns to a question.
+
+
+## Revision-tool upgrade decisions
+
+- Daily 10 is retired. Remove active schedule and creation paths, retain the `daily` session discriminator and old schedule fields solely so historical sessions and backups stay readable. Do not delete old records.
+- The mistakes bank remains a simple two-sure-correct-answers list rule; it does not measure or certify topic mastery.
+- Keep the established trend calculation as a lightweight description of observed local practice, replacing probability/confidence claims in UI with sample sizes and explicit limitations.
+- Keep Preact, Vite, IndexedDB, Supabase and the established design tokens; move static hosting to Pages and proxy private AI requests through an authenticated Worker.
+
+- Account identity selects an isolated IndexedDB name; auth changes invalidate sync immediately and restart the document. The original mixed cache is quarantined for explicit ownership-confirmed recovery. Guest data never uploads automatically.
+- Sync uses CAS base tokens and monotonic server revision cursors; local timestamps identify versions rather than order competing devices. Conflict copies remain exportable locally. Session revisions stage as matched summary/detail pairs, and derived statistics never push independently.
+- Track finished-session version tokens transactionally in meta to avoid repeated scans/readback of full answer histories. Bulk restore/adoption invalidates the index once. Keep smaller outline/fix/snippet scans until profiling justifies more machinery.
+- Keep snapshot content and the latest 100 regrade events for historical reviews. Heavy browser ZIP compression runs in one bundled worker; apply reference filtering before collecting backup assets.
+- Use one named SQLite Durable Object for provider reservations, account quotas and concurrency. Shared default 30 RPM remains below the stated 40 RPM; no public provider proxy or browser secret.
+- Wrangler is a development/deployment dependency because Worker/Pages builds and deploy commands need an explicit reproducible CLI. No new frontend runtime dependency.
+- Extend the incumbent builtbyjosef tokens/components for board and import controls; preserve docs/design/DESIGN.md and existing theme authority. The blank board half is layout only.

@@ -55,6 +55,11 @@ export function Results({ id }: { id: string }) {
       if (!s || !d) return setData('missing');
       if (s.status === 'active' || s.status === 'saved') return navigate(href.session(id), true);
       const [q, history, all, pack] = await Promise.all([loadSessionQuestions(d), store.getSessions(s.packId), store.getAllSessions(), store.getPack(s.packId)]);
+      // New sessions retain the exact content shown. Legacy sessions have no recoverable snapshot.
+      if (d.snapshots) {
+        q.clear();
+        for (const snapshot of d.snapshots) q.set(snapshot.id, snapshot);
+      }
       const first = data === null;
       setData({ s, d, q, history, packTitle: pack?.title ?? s.title, completed: all.filter((x) => x.status === 'submitted' || x.status === 'auto-submitted').length, ...(s.paperId ? { paper: pack?.papers.find((p) => p.id === s.paperId) } : {}) });
       if (first) {
@@ -151,6 +156,18 @@ export function Results({ id }: { id: string }) {
         </div>
       </section>
 
+      <p class="small muted">Local practice results are self-reported. They are not verified assessment results.</p>
+      {!d.snapshots && <p class="small muted">This older session has no saved question content. Review uses the current pack.</p>}
+      {!!d.regrades?.length && (
+        <details style={{ marginBottom: 'var(--space-5)' }}>
+          <summary>Answer-key corrections ({d.regrades.length})</summary>
+          <ul>
+            {d.regrades.map((change, i) => (
+              <li key={i}>{fmtDate(change.at)}: score {change.previousCorrect}/{s.total} → {change.correct}/{s.total}; {change.key.filter((answer, n) => answer !== change.previousKey[n]).length} key entries changed.</li>
+            ))}
+          </ul>
+        </details>
+      )}
       {pb !== null && (
         <section class="jy-panel pb" aria-labelledby="pb-h" style={{ marginBottom: 'var(--space-5)' }}>
           <span class="label">Personal best</span>

@@ -1,9 +1,10 @@
 import { FORMAT_ID } from '../format/validate';
-import { DEFAULT_SETTINGS, LETTERS, type Figure, type Pack, type Paper, type QuestionOverride, type Settings, type Snip, type TimerConfig, type TimerState } from '../types';
+import { DEFAULT_SETTINGS, LETTERS, type Figure, type Pack, type Paper, type Question, type QuestionOverride, type SessionDetail, type Settings, type Snip, type TimerConfig, type TimerState } from '../types';
 import { sanitizeTimer } from '../engine/timer';
 import { applyOverride, mergePaperCopies, metaOf } from '../format/merge';
 import * as store from './db';
-import { sha256Hex } from './files';
+import { MAX_IMAGE_BYTES, MAX_PDF_FILE_BYTES, ZIP_LIMITS, sha256Hex } from './files';
+import { archive } from './archive';
 
 export const BACKUP_FORMAT = 'dmc-backup/1';
 export type Tier = 'progress' | 'packs' | 'everything';
@@ -30,42 +31,83 @@ export interface BackupManifest {
 
 type Dump = Partial<Record<store.StoreName, unknown[]>>;
 
-async function dumpStores(names: store.StoreName[]): Promise<Dump> {
-  const d = await store.db();
+/** Kept within the existing JSON and guarded-zip import limits. */
+export const BACKUP_LIMITS = { dataBytes: 15_000_000, manifestBytes: 1_000_000, rows: 100_000 };
+
+function checkDataLimit(data: string) {
+  if (data.length > BACKUP_LIMITS.dataBytes || new TextEncoder().encode(data).byteLength > BACKUP_LIMITS.dataBytes) throw new BackupError('Backup records exceed 15 MB. Export fewer packs.');
+}
+
+function assetsOf(dump: Dump): { images: Set<string>; pdfs: Set<string> } {
+  const images = new Set<string>();
+  const pdfs = new Set<string>();
+  const figure = (f?: Figure) => { if (f?.kind === 'image') images.add(f.imageId); };
+  const question = (q: Question) => {
+    if (q.image) images.add(q.image);
+    figure(q.figure);
+    q.options?.forEach((o) => figure(o.figure));
+    if (q.pdfId) pdfs.add(q.pdfId);
+    if (q.snip) pdfs.add(q.snip.pdfId);
+  };
+  for (const p of (dump.papers ?? []) as Paper[]) {
+    p.questions.forEach(question);
+    for (const id of [p.pdf?.qp, p.pdf?.ms]) if (id) pdfs.add(id);
+  }
+  for (const o of (dump.overrides ?? []) as QuestionOverride[]) figure(o.figure);
+  for (const d of (dump.sessionDetail ?? []) as SessionDetail[]) d.snapshots?.forEach(question);
+  for (const sn of (dump.snips ?? []) as Snip[]) pdfs.add(sn.pdfId);
+  return { images, pdfs };
+}
+
+async function dumpStores(names: store.StoreName[], d: Awaited<ReturnType<typeof store.db>>, excludeLibrary: boolean): Promise<Dump> {
+  // All rows, including each summary/detail pair, come from one consistent snapshot.
+  const tx = d.transaction([...new Set<store.StoreName>([...names, 'packs'])], 'readonly');
   const out: Dump = {};
   for (const n of names) {
     if (n === 'meta') {
-      const s = await d.get('meta', 'settings');
+      const s = await tx.objectStore('meta').get('settings');
       out.meta = s ? [{ key: 'settings', value: s }] : [];
-    } else out[n] = await d.getAll(n as never);
+    } else out[n] = await tx.objectStore(n).getAll();
   }
+  if (excludeLibrary) {
+    const lib = new Set((await tx.objectStore('packs').getAll()).filter((p) => p.origin?.kind === 'library').map((p) => p.id));
+    for (const k of Object.keys(out) as store.StoreName[]) out[k] = (out[k] as { id?: string; packId?: string }[]).filter((r) => !lib.has((k === 'packs' ? r.id : r.packId) ?? ''));
+  }
+  await tx.done;
   return out;
 }
 
 /** Builds a backup. Progress tier is a JSON file; the others are zips with images. */
 export async function createBackup(tier: Tier, now = Date.now(), opts: { excludeLibrary?: boolean } = {}): Promise<{ blob: Blob; name: string }> {
-  const dump = await dumpStores(TIER_STORES[tier]);
-  if (opts.excludeLibrary && dump.packs) {
-    // Cloud backups leave Library packs out: they come back from the Library.
-    const lib = new Set((dump.packs as Pack[]).filter((p) => p.origin?.kind === 'library').map((p) => p.id));
-    for (const k of Object.keys(dump) as store.StoreName[]) dump[k] = (dump[k] as { id?: string; packId?: string }[]).filter((r) => !lib.has((k === 'packs' ? r.id : r.packId) ?? ''));
-  }
+  const d = await store.db();
+  const dump = await dumpStores(TIER_STORES[tier], d, !!opts.excludeLibrary);
   const data = JSON.stringify(dump);
+  checkDataLimit(data);
+  if (Object.values(dump).reduce((n, rows) => n + (rows?.length ?? 0), 0) > BACKUP_LIMITS.rows) throw new BackupError('The backup has too many records. Export fewer packs.');
+  const used = assetsOf(dump);
   const counts = Object.fromEntries(Object.entries(dump).map(([k, v]) => [k, v?.length ?? 0]));
   const images: Record<string, string> = {};
   const files: Record<string, Uint8Array> = {};
   const pdfs: Record<string, string> = {};
   if (tier !== 'progress') {
-    const d = await store.db();
-    for (const img of await d.getAll('images')) {
+    let assetBytes = 0;
+    const checkAsset = (size: number) => {
+      assetBytes += size;
+      if (assetBytes > ZIP_LIMITS.totalBytes || used.images.size + used.pdfs.size + 3 > ZIP_LIMITS.entries) throw new BackupError('Backup assets exceed the archive resource limits. Export fewer packs.');
+    };
+    for (const id of used.images) {
+      const img = await d.get('images', id);
+      if (!img) continue;
+      checkAsset(img.blob.size);
+      if (img.blob.size > MAX_IMAGE_BYTES) throw new BackupError('A referenced image exceeds 5 MB');
       images[img.id] = img.type;
       files[`images/${img.id}`] = new Uint8Array(await img.blob.arrayBuffer());
     }
-    const usedPdfs = new Set<string>();
-    for (const p of (dump.papers ?? []) as Paper[]) for (const id of [p.pdf?.qp, p.pdf?.ms]) if (id) usedPdfs.add(id);
-    for (const sn of (dump.snips ?? []) as { pdfId: string }[]) usedPdfs.add(sn.pdfId);
-    for (const pdf of await d.getAll('pdfs')) {
-      if (!usedPdfs.has(pdf.id)) continue;
+    for (const id of used.pdfs) {
+      const pdf = await d.get('pdfs', id);
+      if (!pdf) continue;
+      checkAsset(pdf.blob.size);
+      if (pdf.blob.size > MAX_PDF_FILE_BYTES) throw new BackupError('A referenced PDF exceeds 60 MB');
       pdfs[pdf.id] = pdf.name;
       files[`pdfs/${pdf.id}`] = new Uint8Array(await pdf.blob.arrayBuffer());
     }
@@ -76,9 +118,9 @@ export async function createBackup(tier: Tier, now = Date.now(), opts: { exclude
   if (tier === 'progress') {
     return { blob: new Blob([JSON.stringify({ manifest, data })], { type: 'application/json' }), name: `dmc-progress-${date}.json` };
   }
-  const { zipSync, strToU8 } = await import('fflate');
+  const { strToU8 } = await import('fflate');
   const note: Record<string, Uint8Array> = lib.length ? { 'PRIVATE.txt': strToU8('This backup contains packs from the school Library. It is for your own devices only: do not share it.\n') } : {};
-  const zip = zipSync({ 'dmc-backup.json': strToU8(JSON.stringify(manifest)), 'data.json': strToU8(data), ...note, ...files }, { level: 6 });
+  const zip = await archive({ 'dmc-backup.json': strToU8(JSON.stringify(manifest)), 'data.json': strToU8(data), ...note, ...files });
   return { blob: new Blob([zip as BlobPart], { type: 'application/zip' }), name: `dmc-${tier}-${date}.zip` };
 }
 
@@ -107,6 +149,32 @@ const timerOk = (t: unknown): boolean => {
   return !!c && typeof c === 'object' && ['none', 'total', 'perq'].includes(x.kind as string) && fin(x.capMs) && fin(x.totalMs) && (x.perQMs === undefined || fin(x.perQMs)) && (rem === undefined || (typeof rem === 'number' && Number.isFinite(rem) && rem >= 0));
 };
 const num = (v: unknown) => typeof v === 'number' && Number.isFinite(v);
+const keyOk = (v: unknown) => v === null || int(v, 0, 4);
+const stringOrAbsent = (v: unknown) => v === undefined || (typeof v === 'string' && v.length <= 100_000);
+const figureOk = (v: unknown): boolean => {
+  if (v === undefined) return true;
+  if (!v || typeof v !== 'object') return false;
+  const f = v as Record<string, unknown>;
+  if (!stringOrAbsent(f.alt)) return false;
+  return f.kind === 'image' ? str(f.imageId) : f.kind === 'svg' ? typeof f.svg === 'string' && f.svg.length <= 200_000 : f.kind === 'needed' && stringOrAbsent(f.note);
+};
+/** Question snapshots use the same content checks as persisted papers. */
+export function validQuestion(value: unknown): boolean {
+  if (!value || typeof value !== 'object') return false;
+  const q = value as Record<string, unknown>;
+  return str(q.id) && int(q.n, 1, 200) && int(q.optionCount, 2, 5) &&
+    (q.answer === null || int(q.answer, 0, Number(q.optionCount) - 1)) &&
+    [q.stem, q.explanation, q.uncertain, q.topic, q.image, q.pdfId].every(stringOrAbsent) && figureOk(q.figure) &&
+    (q.options === undefined || (Array.isArray(q.options) && q.options.length <= 5 && q.options.every((o: unknown) => !!o && typeof o === 'object' && stringOrAbsent((o as Record<string, unknown>).text) && figureOk((o as Record<string, unknown>).figure)))) &&
+    (q.table === undefined || (!!q.table && typeof q.table === 'object' && Array.isArray((q.table as { columns?: unknown }).columns) && ((q.table as { columns: unknown[] }).columns).length <= 20 && ((q.table as { columns: unknown[] }).columns).every((x) => typeof x === 'string') && Array.isArray((q.table as { rows?: unknown }).rows) && ((q.table as { rows: unknown[] }).rows).length <= 5 && ((q.table as { rows: unknown[] }).rows).every((row) => Array.isArray(row) && row.length <= 20 && row.every((x) => typeof x === 'string'))));
+}
+const snapshotsOk = (r: Record<string, unknown>) => r.snapshots === undefined || (Array.isArray(r.snapshots) && r.snapshots.length <= 200 && r.snapshots.every(validQuestion) && r.snapshots.every((q) => (r.questionIds as unknown[]).includes(q.id)));
+const regradesOk = (r: Record<string, unknown>) => r.regrades === undefined || (Array.isArray(r.regrades) && r.regrades.length <= 1000 && r.regrades.every((entry: unknown) => {
+  if (!entry || typeof entry !== 'object') return false;
+  const e = entry as Record<string, unknown>;
+  return num(e.at) && num(e.previousCorrect) && num(e.correct) && [e.previousKey, e.key].every((k) => Array.isArray(k) && k.length === (r.questionIds as unknown[]).length && k.every(keyOk));
+}));
+
 /** Shape checks for restored rows: a recomputed checksum proves integrity, not validity. */
 export function validRow(name: store.StoreName, r: Record<string, unknown>): boolean {
   if (!r || typeof r !== 'object') return false;
@@ -121,19 +189,12 @@ export function validRow(name: store.StoreName, r: Record<string, unknown>): boo
     case 'papers':
       return (
         str(r.key) && str(r.packId) && str(r.id) && r.key === `${r.packId}::${r.id}` && Array.isArray(r.questions) && num(r.timeLimitMin) && (r.timeLimitMin as number) >= 1 && (r.timeLimitMin as number) <= 600 &&
-        (r.questions as Record<string, unknown>[]).every(
-          (q) =>
-            !!q && typeof q === 'object' && int(q.n, 1, 200) && q.id === `${r.id}#${q.n}` && int(q.optionCount, 2, 5) &&
-            (q.answer === null || int(q.answer, 0, (q.optionCount as number) - 1)) &&
-            (q.stem === undefined || typeof q.stem === 'string') && (q.image === undefined || typeof q.image === 'string') &&
-            (q.options === undefined || (Array.isArray(q.options) && (q.options as unknown[]).every((o) => !!o && typeof o === 'object'))) &&
-            (q.table === undefined || (!!q.table && Array.isArray((q.table as { rows?: unknown }).rows) && ((q.table as { rows: unknown[] }).rows).every(Array.isArray))),
-        )
+        (r.questions as Record<string, unknown>[]).every((q) => validQuestion(q) && q.id === `${r.id}#${q.n}`)
       );
     case 'sessions':
-      return str(r.id) && str(r.packId) && ['paper', 'random', 'drill'].includes(r.type as string) && ['exam', 'practice'].includes(r.mode as string) && ['active', 'saved', 'submitted', 'auto-submitted'].includes(r.status as string) && num(r.total) && num(r.answered) && num(r.correct) && (r.correct as number) <= (r.answered as number) && (r.answered as number) <= (r.total as number) && timerOk(r.timer);
+      return str(r.id) && str(r.packId) && ['paper', 'random', 'drill', 'daily'].includes(r.type as string) && ['exam', 'practice'].includes(r.mode as string) && ['active', 'saved', 'submitted', 'auto-submitted'].includes(r.status as string) && num(r.total) && num(r.answered) && num(r.correct) && (r.correct as number) <= (r.answered as number) && (r.answered as number) <= (r.total as number) && timerOk(r.timer);
     case 'sessionDetail':
-      return str(r.id) && str(r.packId) && Array.isArray(r.questionIds) && (r.questionIds as unknown[]).every(str) && Array.isArray(r.answers) && (r.answers as unknown[]).length === (r.questionIds as unknown[]).length && (r.answers as Record<string, unknown>[]).every((a) => !!a && typeof a === 'object' && str(a.qid) && (a.choice === null || num(a.choice)) && num(a.timeMs)) && timerOk(r.timer);
+      return str(r.id) && str(r.packId) && Array.isArray(r.questionIds) && (r.questionIds as unknown[]).every(str) && Array.isArray(r.answers) && (r.answers as unknown[]).length === (r.questionIds as unknown[]).length && (r.answers as Record<string, unknown>[]).every((a) => !!a && typeof a === 'object' && str(a.qid) && (a.choice === null || num(a.choice)) && num(a.timeMs)) && timerOk(r.timer) && snapshotsOk(r) && regradesOk(r) && (r.key === undefined || (Array.isArray(r.key) && r.key.length === r.questionIds.length && r.key.every(keyOk)));
     case 'questionStats':
       return str(r.key) && str(r.packId) && str(r.qid) && r.key === `${r.packId}::${r.qid}` && num(r.timesSeen) && num(r.attempts) && typeof r.inBank === 'boolean';
     case 'bankEvents':
@@ -199,14 +260,23 @@ const stamp = (name: store.StoreName, r: Record<string, unknown>): number =>
 
 /** Verifies the checksum and computes what a restore would add or merge. */
 export async function planRestore(manifestText: string, data: string, images: Map<string, Blob>, pdfs: Map<string, Blob> = new Map()): Promise<RestorePlan> {
+  checkDataLimit(data);
+  if (manifestText.length > BACKUP_LIMITS.manifestBytes || images.size + pdfs.size > ZIP_LIMITS.entries) throw new BackupError('The backup exceeds the resource limits');
+  let bytes = 0;
+  for (const [kind, assets, limit] of [['image', images, MAX_IMAGE_BYTES], ['PDF', pdfs, MAX_PDF_FILE_BYTES]] as const) {
+    for (const blob of assets.values()) {
+      bytes += blob.size;
+      if (blob.size > limit || bytes > ZIP_LIMITS.totalBytes) throw new BackupError(`Backup ${kind} assets exceed the size limit`);
+    }
+  }
   let manifest: BackupManifest;
   try {
     manifest = JSON.parse(manifestText);
   } catch {
     throw new BackupError('The backup manifest is unreadable');
   }
-  if (manifest.format !== BACKUP_FORMAT) throw new BackupError('This is not a DMC backup');
-  if (!(manifest.tier in TIER_STORES)) throw new BackupError('Unknown backup type');
+  if (!manifest || typeof manifest !== 'object' || manifest.format !== BACKUP_FORMAT) throw new BackupError('This is not a DMC backup');
+  if (!Object.hasOwn(TIER_STORES, manifest.tier)) throw new BackupError('Unknown backup type');
   if ((await sha256Hex(data)) !== manifest.checksum) throw new BackupError('Checksum mismatch: the backup is corrupted or was edited');
   let raw: Dump;
   try {
@@ -214,6 +284,8 @@ export async function planRestore(manifestText: string, data: string, images: Ma
   } catch {
     throw new BackupError('The backup data is unreadable');
   }
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new BackupError('The backup data must be an object');
+  if (Object.values(raw).reduce((n: number, rows) => n + (Array.isArray(rows) ? rows.length : 0), 0) > BACKUP_LIMITS.rows) throw new BackupError('The backup contains too many records');
   // Only the stores the tier declares, and only rows that pass shape checks.
   const dump: Dump = {};
   for (const name of TIER_STORES[manifest.tier]) {
@@ -263,10 +335,11 @@ export async function planRestore(manifestText: string, data: string, images: Ma
 /** Applies a restore plan: adds new records, replaces older ones by updatedAt, keeps newer local ones. */
 export async function applyRestore(plan: RestorePlan): Promise<void> {
   const d = await store.db();
+  const used = assetsOf(plan.dump);
   const imgs: { id: string; type: string; blob: Blob }[] = [];
   for (const [id, type] of Object.entries(plan.manifest.images ?? {})) {
     const b = plan.images.get(id);
-    if (!b || !/^[0-9a-f]{64}$/.test(id) || !/^image\/(png|jpeg|webp|gif|svg\+xml)$/.test(type)) continue;
+    if (!used.images.has(id) || !b || !/^[0-9a-f]{64}$/.test(id) || !/^image\/(png|jpeg|webp|gif|svg\+xml)$/.test(type)) continue;
     // Image ids are the SHA-256 of their bytes; anything else was tampered with.
     if ((await sha256Hex(await b.arrayBuffer())) !== id) continue;
     imgs.push({ id, type, blob: new Blob([b], { type }) });
@@ -274,7 +347,7 @@ export async function applyRestore(plan: RestorePlan): Promise<void> {
   const pdfRecs: { id: string; name: string; size: number; blob: Blob; addedAt: number }[] = [];
   for (const [id, name] of Object.entries(plan.manifest.pdfs ?? {})) {
     const b = plan.pdfs.get(id);
-    if (!b || !/^[0-9a-f]{64}$/.test(id) || typeof name !== 'string') continue;
+    if (!used.pdfs.has(id) || !b || !/^[0-9a-f]{64}$/.test(id) || typeof name !== 'string') continue;
     const buf = await b.arrayBuffer();
     if ((await sha256Hex(buf)) !== id) continue;
     pdfRecs.push({ id, name: name.slice(0, 200), size: buf.byteLength, blob: new Blob([buf], { type: 'application/pdf' }), addedAt: Date.now() });
@@ -295,6 +368,7 @@ export async function applyRestore(plan: RestorePlan): Promise<void> {
   }
   await store.write(async () => {
     const tx = d.transaction(store.STORES, 'readwrite');
+    await tx.objectStore('meta').delete('sessionRevisions');
     const winners = new Set<string>(); // packs/sessions whose incoming copy won
     const touchedPacks = new Set<string>();
     const order: store.StoreName[] = ['packs', 'papers', 'sessions', 'sessionDetail', 'questionStats', 'bankEvents', 'overrides', 'meta', 'snips'];
@@ -314,7 +388,7 @@ export async function applyRestore(plan: RestorePlan): Promise<void> {
       }
       const existingEvents = name === 'bankEvents' ? new Set((await os.getAll()).map((r) => keyOf(name, r))) : null;
       for (const r0 of rows) {
-        const r = r0;
+        const r = { ...r0 };
         if ((name === 'sessions' || name === 'sessionDetail') && skippedOpen.has(r.id as string)) continue;
         if (existingEvents) {
           if (!existingEvents.has(keyOf(name, r))) await os.put(r);
@@ -330,7 +404,8 @@ export async function applyRestore(plan: RestorePlan): Promise<void> {
           for (const m of base.papers as { id: string }[]) metas.set(m.id, m);
           const added = metas.size > (base.papers as unknown[]).length;
           if (newer || added) {
-            await os.put({ ...base, papers: [...metas.values()] });
+            const updatedAt = await store.reviveSyncedRecord(tx.objectStore('meta'), 'packs', String(r.id), Number(base.updatedAt));
+            await os.put({ ...base, papers: [...metas.values()], updatedAt });
             if (newer) winners.add(`pack:${r.id}`);
             else winners.add(`pack-add:${r.id}`);
           }
@@ -352,6 +427,12 @@ export async function applyRestore(plan: RestorePlan): Promise<void> {
         }
         if (name === 'sessionDetail') take = !have || winners.has(`session:${r.id}`);
         if (take) {
+          if (['packs', 'sessions', 'overrides', 'snips'].includes(name)) {
+            r.updatedAt = await store.reviveSyncedRecord(tx.objectStore('meta'), name, String(k), Number(r.updatedAt));
+          } else if (name === 'sessionDetail') {
+            const summary = await tx.objectStore('sessions').get(String(k));
+            await store.reviveSyncedRecord(tx.objectStore('meta'), name, String(k), summary?.updatedAt ?? Date.now());
+          }
           await os.put(r);
           if (name === 'packs') winners.add(`pack:${r.id}`);
           if (name === 'sessions') winners.add(`session:${r.id}`);
@@ -398,6 +479,7 @@ export async function exportPackZip(pack: Pack, papers: Paper[], overrides: Ques
     const base = (rec.name.replace(/\.pdf$/i, '').replace(/[^A-Za-z0-9._-]+/g, '_').slice(0, 80) || id.slice(0, 12)) + '.pdf';
     let path = `pdfs/${base}`;
     for (let k = 2; Object.prototype.hasOwnProperty.call(pdfFiles, path); k++) path = `pdfs/${k}-${base}`;
+    if (rec.blob.size > MAX_PDF_FILE_BYTES) throw new ShareError('A referenced PDF exceeds 60 MB');
     pdfFiles[path] = new Uint8Array(await rec.blob.arrayBuffer());
     pdfPath.set(id, path);
     return path;
@@ -457,13 +539,15 @@ export async function exportPackZip(pack: Pack, papers: Paper[], overrides: Ques
   for (const id of imageIds) {
     const img = await d.get('images', id);
     if (!img) continue;
+    if (img.blob.size > MAX_IMAGE_BYTES) throw new ShareError('A referenced image exceeds 5 MB');
     types.set(id, img.type);
     files[pathOf(id)] = new Uint8Array(await img.blob.arrayBuffer());
   }
   // Replace image ids with file paths now that types are known.
   const json = JSON.stringify(doc, null, 2).replace(/"(file|image)": "([0-9a-f]{64})"/g, (_m, k: string, id: string) => `"${k}": "${pathOf(id)}"`);
-  const { zipSync, strToU8 } = await import('fflate');
-  const zip = zipSync({ 'pack.json': strToU8(json), ...files, ...Object.fromEntries(Object.entries(pdfFiles).map(([k, v]) => [k, [v, { level: 0 }]])) }, { level: 6 });
+  const { strToU8 } = await import('fflate');
+  checkDataLimit(json);
+  const zip = await archive({ 'pack.json': strToU8(json), ...files }, pdfFiles);
   return { blob: new Blob([zip as BlobPart], { type: 'application/zip' }), name: `${pack.id}.dmc.zip` };
 }
 

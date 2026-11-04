@@ -94,7 +94,7 @@ export function PdfImport({ files, pack, onClose }: { files: File[]; pack?: Pack
       const id = await commitImport(target, merge, images);
       bump();
       broadcastChange();
-      toast(`Added ${rows.length} PDF paper${rows.length === 1 ? '' : 's'}. Snip questions any time to use them in drills and Daily 10.`);
+      toast(`Added ${rows.length} PDF paper${rows.length === 1 ? '' : 's'}. Snip questions any time to use them in mistakes drills.`);
       onClose();
       navigate(href.pack(id, 'papers'));
     } catch (e) {

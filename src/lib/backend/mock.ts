@@ -68,13 +68,21 @@ export function createMockBackend(): Backend {
     async signInGoogle() {
       throw new BackendError('Development mode: sign in with an email address');
     },
-    async signInEmail(email: string) {
+    async signInEmail(email: string, codeOnly = false) {
       const e = email.trim().toLowerCase();
       need(/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e), 'Enter an email address');
+      if (codeOnly) { sessionStorage.setItem('dmc-mock-pending-code', JSON.stringify({email:e,at:Date.now()})); return; }
       const a: Account = { id: idFor(e), email: e, emailVerified: true, name: e.split('@')[0] ?? e };
       localStorage.setItem(KEY, JSON.stringify(a));
       listeners.forEach((f) => f(a));
     },
+    async verifyEmailCode(email, code) {
+      const pending = JSON.parse(sessionStorage.getItem('dmc-mock-pending-code') ?? 'null') as {email:string;at:number} | null;
+      need(code === '123456' && pending?.email === email.trim().toLowerCase() && Date.now() - pending.at < 600000, 'Invalid or expired code. Development code: 123456');
+      sessionStorage.removeItem('dmc-mock-pending-code');
+      await this.signInEmail(email);
+    },
+    async accessToken() { return current() ? 'mock-token' : null; },
     async signOut() {
       localStorage.removeItem(KEY);
       listeners.forEach((f) => f(null));
@@ -191,7 +199,10 @@ export function createMockBackend(): Backend {
       let n = 0;
       for (const r of records) {
         const i = s.sync.findIndex((x) => x.userId === a.id && x.store === r.store && x.id === r.id);
-        if (i >= 0 && s.sync[i]!.updated_at >= r.updated_at) continue;
+        const existing = i >= 0 ? s.sync[i]! : undefined;
+        if (existing && existing.updated_at === r.updated_at && existing.deleted === r.deleted && JSON.stringify(existing.data) === JSON.stringify(r.data)) { n++; continue; }
+        if (r.base_updated_at !== undefined) need((existing?.updated_at ?? 0) === r.base_updated_at, 'Sync conflict: pull and retry');
+        else if (existing && existing.updated_at >= r.updated_at) continue;
         const row = { ...r, userId: a.id, seq: ++s.seq };
         if (i >= 0) s.sync[i] = row;
         else s.sync.push(row);

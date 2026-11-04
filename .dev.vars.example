@@ -1,0 +1,6 @@
+# Copy to .dev.vars in repository root. Never prefix secrets with VITE_.
+NVIDIA_API_KEY=replace-with-private-nvidia-api-key
+# Optional overrides for wrangler dev --env development
+SUPABASE_URL=https://your-development-project-ref.supabase.co
+SUPABASE_ANON_KEY=your-public-development-anon-key
+APP_ORIGIN=http://localhost:5173

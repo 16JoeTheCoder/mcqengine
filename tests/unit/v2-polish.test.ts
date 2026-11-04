@@ -49,10 +49,10 @@ describe('personal best', () => {
 });
 
 describe('command palette', () => {
-  const cmds = ['Open Physics 9702', 'Daily 10 in Physics 9702', 'Settings', 'Export everything'].map((label) => ({ id: label, label, run: () => {} }));
+  const cmds = ['Open Physics 9702', 'Mistakes in Physics 9702', 'Settings', 'Export everything'].map((label) => ({ id: label, label, run: () => {} }));
   it('ranks prefix, then word prefix, then substring', () => {
     expect(filterCommands(cmds, 'set').map((c) => c.label)).toEqual(['Settings']);
-    expect(filterCommands(cmds, 'phy').map((c) => c.label)).toEqual(['Open Physics 9702', 'Daily 10 in Physics 9702']);
+    expect(filterCommands(cmds, 'phy').map((c) => c.label)).toEqual(['Open Physics 9702', 'Mistakes in Physics 9702']);
     expect(filterCommands(cmds, 'zzz')).toEqual([]);
     expect(filterCommands(cmds, '')).toHaveLength(4);
   });

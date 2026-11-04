@@ -13,7 +13,7 @@ const PaperDialog = lazy(() => import('./paper-dialog').then((m) => m.PaperDialo
 const SnipEditor = lazy(() => import('./pdf-tools').then((m) => m.SnipEditor));
 
 export interface StartRequest {
-  type: SessionType;
+  type: Exclude<SessionType, 'daily'>;
   paper?: PaperMeta;
   /** Number of questions the session will have (random/drill). */
   size?: number;

@@ -22,7 +22,7 @@ alter table storage.objects enable row level security;
 create function storage.foldername(name text) returns text[] language sql immutable as $$
   select (string_to_array(name, '/'))[1 : array_length(string_to_array(name, '/'), 1) - 1] $$;
 grant usage on schema public, auth, storage to anon, authenticated;
-grant select, insert, delete on storage.objects to authenticated;
+grant select, insert, update, delete on storage.objects to authenticated;
 `;
 
 const U = {
@@ -202,15 +202,46 @@ describe('sets, stars, reports, moderation', () => {
 
 describe('sync works for every signed-in account, and only for its owner', () => {
   const push = (records: unknown[]) => q<{ n: number }>('select public.sync_push($1::jsonb) as n', [JSON.stringify(records)]);
-  it('a personal account syncs; newest write wins; others never see it', async () => {
+  it('uses compare-and-swap, rejects stale writes and isolates accounts', async () => {
     await as('personal');
-    expect((await push([{ store: 'sessions', id: 's1', updated_at: 10, data: { v: 1 } }]))[0]!.n).toBe(1);
-    expect((await push([{ store: 'sessions', id: 's1', updated_at: 5, data: { v: 0 } }]))[0]!.n).toBe(0);
-    expect((await push([{ store: 'sessions', id: 's1', updated_at: 20, data: { v: 2 } }]))[0]!.n).toBe(1);
-    expect((await q<{ data: { v: number } }>('select data from public.sync_records'))[0]!.data.v).toBe(2);
+    const record = (stamp: number, base: number, title: string) => ({ store: 'packs', id: 's1', updated_at: stamp, base_updated_at: base, data: { id: 's1', title } });
+    expect((await push([record(10, 0, 'first')]))[0]!.n).toBe(1);
+    expect(await fails('select public.sync_push($1::jsonb)', [JSON.stringify([record(5, 0, 'stale')])])).toBe(true);
+    // A slow clock may still make a valid intentional edit; base version, not wall time, wins.
+    expect((await push([record(5, 10, 'second')]))[0]!.n).toBe(1);
+    expect((await push([record(5, 10, 'second')]))[0]!.n).toBe(1); // lost-response retry
+    expect((await q<{ data: { title: string } }>('select data from public.sync_records'))[0]!.data.title).toBe('second');
+    expect(await fails(`insert into public.sync_records (store,id,updated_at,data) values ('packs','bypass',1,'{}')`)).toBe(true);
+    expect(await fails(`update public.sync_records set data = '{}'`)).toBe(true);
+    expect(await fails('delete from public.sync_records')).toBe(true);
     await as('school');
     expect(await q('select id from public.sync_records')).toEqual([]);
     expect(await fails(`insert into public.sync_records (user_id, store, id, updated_at) values ($1, 'sessions', 'x', 1)`, [U.personal])).toBe(true);
+  });
+  it('paginates records with identical timestamps without loss and validates cursors', async () => {
+    await as('personal');
+    await push(Array.from({ length: 7 }, (_, i) => ({ store: 'packs', id: `page-${i}`, updated_at: 100, base_updated_at: 0, data: { id: `page-${i}` } })));
+    await as(null);
+    await q(`update public.sync_records set synced_at = '2026-11-02T00:00:00Z' where user_id = $1`, [U.personal]);
+    await as('personal');
+    const ids: string[] = [];
+    let cursor: string | null = null;
+    for (;;) {
+      const page: { records: { id: string }[]; cursor: string } = (await q<{ p: { records: { id: string }[]; cursor: string } }>('select public.sync_pull($1,2) as p', [cursor]))[0]!.p;
+      if (!page.records.length) break;
+      ids.push(...page.records.map((r) => r.id));
+      cursor = page.cursor;
+    }
+    expect(ids.filter((id) => id.startsWith('page-'))).toHaveLength(7);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(await fails(`select public.sync_pull('2026-01-01T00:00:00Z',2)`)).toBe(true);
+  });
+  it('rolls back an entire batch on a conflicting record', async () => {
+    await as('personal');
+    const rows = [{ store: 'packs', id: 'rollback', updated_at: 1, base_updated_at: 0, data: { id: 'rollback' } },
+      { store: 'packs', id: 's1', updated_at: 1000, base_updated_at: 0, data: { id: 's1' } }];
+    expect(await fails('select public.sync_push($1::jsonb)', [JSON.stringify(rows)])).toBe(true);
+    expect(await q(`select id from public.sync_records where id = 'rollback'`)).toEqual([]);
   });
   it('rejects unknown stores and oversized pushes', async () => {
     await as('personal');
@@ -224,4 +255,54 @@ describe('sync works for every signed-in account, and only for its owner', () =>
     await as('school');
     expect(await q(`select name from storage.objects where bucket_id = 'backups'`)).toEqual([]);
   });
+  it('limits backup creation while permitting replacement and deletion', async () => {
+    await as('personal');
+    for (const name of ['two.zip','three.zip']) await q(`insert into storage.objects (bucket_id,name,metadata) values ('backups',$1,'{"size": 9}')`, [`${U.personal}/${name}`]);
+    expect(await fails(`insert into storage.objects (bucket_id,name,metadata) values ('backups',$1,'{"size": 9}')`, [`${U.personal}/four.zip`])).toBe(true);
+    await q(`update storage.objects set metadata = '{"size": 20}' where bucket_id = 'backups' and name = $1`, [`${U.personal}/two.zip`]);
+    expect(await fails(`update storage.objects set metadata = '{"size": 300000000}' where bucket_id = 'backups' and name = $1`, [`${U.personal}/two.zip`])).toBe(true);
+    await q(`delete from storage.objects where bucket_id = 'backups' and name = $1`, [`${U.personal}/three.zip`]);
+    await q(`insert into storage.objects (bucket_id,name,metadata) values ('backups',$1,'{"size": 9}')`, [`${U.personal}/four.zip`]);
+  });
+  it('allows updates and tombstones at the sync creation quota', async () => {
+    await as(null);
+    await q(`insert into public.sync_records (user_id,store,id,updated_at,data)
+      select $1::uuid, 'packs', 'quota-' || i, 1, jsonb_build_object('id','quota-' || i)
+      from generate_series(1,50000) i`, [U.teacher]);
+    await as('teacher');
+    expect((await push([{ store:'packs', id:'quota-1', updated_at:2, base_updated_at:1, data:{id:'quota-1',title:'edit'} }]))[0]!.n).toBe(1);
+    expect((await push([{ store:'packs', id:'quota-2', updated_at:2, base_updated_at:1, deleted:true, data:null }]))[0]!.n).toBe(1);
+    expect(await fails('select public.sync_push($1::jsonb)', [JSON.stringify([{store:'packs',id:'over-quota',updated_at:1,base_updated_at:0,data:{id:'over-quota'}}])])).toBe(true);
+    await as(null);
+    await q('delete from public.sync_records where user_id=$1', [U.teacher]);
+  });
+
+  it('rejects unbounded session details and mismatched ids at the RPC boundary', async () => {
+    await as('personal');
+    for (const data of [
+      {id:'bounded',packId:'p',questionIds:Array.from({length:201},(_,i)=>`q${i}`),answers:Array.from({length:201},(_,i)=>({qid:`q${i}`}))},
+      {id:'other',packId:'p',questionIds:['q'],answers:[{qid:'q'}]},
+      {id:'bounded',packId:'p',questionIds:['q'],answers:[{qid:'q'}],regrades:Array.from({length:101},()=>({}))},
+    ]) expect(await fails('select public.sync_push($1::jsonb)', [JSON.stringify([{store:'sessionDetail',id:'bounded',updated_at:1,base_updated_at:0,data}])])).toBe(true);
+  });
+  it('deletes unknown dependents and blocks stale devices from recreating them', async () => {
+    await as('personal');
+    await push([{store:'packs',id:'cascade',updated_at:1,base_updated_at:0,data:{id:'cascade'}},
+      {store:'overrides',id:'cascade::q',updated_at:1,base_updated_at:0,data:{key:'cascade::q',packId:'cascade'}}]);
+    await push([{store:'packs',id:'cascade',updated_at:2,base_updated_at:1,deleted:true,data:null}]);
+    expect((await q(`select deleted,data from public.sync_records where id='cascade::q'`))[0]).toEqual({deleted:true,data:null});
+    expect(await fails('select public.sync_push($1::jsonb)',[JSON.stringify([{store:'snips',id:'cascade::new',updated_at:3,base_updated_at:0,data:{key:'cascade::new',packId:'cascade'}}])])).toBe(true);
+    await push([{store:'packs',id:'cascade',updated_at:3,base_updated_at:2,data:{id:'cascade'}},
+      {store:'overrides',id:'cascade::q',updated_at:3,base_updated_at:2,data:{key:'cascade::q',packId:'cascade'}}]);
+    expect((await q(`select deleted from public.sync_records where id='cascade::q'`))[0]!.deleted).toBe(false);
+  });
+  it('applies the additive upgrade twice without deleting historical records', async () => {
+    await as(null);
+    const before = await q('select store,id,updated_at,server_revision from public.sync_records order by server_revision');
+    const migration = readFileSync(join(process.cwd(),'supabase/migrations/20261102_sync_boundaries.sql'),'utf8');
+    await db.exec(migration);
+    await db.exec(migration);
+    expect(await q('select store,id,updated_at,server_revision from public.sync_records order by server_revision')).toEqual(before);
+  });
+
 });

@@ -1,0 +1,1 @@
+# Hash routing needs no SPA rewrite. /api/* is routed to dmc-api at the zone.

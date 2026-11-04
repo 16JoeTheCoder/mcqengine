@@ -1,0 +1,34 @@
+/* Presentation adds a layout, never an annotation surface. */
+:root { --board-blank: #fff; }
+:root[data-theme="dark"] { --board-blank: var(--surface); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --board-blank: var(--surface); } }
+.board { height: 100dvh; width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); overflow: hidden; background: var(--surface); color: var(--ink); }
+.board-question-pane { min-width: 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.board-controls { padding: 16px 24px; border-bottom: 1px solid var(--line); display: grid; gap: 12px; background: var(--surface); }
+.board-controls .row, .board-nav { flex-wrap: wrap; gap: 8px; }
+.board-select { display: flex; gap: 8px; align-items: center; font-size: 13px; }
+.board-select .input { width: auto; }
+.board-nav { display: flex; align-items: center; }
+.board-jump { display: flex; align-items: center; gap: 8px; }
+.board-jump .input { width: 80px; }
+.board-content { padding: 24px; outline-offset: -4px; }
+.board-question { display: flex; flex-direction: column; gap: 24px; }
+.board-question > .jy-btn { align-self: flex-start; }
+.board-question h1 { font-size: var(--presentation-size); line-height: 1.2; }
+.board-stem, .board-explanation, .board-option { font-size: var(--presentation-size); line-height: 1.5; overflow-wrap: anywhere; }
+.board-options { display: grid; gap: 16px; }
+.board-option { display: grid; grid-template-columns: 32px minmax(0, 1fr); text-align: left; gap: 16px; border: 1px solid var(--line-strong); border-radius: var(--radius-md); padding: 16px; background: var(--surface-raised); color: var(--ink); min-height: 64px; }
+.board-option:hover { border-color: var(--ink); }
+.board-option img { max-width: 100%; height: auto; }
+.board-option--answer { border-color: var(--status-ok); box-shadow: inset 0 0 0 1px var(--status-ok); }
+.option-eliminated { text-decoration: line-through; text-decoration-thickness: 2px; color: var(--ink-muted); }
+.board-table-wrap { overflow-x: auto; }
+.board-table-wrap table { width: 100%; border-collapse: collapse; font-size: var(--presentation-size); }
+.board-table-wrap th, .board-table-wrap td { padding: 12px; border: 1px solid var(--line); text-align: left; }
+.board-blank { background: var(--board-blank); pointer-events: none; }
+.session-tools { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.session-tools form { display: flex; gap: 8px; align-items: center; }
+.session-tools input { width: 80px; }
+@media (max-width: 899px) { .board { display: block; overflow-y: auto; } .board-blank { display: none; } .board-question-pane { overflow: visible; } }
+
+@media (min-width: 2200px) { .board { height: calc(100dvh / 1.25); } }

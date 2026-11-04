@@ -93,22 +93,22 @@ export function computeVerdict(
     label = direction;
   }
 
-  const lead = `Your last ${k} sessions average ${(latestMean * 100).toFixed(0)}%, ${
+  const lead = `In ${n} qualifying sessions, your last ${k} average ${(latestMean * 100).toFixed(0)}%, ${
     delta === 0 ? 'level with' : `${up ? 'up' : 'down'} ${pts(delta)} on`
   } the ${k} before.`;
-  const noise = `Typical noise for that comparison is about ±${pts(seDiff)}`;
+  const noise = `Estimated variation for that comparison is about ±${pts(seDiff)}`;
   let tail: string;
   if (confidence === 'Low')
-    tail = `${noise}, so this could easily be chance. Keep going; more sessions will make it clearer.`;
-  else tail = `${noise}, so this change is ${confidence === 'High' ? 'very likely' : 'probably'} real.`;
-  if (disagrees) tail += ' Your longer-run slope points the other way, which lowers confidence.';
+    tail = `${noise}, so the observed difference is small compared with the variation.`;
+  else tail = `${noise}, and the observed difference is ${confidence === 'High' ? 'larger than' : 'similar to'} that variation.`;
+  if (disagrees) tail += ' Your longer-run pattern points the other way.';
 
   return {
     state: 'ready',
     direction,
     label,
     confidence,
-    sentence: `${lead} ${tail}`,
+    sentence: `${lead} ${tail} Local practice is self-reported; question familiarity and paper difficulty can affect scores.`,
     delta,
     seDiff,
     z,

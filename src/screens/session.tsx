@@ -11,6 +11,7 @@ import { FigureView, OptionBody, QuestionImage, Rich } from '../ui/content';
 import { FixQuestion } from './fix';
 import { lazy } from '../ui/lazy';
 import { isViewable } from '../lib/engine/session';
+import { Presentation } from './presentation';
 
 const SnipImage = lazy(() => import('./pdf-tools').then((m) => m.SnipImage), <div class="skel" style={{ height: '200px' }} />);
 const PdfPane = lazy(() => import('./pdf-tools').then((m) => m.PdfPane), <div class="skel" style={{ height: '50vh' }} />);
@@ -131,6 +132,22 @@ function Runner({ initial }: { initial: Loaded }) {
   const [qAnnounce, setQAnnounce] = useState('');
   const [pdfPage, setPdfPage] = useState(q?.page ?? 1);
   const [viewPdf, setViewPdf] = useState(false);
+  const [board, setBoard] = useState(false);
+  const [wide, setWide] = useState(() => matchMedia('(min-width: 900px)').matches);
+  const [eliminating, setEliminating] = useState(false);
+  const [eliminated, setEliminated] = useState<Record<string, number[]>>({});
+  const [jump, setJump] = useState('');
+  const [saveStatus, setSaveStatus] = useState('Saved locally');
+  const crossOut = (option: number) => setEliminated((prev) => {
+    const values = prev[qid] ?? [];
+    return { ...prev, [qid]: values.includes(option) ? values.filter((i) => i !== option) : [...values, option] };
+  });
+  useEffect(() => {
+    const media = matchMedia('(min-width: 900px)');
+    const change = () => { setWide(media.matches); if (!media.matches) setBoard(false); };
+    media.addEventListener('change', change);
+    return () => media.removeEventListener('change', change);
+  }, []);
   useEffect(() => {
     if (q?.page) setPdfPage(q.page);
   }, [q?.id]);
@@ -196,13 +213,16 @@ function Runner({ initial }: { initial: Loaded }) {
           return;
         }
         lastOk.current = true;
+        setSaveStatus('Saved locally');
       } catch {
         // Same wording as the global storage-full notice, so the two merge into one toast.
         if (lastOk.current) toast('Storage is full. Export a backup and delete packs you no longer need.', undefined, 10_000);
         lastOk.current = false;
+        setSaveStatus('Save failed');
       }
   };
   const schedule = useCallback(() => {
+    setSaveStatus('Saving locally…');
     if (pending.current) clearTimeout(pending.current);
     pending.current = window.setTimeout(() => {
       pending.current = null;
@@ -359,6 +379,8 @@ function Runner({ initial }: { initial: Loaded }) {
   const locked = a.locked || a.checked;
   const choose = useCallback(
     (i: number) => {
+      if (board) return;
+      if (eliminating) { crossOut(i); return; }
       const rec = detailRef.current.answers[detailRef.current.current];
       if (!rec || rec.locked || rec.checked || timeUp.current || !q || i >= q.optionCount) return;
       if (rec.choice === null) rec.first = i;
@@ -371,7 +393,7 @@ function Runner({ initial }: { initial: Loaded }) {
       rerender();
       schedule();
     },
-    [q, exam, schedule, attribute],
+    [q, exam, schedule, attribute, board, eliminating, qid],
   );
   const toggle = useCallback(
     (k: 'flagged' | 'unsure') => {
@@ -451,6 +473,13 @@ function Runner({ initial }: { initial: Loaded }) {
     </div>
   );
 
+  const revisit = () => {
+    const indices = d.answers.flatMap((answer, i) => answer.flagged ? [i] : []);
+    const next = indices.find((i) => i > cur) ?? indices[0];
+    if (next !== undefined) goto(next);
+  };
+  if (board && wide) return <Presentation question={q} position={cur} count={n} flagged={a.flagged} flaggedCount={flaggedCount} eliminated={eliminated[qid] ?? []} onEliminate={crossOut} onFlag={() => toggle('flagged')} onRevisit={revisit} onJump={goto} onExit={() => setBoard(false)} strict={strict} />;
+
   return (
     <div class="qs">
       <header class="qs-head">
@@ -476,6 +505,7 @@ function Runner({ initial }: { initial: Loaded }) {
               {formatClock(remaining)}
             </span>
           )}
+          {wide && <Button onClick={() => setBoard(true)}>Board mode</Button>}
           <Button variant="default" onClick={() => setEndOpen(true)} aria-label="End session">
             <span>
               End<span class="hide-sm"> session</span>
@@ -510,6 +540,17 @@ function Runner({ initial }: { initial: Loaded }) {
                 <Icon name="pencil" size={16} /> Fix this question
               </Button>
             </div>
+            <div class="session-tools">
+              <Button size="sm" aria-pressed={eliminating} onClick={() => setEliminating((value) => !value)}>{eliminating ? 'Finish eliminating' : 'Eliminate options'}</Button>
+              <form onSubmit={(e) => { e.preventDefault(); const i = Number(jump); if (Number.isInteger(i) && i >= 1 && i <= n) { goto(i - 1); setJump(''); } }}>
+                <label class="sr-only" for="session-jump">Question number</label>
+                <input class="input" id="session-jump" type="number" min={1} max={n} value={jump} placeholder="No." required disabled={strict} onInput={(e) => setJump(e.currentTarget.value)} />
+                <Button type="submit" size="sm" disabled={strict}>Jump</Button>
+              </form>
+              <Button size="sm" onClick={revisit} disabled={strict || !flaggedCount}>Revisit ({flaggedCount})</Button>
+              <span class="small muted" role="status">{saveStatus}</span>
+            </div>
+            {eliminating && <p class="small muted">Select options to cross them out for this session. This does not submit an answer.</p>}
             {!q ? (
               <p class="muted">This question could not be loaded. It may have been deleted from the pack.</p>
             ) : (
@@ -536,7 +577,7 @@ function Runner({ initial }: { initial: Loaded }) {
                 )}
                 <div
                   class={!q.options && !q.table ? 'opts-letters' : `options${shortOpts ? ' cols-2' : ''}`}
-                  role="radiogroup"
+                  role={eliminating ? 'group' : 'radiogroup'}
                   aria-labelledby="qhead"
                   onKeyDown={(e) => {
                     // Up/Down move focus between options (Space or Enter selects); Left/Right stay question navigation.
@@ -558,11 +599,12 @@ function Runner({ initial }: { initial: Loaded }) {
                       <button
                         type="button"
                         key={i}
-                        role="radio"
-                        aria-checked={chosen}
-                        tabIndex={chosen || (a.choice === null && i === 0) ? 0 : -1}
-                        class={`opt ${cls}`}
-                        disabled={locked && !chosen}
+                        role={eliminating ? 'button' : 'radio'}
+                        aria-checked={eliminating ? undefined : chosen}
+                        aria-pressed={eliminating ? (eliminated[qid] ?? []).includes(i) : undefined}
+                        tabIndex={eliminating || chosen || (a.choice === null && i === 0) ? 0 : -1}
+                        class={`opt ${cls}${(eliminated[qid] ?? []).includes(i) ? ' option-eliminated' : ''}`}
+                        disabled={!eliminating && locked && !chosen}
                         onClick={() => choose(i)}
                       >
                         <span class="l" aria-hidden="true">{LETTERS[i]}</span>

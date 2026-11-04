@@ -201,6 +201,9 @@ export interface SessionDetail {
   shuffled: boolean;
   /** Answer key at submit time, by position. Reviews grade against this snapshot. */
   key?: (number | null)[];
+  /** Content actually shown when submitted, retained for historical review. */
+  snapshots?: Question[];
+  regrades?: { at: number; previousKey: (number | null)[]; key: (number | null)[]; previousCorrect: number; correct: number }[];
 }
 
 export interface QuestionStat {
@@ -219,7 +222,7 @@ export interface QuestionStat {
   inBank: boolean;
   /** Sum of answer time, ms, and count, for the heat grid. */
   timeSum: number;
-  /** Daily 10 schedule step while in the bank (0 → due after 1 day, then 3, 7, 14). */
+  /** Legacy schedule field retained solely for compatible backups. */
   stage?: number;
 }
 

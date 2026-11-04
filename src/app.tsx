@@ -46,6 +46,7 @@ async function recoverSessions() {
 }
 
 export function App() {
+  const auth = useStore(authStore);
   const route = useStore(routeStore);
   const list = useStore(toasts);
   const update = useStore(updateReady);
@@ -62,8 +63,8 @@ export function App() {
 
   useEffect(() => {
     void (async () => {
+      await initAuth();
       await loadSettings();
-      initAuth();
       await recoverSessions();
       void store.requestPersistence();
       setReady(true);
@@ -196,7 +197,7 @@ export function App() {
     };
   }, []);
 
-  if (!ready) return <div class="page" aria-busy="true" style={{ paddingTop: '120px' }} />;
+  if (!ready || !auth.ready) return <div class="page" aria-busy="true" style={{ paddingTop: '120px' }} />;
 
   const inSession = route.name === 'session';
   const openPrompt = (pack?: Pack) => setPrompt(pack ? { pack } : {});

@@ -110,7 +110,7 @@ export async function commitImport(target: ImportTarget, merge: MergeResult, ima
 function writeImport(target: ImportTarget, merge: MergeResult, images: ImageRecord[], now: number): Promise<string> {
   // Read-modify-write of the pack inside one transaction, so concurrent imports cannot drop papers.
   return store.write(async () => {
-    const tx = (await store.db()).transaction(['packs', 'papers', 'images', 'pdfs', 'snips'], 'readwrite');
+    const tx = (await store.db()).transaction(['packs', 'papers', 'images', 'pdfs', 'snips', 'meta'], 'readwrite');
     const packs = tx.objectStore('packs');
     let pack: Pack | undefined = target.packId ? await packs.get(target.packId) : target.newPack?.id ? await packs.get(target.newPack.id) : undefined;
     if (!pack && target.newPack?.id) {
@@ -139,11 +139,16 @@ function writeImport(target: ImportTarget, merge: MergeResult, images: ImageReco
       const { key: _k, packId: _p, questions: _q, pendingKey: _pk, ...meta } = p;
       metas.set(p.id, meta);
     }
-    await packs.put({ ...pack, papers: [...metas.values()], updatedAt: now });
+    const updatedAt = await store.reviveSyncedRecord(tx.objectStore('meta'), 'packs', packId, now);
+    await packs.put({ ...pack, papers: [...metas.values()], updatedAt });
     for (const p of papers) await tx.objectStore('papers').put(p);
     for (const i of images) await tx.objectStore('images').put(i);
     for (const f of merge.pdfs ?? []) if (!(await tx.objectStore('pdfs').get(f.id))) await tx.objectStore('pdfs').put(f);
-    for (const sn of merge.snips ?? []) await tx.objectStore('snips').put({ ...sn, packId, key: `${packId}::${sn.qid}` });
+    for (const sn of merge.snips ?? []) {
+      const key = `${packId}::${sn.qid}`;
+      const updatedAt = await store.reviveSyncedRecord(tx.objectStore('meta'), 'snips', key, sn.updatedAt);
+      await tx.objectStore('snips').put({ ...sn, packId, key, updatedAt });
+    }
     await tx.done;
     return packId;
   });

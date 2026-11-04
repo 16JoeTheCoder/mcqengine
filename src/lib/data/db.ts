@@ -1,3 +1,4 @@
+import { trackSession, SESSION_REVISIONS } from '../sync/change-tracking';
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import {
   DEFAULT_SETTINGS,
@@ -57,9 +58,13 @@ const MIGRATIONS: ((db: IDBPDatabase<DmcSchema>) => void)[] = [
 ];
 
 export function useDbName(name: string) {
+  const previous = dbp;
   dbName = name;
   dbp = null;
+  void previous?.then((d) => d.close());
 }
+
+export const currentDbName = () => dbName;
 
 export function db(): Promise<IDBPDatabase<DmcSchema>> {
   if (!dbp) {
@@ -123,9 +128,10 @@ export const getImage = async (id: string) => (await db()).get('images', id);
 
 export async function savePackAndPapers(pack: Pack, papers: Paper[], images: ImageRecord[] = []) {
   await write(async () => {
-    const tx = (await db()).transaction(['packs', 'papers', 'images'], 'readwrite');
+    const tx = (await db()).transaction(['packs', 'papers', 'images', 'meta'], 'readwrite');
+    const updatedAt = await reviveSyncedRecord(tx.objectStore('meta'), 'packs', pack.id, pack.updatedAt);
     await Promise.all([
-      tx.objectStore('packs').put(pack),
+      tx.objectStore('packs').put({ ...pack, updatedAt }),
       ...papers.map((p) => tx.objectStore('papers').put(p)),
       ...images.map((i) => tx.objectStore('images').put(i)),
       tx.done,
@@ -134,18 +140,28 @@ export async function savePackAndPapers(pack: Pack, papers: Paper[], images: Ima
 }
 
 export async function putPack(pack: Pack) {
-  await write(async () => (await db()).put('packs', pack));
+  await write(async () => {
+    const tx = (await db()).transaction(['packs', 'meta'], 'readwrite');
+    const updatedAt = await reviveSyncedRecord(tx.objectStore('meta'), 'packs', pack.id, pack.updatedAt);
+    await tx.objectStore('packs').put({ ...pack, updatedAt });
+    await tx.done;
+  });
 }
 
 /** Deletes a pack and everything that belongs to it. Images may be shared, so they are swept separately. */
-export async function deletePack(packId: string) {
+export async function deletePack(packId: string, everywhere = true) {
   const d = await db();
   const stores = ['papers', 'sessions', 'sessionDetail', 'questionStats', 'bankEvents', 'overrides', 'snips'] as const;
-  const tx = d.transaction(['packs', ...stores], 'readwrite');
+  const tx = d.transaction(['packs', ...stores, 'meta'] as const, 'readwrite');
+  await tx.objectStore('meta').delete(SESSION_REVISIONS);
+  if (everywhere) await tombstone(tx.objectStore('meta'), 'packs', packId);
   await tx.objectStore('packs').delete(packId);
   for (const name of stores) {
     const idx = tx.objectStore(name).index('packId');
-    for (let c = await idx.openCursor(IDBKeyRange.only(packId)); c; c = await c.continue()) await c.delete();
+    for (let c = await idx.openCursor(IDBKeyRange.only(packId)); c; c = await c.continue()) {
+      if (everywhere && ['sessions', 'sessionDetail', 'questionStats', 'overrides', 'snips'].includes(name)) await tombstone(tx.objectStore('meta'), name, String(c.primaryKey));
+      await c.delete();
+    }
   }
   await tx.done;
   await sweepImages();
@@ -161,6 +177,7 @@ export async function sweepPdfs() {
     if (p.pdf?.ms) used.add(p.pdf.ms);
   }
   for (const s of await d.getAll('snips')) used.add(s.pdfId);
+  for (const detail of await d.getAll('sessionDetail')) for (const q of detail.snapshots ?? []) { if (q.pdfId) used.add(q.pdfId); if (q.snip) used.add(q.snip.pdfId); }
   const tx = d.transaction('pdfs', 'readwrite');
   for (let c = await tx.store.openCursor(); c; c = await c.continue()) if (!used.has(c.key)) await c.delete();
   await tx.done;
@@ -172,7 +189,12 @@ export async function putPdf(r: PdfRecord) {
 }
 export const getSnips = async (packId: string) => (await db()).getAllFromIndex('snips', 'packId', packId);
 export async function putSnip(s: Snip) {
-  await write(async () => (await db()).put('snips', s));
+  await write(async () => {
+    const tx = (await db()).transaction(['snips', 'meta'], 'readwrite');
+    const updatedAt = await reviveSyncedRecord(tx.objectStore('meta'), 'snips', s.key, s.updatedAt);
+    await tx.objectStore('snips').put({ ...s, updatedAt });
+    await tx.done;
+  });
 }
 /** Deletes a snip and leaves a tombstone, so the deletion syncs to other devices. */
 export async function deleteSnip(key: string, now = Date.now()) {
@@ -196,6 +218,9 @@ export async function sweepImages() {
       q.options?.forEach((o) => collect(o.figure as never));
     }
   for (const o of await d.getAll('overrides')) collect(o.figure as never);
+  for (const detail of await d.getAll('sessionDetail')) for (const q of detail.snapshots ?? []) {
+    if (q.image) used.add(q.image); collect(q.figure); q.options?.forEach((o) => collect(o.figure));
+  }
   const tx = d.transaction('images', 'readwrite');
   for (let c = await tx.store.openCursor(); c; c = await c.continue()) if (!used.has(c.key)) await c.delete();
   await tx.done;
@@ -215,7 +240,11 @@ export async function getOpenSessions(): Promise<SessionSummary[]> {
 
 export async function saveSessionState(summary: SessionSummary, detail: SessionDetail) {
   await write(async () => {
-    const tx = (await db()).transaction(['sessions', 'sessionDetail'], 'readwrite');
+    const tx = (await db()).transaction(['sessions', 'sessionDetail', 'meta'], 'readwrite');
+    const previous = await tx.objectStore('sessions').get(summary.id);
+    summary = { ...summary, updatedAt: await reviveSyncedRecord(tx.objectStore('meta'), 'sessions', summary.id, Math.max(summary.updatedAt, (previous?.updatedAt ?? -1) + 1)) };
+    await reviveSyncedRecord(tx.objectStore('meta'), 'sessionDetail', detail.id, summary.updatedAt);
+    await trackSession(tx.objectStore('meta'), summary);
     await Promise.all([tx.objectStore('sessions').put(summary), tx.objectStore('sessionDetail').put(detail), tx.done]);
   });
 }
@@ -227,12 +256,13 @@ export async function saveSessionState(summary: SessionSummary, detail: SessionD
  */
 export async function persistOpenSession(summary: SessionSummary, detail: SessionDetail): Promise<boolean> {
   return write(async () => {
-    const tx = (await db()).transaction(['sessions', 'sessionDetail'], 'readwrite');
+    const tx = (await db()).transaction(['sessions', 'sessionDetail', 'meta'], 'readwrite');
     const cur = await tx.objectStore('sessions').get(summary.id);
     if (!cur || cur.status === 'submitted' || cur.status === 'auto-submitted') {
       await tx.done;
       return false;
     }
+    await trackSession(tx.objectStore('meta'), summary);
     await Promise.all([tx.objectStore('sessions').put(summary), tx.objectStore('sessionDetail').put(detail), tx.done]);
     return true;
   });
@@ -241,20 +271,26 @@ export async function persistOpenSession(summary: SessionSummary, detail: Sessio
 /** Creates a session only if its pack has no open session, checked inside the same transaction. */
 export async function createOpenSession(summary: SessionSummary, detail: SessionDetail): Promise<boolean> {
   return write(async () => {
-    const tx = (await db()).transaction(['sessions', 'sessionDetail'], 'readwrite');
+    const tx = (await db()).transaction(['sessions', 'sessionDetail', 'meta'], 'readwrite');
     const rows = await tx.objectStore('sessions').index('packId').getAll(summary.packId);
     if (rows.some((s) => s.status === 'active' || s.status === 'saved')) {
       await tx.done;
       return false;
     }
+    await trackSession(tx.objectStore('meta'), summary);
     await Promise.all([tx.objectStore('sessions').put(summary), tx.objectStore('sessionDetail').put(detail), tx.done]);
     return true;
   });
 }
 
 export async function deleteSession(id: string) {
-  const tx = (await db()).transaction(['sessions', 'sessionDetail'], 'readwrite');
+  const packId = (await getSession(id))?.packId;
+  const tx = (await db()).transaction(['sessions', 'sessionDetail', 'meta'], 'readwrite');
+  await trackSession(tx.objectStore('meta'), null, id);
+  await tombstone(tx.objectStore('meta'), 'sessions', id);
+  await tombstone(tx.objectStore('meta'), 'sessionDetail', id);
   await Promise.all([tx.objectStore('sessions').delete(id), tx.objectStore('sessionDetail').delete(id), tx.done]);
+  if (packId) { const { rebuildStats } = await import('../engine/regrade'); await rebuildStats(packId); }
 }
 
 // ---------- stats ----------
@@ -263,10 +299,18 @@ export const getBankEvents = async (packId: string) => (await db()).getAllFromIn
 export const getOverrides = async (packId: string) => (await db()).getAllFromIndex('overrides', 'packId', packId);
 
 export async function putOverride(o: QuestionOverride) {
-  await write(async () => (await db()).put('overrides', o));
+  await write(async () => {
+    const tx = (await db()).transaction(['overrides', 'meta'], 'readwrite');
+    const updatedAt = await reviveSyncedRecord(tx.objectStore('meta'), 'overrides', o.key, o.updatedAt);
+    await tx.objectStore('overrides').put({ ...o, updatedAt });
+    await tx.done;
+  });
 }
 export async function deleteOverride(key: string) {
-  await (await db()).delete('overrides', key);
+  const tx = (await db()).transaction(['overrides', 'meta'], 'readwrite');
+  await tombstone(tx.objectStore('meta'), 'overrides', key);
+  await tx.objectStore('overrides').delete(key);
+  await tx.done;
 }
 
 export async function wipeAll() {
@@ -278,13 +322,49 @@ export async function wipeAll() {
 /** Tags (or untags) why a wrong answer happened. Stored on the summary so dashboards read one row. */
 export async function setCause(sessionId: string, qid: string, cause: import('../types').Cause | null, now = Date.now()) {
   await write(async () => {
-    const tx = (await db()).transaction('sessions', 'readwrite');
-    const s = await tx.store.get(sessionId);
+    const tx = (await db()).transaction(['sessions', 'meta'], 'readwrite');
+    const s = await tx.objectStore('sessions').get(sessionId);
     if (!s) return;
     const causes = { ...s.causes };
     if (cause) causes[qid] = cause;
     else delete causes[qid];
-    await tx.store.put({ ...s, causes, updatedAt: now });
+    const next = { ...s, causes, updatedAt: Math.max(now, s.updatedAt + 1) };
+    await tx.objectStore('sessions').put(next);
+    await trackSession(tx.objectStore('meta'), next);
     await tx.done;
   });
+}
+
+/** Tombstones travel through the same sync channel as writes, including cascade children. */
+async function tombstone(meta: import('idb').IDBPObjectStore<DmcSchema, StoreName[], 'meta', 'readwrite'>, name: string, id: string) {
+  const rows = ((await meta.get('tombstones')) as Record<string, number> | undefined) ?? {};
+  const sync = await meta.get('sync') as { versions?: Record<string, number> } | undefined;
+  const key = `${name}|${id}`;
+  rows[key] = Math.max(Date.now(), (rows[key] ?? 0) + 1, (sync?.versions?.[key] ?? 0) + 1);
+  await meta.put(rows, 'tombstones');
+}
+
+/** Evict downloaded teaching content only. Synced progress and the pack outline remain. */
+export async function removePackContent(packId: string) {
+  const tx = (await db()).transaction('papers', 'readwrite');
+  for (let c = await tx.store.index('packId').openCursor(IDBKeyRange.only(packId)); c; c = await c.continue()) await c.delete();
+  await tx.done;
+  await sweepImages(); await sweepPdfs();
+}
+
+/** Explicit local writes/recovery replace a tombstone within the same transaction as the row.
+ * Version tokens must differ from the last acknowledged deletion, even with a slow device clock.
+ */
+export async function reviveSyncedRecord(
+  meta: { get(key: string): Promise<unknown>; put(value: unknown, key: string): Promise<unknown> },
+  name: string, id: string, requestedStamp: number,
+): Promise<number> {
+  const tombs = ((await meta.get('tombstones')) as Record<string, number> | undefined) ?? {};
+  const sync = await meta.get('sync') as { versions?: Record<string, number> } | undefined;
+  const key = `${name}|${id}`;
+  const gone = tombs[key];
+  const base = sync?.versions?.[key];
+  const updatedAt = Math.max(requestedStamp, gone === undefined ? requestedStamp : gone + 1, base === undefined ? requestedStamp : base + 1);
+  if (gone !== undefined) { delete tombs[key]; await meta.put(tombs, 'tombstones'); }
+  return updatedAt;
 }

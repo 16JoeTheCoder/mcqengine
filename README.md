@@ -2,14 +2,16 @@
 
 # DMC: Dynamic Multiple Choice
 
-Practise multiple-choice exam papers the way the real exam feels: full timed papers, random sets that cover the pool, drills and a Daily 10 on your mistakes, with honest progress analytics. Local-first: everything works offline and signed out. An optional account syncs progress across devices, and a school email unlocks the school Library of shared paper sets.
+Practise multiple-choice exam papers the way the real exam feels: full timed papers, random sets that cover the pool, mistakes drills, with honest progress analytics. Local-first: everything works offline and signed out. An optional account syncs progress across devices, and a school email unlocks the school Library of shared paper sets.
 
 * **Packs and papers.** A pack (for example "AS Physics Paper 1") holds many papers, browsable by year and series.
 * **Sessions.** Paper (always the full paper), Random (least-seen first) or Mistakes drill, in Exam mode (timed, results at the end) or Practice mode (instant feedback).
-* **Honest numbers.** Rolling averages, a verdict with confidence that says when a change is within noise, pace analysis and a rushed-error alert.
+* **Honest numbers.** Rolling averages, an observed-trend summary with sample sizes, pace analysis and a rushed-error alert.
 * **Typed packs (primary).** An AI agent or chat turns a PDF into validated typed questions ([PACK_BUILDER_GUIDE.md](docs/PACK_BUILDER_GUIDE.md)); DMC validates, cross-checks numbers against the PDF and writes the fix prompt if anything is wrong. `node tools/validate-pack.mjs <zip>` runs the same validator from a terminal.
 * **PDF papers (lighter path).** Drop question paper PDFs and mark schemes: practise from the PDF, confirm the key in a grid, snip questions for drills.
-* **Daily 10.** Ten minutes of due mistakes (1, 3, 7, 14 days), cleared by two sure, correct answers in a row.
+* **Board mode.** A large question pane beside a completely blank writing half for external whiteboard tools; fullscreen, themes, reveal, jump, elimination and revisit.
+* **Import PDF with AI.** Selected-page NVIDIA vision extraction, explicit consent, retry/recovery and editable review through the existing importer.
+* **Email accounts.** Verification codes, isolated account/guest workspaces and explicit guest-progress adoption.
 * **School Library and sync.** Supabase: [docs/SUPABASE_SETUP.md](docs/SUPABASE_SETUP.md), [docs/LIBRARY_POLICY.md](docs/LIBRARY_POLICY.md).
 
 ## Run it
@@ -41,8 +43,9 @@ The first time on a new machine, `npm run e2e` may need the browser: `npx playwr
 
 `dist/` is plain static files with relative paths and hash routing, so it works on any static host under any base path.
 
-* **Netlify** (current): `netlify.toml` sets the build command (`npm run build`), the publish folder (`dist`), the security headers and `noindex`. Push to the connected branch. Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in Netlify's environment variables to switch on accounts, sync and the Library; without them the app runs as before.
-* **Anywhere else:** run `npm run build` and upload `dist/`. Serve `sw.js` and `index.html` with `Cache-Control: no-cache` so updates are found.
+The frontend is configured for **Cloudflare Pages** (`npm run build`, output `dist/`). An authenticated **Cloudflare Worker** serves same-origin `/api/*` AI requests. Supabase remains the Auth, database, and private storage backend. See [Cloudflare, email, SMTP, subdomain and NVIDIA setup](docs/CLOUDFLARE_SETUP.md) before deploying.
+
+Only public Supabase configuration belongs in frontend variables. Set private NVIDIA credentials as Worker secrets; `.dev.vars` is local and gitignored. No deployment or production configuration changes are performed by the source upgrade.
 
 When a new version is deployed, open copies of DMC show "A new version of DMC is ready". The update is never applied in the middle of a session.
 
@@ -54,9 +57,13 @@ When a new version is deployed, open copies of DMC show "A new version of DMC is
 
 The format is documented in [docs/PACK_FORMAT.md](docs/PACK_FORMAT.md), with a JSON Schema in [schema/](schema/). Zips (JSON plus an `images/` folder) and folders import too, and **Export pack** writes the same format for sharing.
 
+Daily 10 is retired. Existing session records remain readable and survive backup, restore and sync; ordinary papers, Random and mistakes drills remain available. Clearing a question from the mistakes bank is a repeat-practice convenience, not proof of topic mastery.
+
 ## Your data
 
-Packs, PDFs and progress live in this browser's storage on this device; clearing site data erases them. Signed in, progress (never PDFs or packs) syncs to your account; your own packs can also be backed up to the account if you choose. Use **Settings > Data > Export everything** regularly; backups are checked with a checksum and merge without deleting anything.
+Packs, PDFs and progress live in this browser's storage on this device; clearing site data erases them. Signed in, progress, historical question snapshots and pack outlines sync to your account; full paper files and PDF/image assets stay local; your own packs can also be backed up to the account if you choose. Use **Settings > Data > Export everything** regularly; backups are checked with a checksum and merge without deleting anything.
+
+Implementation, compatibility, test coverage and limitations are described in [Upgrade delivery notes](docs/UPGRADE.md).
 
 ## Project layout
 

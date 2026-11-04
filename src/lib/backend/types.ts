@@ -44,6 +44,8 @@ export interface SyncRecord {
   store: 'packs' | 'sessions' | 'sessionDetail' | 'questionStats' | 'snips' | 'overrides' | 'settings';
   id: string;
   updated_at: number;
+  base_updated_at?: number;
+  server_revision?: string;
   deleted?: boolean;
   data: unknown;
 }
@@ -62,8 +64,10 @@ export interface Backend {
   onAuthChange(fn: (a: Account | null) => void): () => void;
   /** Google sign-in. `school` adds the school domain as a hint to Google's account chooser only. */
   signInGoogle(school: boolean): Promise<void>;
-  /** Email sign-in link (also creates the account). Mock: signs in at once. */
-  signInEmail(email: string): Promise<void>;
+  /** Request an email code. codeOnly keeps legacy mock fixture sign-in compatible. */
+  signInEmail(email: string, codeOnly?: boolean): Promise<void>;
+  verifyEmailCode(email: string, code: string): Promise<void>;
+  accessToken(): Promise<string | null>;
   signOut(): Promise<void>;
   status(): Promise<LibraryStatus>;
 
@@ -80,9 +84,9 @@ export interface Backend {
   star(setId: string, on: boolean): Promise<void>;
   report(setId: string, reason: string): Promise<void>;
 
-  syncPush(records: SyncRecord[]): Promise<number>;
+  syncPush(records: SyncRecord[], expectedAccount?: string): Promise<number>;
   /** Records changed on the server after `cursor` (opaque), oldest first. */
-  syncPull(cursor: string | null, limit: number): Promise<{ records: SyncRecord[]; cursor: string | null }>;
+  syncPull(cursor: string | null, limit: number, expectedAccount?: string): Promise<{ records: SyncRecord[]; cursor: string | null }>;
 }
 
 export class BackendError extends Error {}

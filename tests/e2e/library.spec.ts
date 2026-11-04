@@ -1,24 +1,10 @@
 import { expect, test } from './fixtures';
 import type { Page } from '@playwright/test';
+import { signInByCode as signIn, signOutAccount as signOut, importGuestProgress } from './auth-helpers';
 import { syntheticDoc } from './helpers';
 import { bothThemes } from './a11y';
 
 // Runs against the build that uses the in-browser mock backend (same rules as supabase/schema.sql).
-
-async function signIn(page: Page, email: string, mode: 'school' | 'personal' = 'school') {
-  const dlg = page.getByRole('dialog');
-  if (!(await dlg.isVisible())) await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-  if (mode === 'personal') await dlg.getByRole('button', { name: 'Personal' }).click();
-  await dlg.getByLabel(/Email/).fill(email);
-  await dlg.getByRole('button', { name: 'Sign in', exact: true }).click();
-  await expect(page.getByRole('button', { name: `Account: ${email}` })).toBeVisible();
-}
-
-async function signOut(page: Page, email: string) {
-  await page.getByRole('button', { name: `Account: ${email}` }).click();
-  await page.getByRole('dialog').getByRole('button', { name: 'Sign out' }).click();
-  await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toBeVisible();
-}
 
 async function importPack(page: Page) {
   await page.getByRole('button', { name: /Import a pack file|Add pack/ }).first().click();
@@ -52,6 +38,7 @@ test('post a set from a pack, star it, download it as another student, re-share 
   await page.getByRole('button', { name: 'Continue without an account' }).click();
   await importPack(page);
   await signIn(page, 'ana@stjbs.sch.id');
+  await importGuestProgress(page, 'ana@stjbs.sch.id');
   await page.goto('./#/library');
   await expect(page.getByText('Nothing shared yet')).toBeVisible();
   await page.getByRole('button', { name: 'Post a set' }).click();
@@ -91,6 +78,7 @@ test('reporting: three reports hide a set from other students', async ({ page })
   await page.getByRole('button', { name: 'Continue without an account' }).click();
   await importPack(page);
   await signIn(page, 'owner@stjbs.sch.id');
+  await importGuestProgress(page, 'owner@stjbs.sch.id');
   await page.goto('./#/library');
   await page.getByRole('button', { name: 'Post a set' }).click();
   await page.getByRole('dialog').getByLabel('A pack on this device').selectOption({ label: 'Synthetic Physics' });
@@ -126,6 +114,7 @@ test('no serious accessibility violations on welcome, sign-in, Library and posti
   await page.getByRole('button', { name: 'Continue without an account' }).click();
   await importPack(page);
   await signIn(page, 'ana@stjbs.sch.id');
+  await importGuestProgress(page, 'ana@stjbs.sch.id');
   await page.goto('./#/library');
   await expect(page.getByText('Nothing shared yet')).toBeVisible();
   await bothThemes(page, 'empty Library');

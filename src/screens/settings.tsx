@@ -6,6 +6,8 @@ import { Button, Field, Modal, Seg, Toggle } from '../ui/kit';
 import { Icon } from '../ui/icons';
 import { focusMainIfLost } from '../ui/kit';
 import { Signature, DmcMark } from '../ui/brand';
+import { authStore } from '../lib/backend';
+import { adoptLegacy } from '../lib/data/workspace';
 import { BackupPanel } from './data';
 
 export function SettingsScreen({ onImport, onAbout }: { onImport: () => void; onAbout: () => void }) {
@@ -21,7 +23,7 @@ export function SettingsScreen({ onImport, onAbout }: { onImport: () => void; on
     bump();
     broadcastChange();
     setWipe(false);
-    toast('All data on this device was erased.');
+    toast('This local workspace was erased. Synced progress can return on the next sync.');
     navigate(href.library());
   };
 
@@ -60,7 +62,7 @@ export function SettingsScreen({ onImport, onAbout }: { onImport: () => void; on
 
         <section class="jy-panel stack" aria-labelledby="s-data">
           <h2 id="s-data">Data</h2>
-          <p class="small muted prose">Everything is stored in this browser only. Clearing site data erases it, so back up regularly.</p>
+          <p class="small muted prose">Packs and PDFs are stored in this workspace. Signed-in progress syncs; full backups preserve your files. Clearing site data erases local files, so back up regularly.</p>
           <Toggle label="Backup reminder" hint={`Offer a full backup every ${s.backupEvery} completed sessions.`} checked={s.backupReminder} onChange={(v) => set({ backupReminder: v })} />
           {s.backupReminder && (
             <Field label="Remind every (sessions)">
@@ -68,6 +70,11 @@ export function SettingsScreen({ onImport, onAbout }: { onImport: () => void; on
             </Field>
           )}
           <BackupPanel />
+          <p class="small muted">Previous-version data stays preserved separately until you choose to recover it. Only import records that belong to you.</p>
+          <div><Button onClick={async () => {
+            if (!confirm('Copy your previous-version records into this workspace? Only continue if these are your records. A cache marked for another account is refused.')) return;
+            try { const count = await adoptLegacy(authStore.get().account?.id ?? null); bump(); toast(`Recovered ${count} legacy records.`); } catch(e) { toast((e as Error).message); }
+          }}>Recover previous-version data</Button></div>
           <div class="row">
             <Button onClick={onImport}><Icon name="upload" size={18} /> Import pack or backup</Button>
             <span class="spacer" />
@@ -93,7 +100,7 @@ export function SettingsScreen({ onImport, onAbout }: { onImport: () => void; on
           }
         >
           <form class="stack" onSubmit={(e) => { e.preventDefault(); if (typed.trim() === 'ERASE') void doWipe(); }}>
-            <p>This deletes every pack, session and setting on this device. It cannot be undone without a backup.</p>
+            <p>This erases the current workspace from this browser. Other accounts and guest data stay separate. Synced records may return on the next sync; use Delete pack everywhere for synced deletion.</p>
             <Field label="Type ERASE to confirm">
               <input class="input" value={typed} onInput={(e) => setTyped((e.target as HTMLInputElement).value)} autoFocus />
             </Field>
@@ -123,7 +130,7 @@ export function AboutDialog({ onClose }: { onClose: () => void }) {
           </div>
           <div class="stack-s">
             <div class="label">Your data</div>
-            <span>Packs and progress stay on this device. DMC has no account, no server and no tracking. Nothing is uploaded.</span>
+            <span>Packs and progress stay on this device. Accounts sync practice progress through Supabase. PDF import sends only selected pages to NVIDIA after your confirmation. Cloud backups are optional.</span>
           </div>
         </div>
         <div class="small muted stack-s">

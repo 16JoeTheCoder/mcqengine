@@ -26,6 +26,15 @@ export function createSupabaseBackend(url: string, anonKey: string): Backend {
   };
   const clean = (s: string) => s.replace(/[,()%*\\]/g, ' ').trim().slice(0, 80);
 
+  // Capture one bearer for the expected workspace. An auth change cannot retarget a pending RPC.
+  const syncRpc = async (name: string, body: unknown, expectedAccount?: string): Promise<unknown> => {
+    const { data, error } = await (await client()).auth.getSession();
+    const session = data.session;
+    if (error || !session || (expectedAccount && session.user.id !== expectedAccount)) throw new BackendError('Account changed. Sync stopped.');
+    const response = await fetch(`${url}/rest/v1/rpc/${name}`, { method: 'POST', headers: { 'Content-Type': 'application/json', apikey: anonKey, Authorization: `Bearer ${session.access_token}` }, body: JSON.stringify(body), cache: 'no-store' });
+    if (!response.ok) throw new BackendError(response.status === 409 || response.status === 400 ? 'Sync conflict or rejected write. Retry sync to pull the latest version.' : `Sync request failed (${response.status})`);
+    return response.json();
+  };
   return {
     kind: 'supabase',
     async account() {
@@ -51,8 +60,17 @@ export function createSupabaseBackend(url: string, anonKey: string): Backend {
     async signInEmail(email) {
       ok(await (await client()).auth.signInWithOtp({ email: email.trim(), options: { emailRedirectTo: redirect(), shouldCreateUser: true } }));
     },
+    async verifyEmailCode(email, code) {
+      ok(await (await client()).auth.verifyOtp({ email: email.trim().toLowerCase(), token: code.trim(), type: 'email' }));
+    },
+    async accessToken() {
+      const { data, error } = await (await client()).auth.getSession();
+      if (error) throw new BackendError(error.message);
+      return data.session?.access_token ?? null;
+    },
     async signOut() {
-      await (await client()).auth.signOut();
+      const { error } = await (await client()).auth.signOut();
+      if (error) throw new BackendError(error.message);
     },
     async status() {
       const c = await client();
@@ -151,17 +169,12 @@ export function createSupabaseBackend(url: string, anonKey: string): Backend {
     async report(setId, reason) {
       ok(await (await client()).from('reports').insert({ set_id: setId, reason: reason.slice(0, 500) }));
     },
-    async syncPush(records) {
-      return ok(await (await client()).rpc('sync_push', { records })) as number;
+    async syncPush(records, expectedAccount) {
+      return await syncRpc('sync_push', { records }, expectedAccount) as number;
     },
-    async syncPull(cursor, limit) {
-      const rows = ok(
-        await (await client()).from('sync_records').select('store,id,updated_at,deleted,data,synced_at').gt('synced_at', cursor ?? '1970-01-01T00:00:00Z').order('synced_at').limit(limit),
-      ) as (Record<string, unknown> & { synced_at: string })[];
-      return {
-        records: rows.map((r) => ({ store: r.store as never, id: r.id as string, updated_at: Number(r.updated_at), deleted: !!r.deleted, data: r.data })),
-        cursor: rows.length ? rows[rows.length - 1]!.synced_at : cursor,
-      };
+    async syncPull(cursor, limit, expectedAccount) {
+      // Old timestamp cursors restart once; revision cursors are exact and deterministic.
+      return await syncRpc('sync_pull', { after_revision: cursor && /^\d+$/.test(cursor) ? cursor : null, page_limit: limit }, expectedAccount) as { records: import('./types').SyncRecord[]; cursor: string | null };
     },
   };
 }

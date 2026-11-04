@@ -10,3 +10,7 @@ pilot/
 dist-mock/
 .env.local
 .env.*.local
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+.wrangler/

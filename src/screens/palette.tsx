@@ -3,7 +3,6 @@ import * as store from '../lib/data/db';
 import { href, navigate } from '../lib/app-state';
 import type { Pack } from '../lib/types';
 import { Modal } from '../ui/kit';
-import { startDaily } from './daily';
 import { doBackup } from './data';
 
 export interface Command {
@@ -39,7 +38,6 @@ export function CommandPalette({ onClose, actions }: { onClose: () => void; acti
     () => [
       ...actions,
       ...packs.map((p) => ({ id: `pack:${p.id}`, label: `Open ${p.title}`, hint: p.subject, run: () => navigate(href.pack(p.id)) })),
-      ...packs.map((p) => ({ id: `daily:${p.id}`, label: `Daily 10 in ${p.title}`, hint: 'mistakes due today', run: () => void startDaily(p) })),
       ...packs.map((p) => ({ id: `ins:${p.id}`, label: `Insights for ${p.title}`, run: () => navigate(href.pack(p.id, 'insights')) })),
       { id: 'home', label: 'Go home', hint: 'your packs', run: () => navigate(href.library()) },
       { id: 'school', label: 'School Library', hint: 'shared paper sets', run: () => navigate(href.school()) },

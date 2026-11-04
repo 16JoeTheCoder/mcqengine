@@ -1,0 +1,4 @@
+# Used only by: npx wrangler pages deploy --config wrangler.pages.toml
+name = "dmc"
+pages_build_output_dir = "./dist"
+compatibility_date = "2026-10-01"

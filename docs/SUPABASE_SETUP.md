@@ -1,13 +1,13 @@
 # Setting up accounts, sync and the school Library (Supabase)
 
-About 30 minutes, once. You need: a web browser, the Netlify site that hosts DMC, and a Google account to sign in to Supabase and Google Cloud. Nothing here needs a terminal except the optional local test in step 9.
+Use a browser to configure Supabase, and Cloudflare Pages for the frontend. The app uses email verification codes: students and teachers do not need a Google account. See [CLOUDFLARE_SETUP.md](CLOUDFLARE_SETUP.md) for the complete development, preview, production, Worker and subdomain guide.
 
 Until these steps are done, DMC works exactly as before: everything on the device, no accounts, the Library shows "not set up". Switching it on is only a matter of the two values in step 7.
 
 **Two rules that matter for safety:**
 
 * Only two values ever go into the app: the **Project URL** and the **anon public key** (newer projects call it the **publishable key**, starting `sb_publishable_`). Both are designed to be public; the database rules protect the data.
-* **Never** put the `service_role` key (or a `sb_secret_` key) anywhere in DMC, Netlify or a file in the repository. It bypasses every rule.
+* **Never** put the `service_role` key (or a `sb_secret_` key) anywhere in frontend variables, Cloudflare Pages builds or a file in the repository. It bypasses every rule.
 
 ## 1. Create the project
 
@@ -40,53 +40,44 @@ Where: Supabase dashboard > **Table Editor** (left sidebar).
 
 To remove someone: delete their row. Changes apply immediately.
 
-## 4. Email sign-in
+## 4. Email verification codes and delivery
 
-Where: Supabase dashboard > **Authentication** > **Sign In / Providers**.
+Where: Supabase dashboard > **Authentication** > **Sign In / Providers** > **Email**.
 
-1. **Email** is on by default. Make sure **Confirm email** is **on**: the Library only admits confirmed addresses.
-2. DMC uses sign-in links (no passwords). Supabase's built-in mailer sends only a few emails per hour, which is fine for testing. For the whole school, set up your own mail sender under **Authentication** > **Emails** > **SMTP Settings** (any provider such as Resend or Brevo; follow their Supabase instructions), or ask students to use Google.
+1. Enable Email sign-in and keep **Confirm email** on. Library access is enforced from the verified address by database and storage policies.
+2. Under **Authentication** > **Emails** > **Templates**, use `{{ .Token }}` in both the **Confirm signup** and **Magic Link** templates, for example: `Your DMC sign-in code is {{ .Token }}.` Do not direct the user to open a sign-in link. Supabase uses the Magic Link template name for existing-user OTP messages even though DMC verifies the code inside the app.
+3. Configure a short **Email OTP expiry** (for example 600 seconds), and a matching clear statement in the email. The server decides expiry; DMC reports an expired or invalid code and offers resend/change-email.
+4. Configure custom SMTP under **Authentication** > **Emails** > **SMTP Settings** before a school pilot. Set the provider host, port, credentials and verified sender there. Set SPF, DKIM and DMARC using that provider's DNS instructions, then check delivery and spam placement with a school mailbox and a personal mailbox.
+5. Review **Authentication** > **Rate Limits** and your SMTP provider's sending limits. Supabase's default mail service is restricted and unsuitable for general school delivery. The app's resend cooldown does not replace server-side abuse protection or increase mail quotas.
 
-## 5. Google sign-in
+No Google OAuth application or account chooser is required. Other providers may remain disabled.
 
-Where: browser, [console.cloud.google.com](https://console.cloud.google.com), then the Supabase dashboard.
-
-1. In Google Cloud: create a project named `dmc` (project picker at the top > **New project**).
-2. **APIs & Services** > **OAuth consent screen**: choose **External**, app name `DMC`, your email as support and developer contact. Save. Add the scope `email` and `profile` if asked. Publish the app (**Publish app**) so any Google account can sign in.
-3. **APIs & Services** > **Credentials** > **Create credentials** > **OAuth client ID** > **Web application**.
-4. In the Supabase dashboard > **Authentication** > **Sign In / Providers** > **Google**, copy the **Callback URL** shown there (it ends in `/auth/v1/callback`).
-5. Back in Google Cloud, paste it under **Authorised redirect URIs**, press **Create**, and copy the **Client ID** and **Client secret**.
-6. In Supabase > **Google**: turn it on, paste the Client ID and Client secret, **Save**.
-
-About the school domain: "Sign in with school email" asks Google to show the `stjbs.sch.id` account first. That is only a convenience. Who reaches the Library is decided by the database rules from step 2, which check the confirmed email on the server.
-
-## 6. Where DMC lives
+## 5. Site URL and redirect allowlist
 
 Where: Supabase dashboard > **Authentication** > **URL Configuration**.
 
-1. **Site URL**: your Netlify address, for example `https://dmc-practice.netlify.app`.
-2. **Redirect URLs**: press **Add URL** and add the same address followed by `/**` (for example `https://dmc-practice.netlify.app/**`), and `http://localhost:5173/**` for local testing.
+Set **Site URL** to the canonical production origin, for example `https://mcq.example.com`. Code verification occurs inside DMC and does not require a redirect to complete sign-in. If you retain a fallback auth link, allow only the exact origins and paths you intentionally support. Use a separate development Supabase project for `http://localhost:5173` and preview testing; do not grant every preview host access to production authentication.
 
-## 7. Give the app its two public values
+## 6. Give the frontend its two public values
 
-Where: Supabase dashboard, then the Netlify dashboard.
+Where: Supabase dashboard > **Project Settings** > **API Keys** (or **Data API**), then Cloudflare dashboard > **Workers & Pages** > the Pages project > **Settings** > **Variables and Secrets**.
 
-1. Supabase > **Project Settings** (gear) > **API Keys** (or **Data API**): copy the **Project URL** and the **anon public** key (or the **publishable** key).
-2. Netlify > your site > **Site configuration** > **Environment variables** > **Add a variable**:
-   * Key `VITE_SUPABASE_URL`, value: the Project URL.
-   * Key `VITE_SUPABASE_ANON_KEY`, value: the anon or publishable key.
-3. Netlify > **Deploys** > **Trigger deploy** > **Deploy site**. When it finishes, DMC shows **Sign in** in the top bar and the **Library** link.
+Set `VITE_SUPABASE_URL` to the Project URL and `VITE_SUPABASE_ANON_KEY` to the anon/public or publishable key. Configure Production and Preview separately, then rebuild the relevant frontend deployment. These values are built into JavaScript and are public. Keep the NVIDIA key in Worker secrets, never in a `VITE_*` variable.
+
+## 7. Existing projects and migrations
+
+Back up production data before a planned schema upgrade. Review the migration in `supabase/migrations/` alongside the new `schema.sql`; apply it in a staging project first. SQL tests use PGlite stand-ins for Supabase Auth and Storage and cannot replace a staging check of hosted policies and email delivery. Changing a live project's authentication or data requires explicit authorization.
 
 ## 8. Check it works
 
 Where: browser, on the deployed site.
 
-1. Sign in with a school address. The account menu (the letter in the top bar) should say "School Library: member".
+1. Enter a school address, request the code, and enter the code from the email. The account menu (the letter in the top bar) should say "School Library: member".
 2. Open **Library** > **Post a set**, choose a pack, post it. It appears with your name.
-3. In a private window, sign in with a personal Gmail address. **Library** should say it is locked, with one line on how to unlock it.
+3. In a private window, sign in by code with a personal email address. **Library** should say it is locked, with one line on how to unlock it.
 4. As the admin, the set's **Remove** button works.
 
-## 9. Optional: test locally
+## 9. Test locally
 
 Where: VS Code terminal (or Ubuntu/WSL terminal), in the repository folder.
 
@@ -95,7 +86,7 @@ cp .env.example .env.local     # then put the two values from step 7 into .env.l
 npm run dev                    # http://localhost:5173
 ```
 
-`.env.local` is ignored by git. Without it, `npm run dev` uses a built-in development backend that lives in the browser and follows the same rules, so all features can be tried with made-up addresses.
+`.env.local` is ignored by git. Without it, `npm run dev` uses a built-in development backend that lives in the browser and follows the same rules, so the account and Library flows can be exercised with made-up addresses. Mock codes do not send email and do not authorize production AI requests.
 
 ## How the rules are proven
 
@@ -108,6 +99,6 @@ npm run dev                    # http://localhost:5173
 | Set file | 100 MB |
 | Library storage per person | 400 MB and 100 files |
 | Sets per person | 40 |
-| Private backup file | 200 MB |
-| Sync | 500 records per push, 50 000 per account, 256 KB per record |
+| Private backups | 200 MB per file, at most 3 files and 400 MB per account |
+| Sync | 500 records / 4 MB per push, 50 000 per account, 256 KB per record |
 | Reports | 3 distinct reports hide a set until an admin restores or removes it |

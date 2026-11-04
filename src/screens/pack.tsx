@@ -3,8 +3,7 @@ import * as store from '../lib/data/db';
 import { exportPackZip } from '../lib/data/backup';
 import { downloadBlob } from '../lib/data/files';
 import { paperComplete } from '../lib/format/merge';
-import { dailyPlan, loadPackContent, packStandardLength, submitSession } from '../lib/engine/session';
-import { startDaily } from './daily';
+import { loadPackContent, packStandardLength, submitSession } from '../lib/engine/session';
 import { selectDrill } from '../lib/engine/mistakes';
 import { packAnalytics, trend, type Filters, type Metric, type Range } from '../lib/stats/dashboard';
 import { bump, dataVersion, href, navigate, settingsStore, toast, updateSettings, useStore } from '../lib/app-state';
@@ -49,7 +48,6 @@ export function PackScreen({ id, section, onImport, onPrompt }: { id: string; se
   const [active, setActive] = useState('overview');
   const [tipHidden, setTipHidden] = useState(false);
   const [lockElsewhere, setLockElsewhere] = useState(false);
-  const [daily, setDaily] = useState<{ due: number; size: number } | null>(null);
   const [missing, setMissing] = useState(0);
   useEffect(() => {
     void sessionLockHeld().then(setLockElsewhere);
@@ -64,8 +62,6 @@ export function PackScreen({ id, section, onImport, onPrompt }: { id: string; se
       const have = new Set((await (await store.db()).getAllKeysFromIndex('papers', 'packId', id)).map((k) => String(k).slice(id.length + 2)));
       if (live) setMissing(pack.papers.filter((m) => !have.has(m.id)).length);
       if (live) setData({ pack, sessions, stats, events, overrides });
-      const plan = await dailyPlan(pack);
-      if (live) setDaily(plan);
     })();
     return () => {
       live = false;
@@ -295,24 +291,24 @@ export function PackScreen({ id, section, onImport, onPrompt }: { id: string; se
             </div>
             <div class="jy-panel stack">
               <div class="panel-head" style={{ marginBottom: 0 }}>
-                <h3>Verdict</h3>
+                <h3>Observed trend</h3>
                 <Popover label="How is this calculated?">
-                  <p>The verdict compares the average paper score of your latest qualifying sessions with the same number before them (up to 3 each), and checks the straight-line slope over your last 10.</p>
+                  <p>The trend compares the average paper score of your latest qualifying sessions with the same number before them (up to 3 each), and checks the straight-line slope over your last 10.</p>
                   <p>Small samples are noisy. With fewer than 6 sessions, noise is estimated from the binomial formula: the standard error of one session is √(p(1 − p) / N) for N questions. With 6 or more, it is the actual scatter of your scores around their trend line.</p>
-                  <p>The standard error of a k-session average is that divided by √k, and of the difference between two averages, that times √2. A change of at least 2 standard errors is high confidence, at least 1 is medium, and less is within noise.</p>
-                  <p>A verdict needs at least 4 qualifying sessions: completed full papers or random sessions in Exam mode.</p>
+                  <p>The change is compared with estimated session-to-session variation. Repeated questions, paper difficulty and self-reported practice can affect it. This is an observed pattern, not a confidence level or a verified assessment.</p>
+                  <p>A trend summary needs at least 4 qualifying sessions: completed full papers or random sessions in Exam mode.</p>
                 </Popover>
               </div>
               {verdict.state === 'locked' ? (
                 <div class="locked" style={{ minHeight: '160px' }}>
-                  <b>{verdict.needed} more session{verdict.needed === 1 ? '' : 's'} for a verdict</b>
-                  <span class="small">A verdict needs 4 qualifying sessions so noise is not mistaken for progress.</span>
+                  <b>{verdict.needed} more session{verdict.needed === 1 ? '' : 's'} for an observed trend</b>
+                  <span class="small">A trend summary needs 4 qualifying sessions. More practice gives a broader sample.</span>
                 </div>
               ) : (
                 <>
                   <div>
                     <div class="verdict-word">{verdict.label}</div>
-                    <Badge status={verdict.confidence === 'High' ? 'ok' : verdict.confidence === 'Medium' ? 'ink' : 'neutral'}>{verdict.confidence} confidence</Badge>
+                    <Badge status="neutral">{qCount} qualifying sessions</Badge>
                   </div>
                   <p class="small">{verdict.sentence}</p>
                 </>
@@ -327,7 +323,7 @@ export function PackScreen({ id, section, onImport, onPrompt }: { id: string; se
                         <span class="muted" style={{ fontSize: '18px' }}>%</span>
                       </div>
                       <p class="small muted">
-                        Likely range {Math.round(a.projection.lo * 100)}–{Math.round(a.projection.hi * 100)}%. A cautious, damped extrapolation of your trend, not a prediction.
+                        Illustrative range {Math.round(a.projection.lo * 100)}–{Math.round(a.projection.hi * 100)}%. A cautious, damped extrapolation of your trend, not a prediction.
                       </p>
                     </>
                   ) : (
@@ -388,15 +384,10 @@ export function PackScreen({ id, section, onImport, onPrompt }: { id: string; se
               <span class="big"><span class="num">{Math.round(a.coverage.unseen * 100)}%</span> unseen</span>
               <span class="small muted">{randomSize ? `${randomSize} questions from across the pack, least-seen first. Once all are seen, questions repeat.` : 'Import keyed papers to use Random.'}</span>
             </button>
-            <button type="button" class="jy-panel jy-panel--link choice" disabled={!daily?.due} onClick={() => void startDaily(pack)}>
-              <span class="label">Daily 10</span>
-              <span class="big"><span class="num">{daily?.due ?? 0}</span> due</span>
-              <span class="small muted">{daily?.due ? `${daily.size} questions in ten minutes, with instant feedback. Mistakes return after 1, 3, 7 and 14 days.` : 'Nothing due today. Mistakes come back here 1, 3, 7 and 14 days after you last saw them.'}</span>
-            </button>
             <button type="button" class="jy-panel jy-panel--link choice" disabled={!drillSize} onClick={() => setStart({ type: 'drill', size: drillSize })}>
               <span class="label">Mistakes drill</span>
               <span class="big"><span class="num">{a.bankSize}</span> in bank</span>
-              <span class="small muted">{a.bankSize ? 'Wrong or shaky answers, most-missed first. Two sure, correct answers clear one.' : 'Empty for now. Wrong answers and correct-but-unsure ones land here.'}</span>
+              <span class="small muted">{a.bankSize ? 'Wrong or unsure answers, most-missed first. Two sure, correct answers remove a question from this list; this does not establish topic mastery.' : 'Empty for now. Wrong answers and correct-but-unsure ones land here.'}</span>
             </button>
           </div>
           <div style={{ marginTop: 'var(--space-3)' }}>
@@ -587,8 +578,11 @@ function DataSection({ data }: { data: PackData }) {
         <BackupPanel />
       </div>
       <div class="jy-panel stack-s" style={{ borderColor: 'var(--status-bad)' }}>
-        <h3>Delete pack</h3>
-        <p class="small muted">Removes this pack, its papers and all its progress from this device.</p>
+        <h3>Remove downloaded content</h3>
+        <p class="small muted">Free local paper files while keeping the pack outline and practice history. Import or download the pack again to practise it. Historical review assets remain while referenced.</p>
+        <div><Button onClick={async () => { if (!confirm('Remove downloaded paper content from this device? Progress will be kept.')) return; await store.removePackContent(pack.id); bump(); toast('Downloaded content removed. Progress kept.'); }}>Remove content from this device</Button></div>
+        <h3>Delete pack everywhere</h3>
+        <p class="small muted">Deletes this pack and its progress on this device and all synced devices. Offline devices receive the deletion when they sync.</p>
         <div><Button variant="danger" onClick={() => setConfirmDelete(true)}><Icon name="trash" size={18} /> Delete pack</Button></div>
       </div>
       {confirmDelete && (
@@ -603,7 +597,7 @@ function DataSection({ data }: { data: PackData }) {
           }
         >
           <form class="stack" onSubmit={(e) => { e.preventDefault(); if (typed.trim() === 'DELETE') void del(); }}>
-            <p>This deletes <b>{pack.title}</b> and its progress. It cannot be undone unless you have a backup.</p>
+            <p>This deletes <b>{pack.title}</b> and its progress everywhere you sync. It cannot be undone unless you have a backup.</p>
             <label class="jy-field">
               <span>Type DELETE to confirm</span>
               <input class="input" value={typed} onInput={(e) => setTyped((e.target as HTMLInputElement).value)} autoFocus />

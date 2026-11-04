@@ -302,7 +302,7 @@ export function SnipEditor({ packId, paperId, onClose }: { packId: string; paper
               <Button size="sm" onClick={() => setRect({ x: 0, y: 0.5, w: 1, h: 0.5 })}>Bottom half</Button>
             </div>
             <Button variant="primary" onClick={() => void save()} disabled={!rect}>Save as question {qn}</Button>
-            <p class="small muted"><span class="num">{snips.length}</span> of <span class="num">{paper.questionCount}</span> snipped. A fully snipped paper joins Random; snipped questions appear in drills and Daily 10.</p>
+            <p class="small muted"><span class="num">{snips.length}</span> of <span class="num">{paper.questionCount}</span> snipped. A fully snipped paper joins Random; snipped questions appear in mistakes drills.</p>
             <ul class="snip-list small">
               {snips
                 .slice()

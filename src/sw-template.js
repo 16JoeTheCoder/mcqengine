@@ -22,6 +22,7 @@ self.addEventListener('message', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const req = event.request;
+  if (/^\/(api|auth)(\/|$)/.test(new URL(req.url).pathname) || req.headers.has('Authorization')) return;
   if (req.method !== 'GET' || new URL(req.url).origin !== self.location.origin) return;
   if (req.mode === 'navigate') {
     // App shell from this version's cache, so the page always matches its cached assets.

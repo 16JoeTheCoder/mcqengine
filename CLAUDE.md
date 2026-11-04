@@ -4,7 +4,7 @@ DMC (Dynamic Multiple Choice): a local-first PWA for practising multiple-choice 
 
 ## Stack
 
-TypeScript (strict), Preact 10, Vite 6, IndexedDB via `idb`, fflate (zips), pdfjs-dist (lazy), @supabase/supabase-js (lazy). Hand-written service worker (`src/sw-template.js`). Tests: Vitest (happy-dom, fake-indexeddb, PGlite for SQL), Playwright (Chromium, axe). Hosted on Netlify as static files with hash routing.
+TypeScript (strict), Preact 10, Vite 6, IndexedDB via `idb`, fflate (zips), pdfjs-dist (lazy), @supabase/supabase-js (lazy). Hand-written service worker (`src/sw-template.js`). Tests: Vitest (happy-dom, fake-indexeddb, PGlite for SQL), Playwright (Chromium, axe). Frontend hosted on Cloudflare Pages as static files with hash routing; same-origin `/api/*` routes to a small authenticated Worker. Supabase remains the backend. See `docs/CLOUDFLARE_SETUP.md`.
 
 ## Commands
 
@@ -28,15 +28,15 @@ Supabase setup is click-by-click in `docs/SUPABASE_SETUP.md` (browser only). The
 * **One hostile-input pipeline.** Every pack (files, PDFs, Library downloads, synced rows) goes through guarded unzip (path, count, real-byte limits), lenient read, strict validator, merge, one transaction. Text renders through text nodes only; SVG is allowlisted and shown via `<img>`. Never use `innerHTML` (lint rule).
 * **Local-first.** IndexedDB is the source of truth. The app works offline and signed out; sync and the Library never block it.
 * **Timers use an absolute end timestamp**, never interval counting; a monotonic check refuses backward clock jumps. Every timer is clamped to the paper's hard cap in the engine and the UI.
-* **Seen only when answered** in a submitted session; drills and Daily 10 never change seen counts.
-* **Partials, drills, Daily 10, practice and sessions awaiting a key are excluded from trends** (`qualifying()` in `src/lib/stats/core.ts`). Verdict: 4+ sessions, empirical variance from 6, binomial before.
+* **Seen only when answered** in a submitted session; drills and historical Daily 10 sessions never change seen counts.
+* **Partials, drills, Daily 10, practice and sessions awaiting a key are excluded from trends** (`qualifying()` in `src/lib/stats/core.ts`). Observed trend: 4+ sessions, empirical variation from 6, binomial before; no statistical-confidence claims.
 * **Rushed alert** uses median and MAD over the last 8 complete exam sessions (4 required).
-* **Mistakes bank:** wrong or Unsure enters; two consecutive sure, correct answers clear it, even on the same day; wrong resets. Daily 10 schedules banked questions at 1, 3, 7, 14 days.
+* **Mistakes bank:** wrong or Unsure enters; two consecutive sure, correct answers clear it, even on the same day; wrong resets. Daily 10 is retired: keep legacy types and records readable but never create new sessions or schedule questions. Clearing a repeated question is not proof of topic mastery.
 * **Stats are a replay of sessions** (`src/lib/engine/regrade.ts`). A key attached or corrected regrades past sessions and rebuilds stats; sync also rebuilds after a pull.
-* **Two account tiers.** Anyone may sign in (Google or email link) for sync. The Library is for confirmed `@stjbs.sch.id` emails plus the owner's allowlist, enforced only by RLS and storage policies that read the signed token and `auth.users` (never user metadata). Google's `hd` is a hint. Proven in `tests/unit/rls.test.ts`.
+* **Two account tiers.** Anyone may sign in (email verification code) for sync. The Library is for confirmed `@stjbs.sch.id` emails plus the owner's allowlist, enforced only by RLS and storage policies that read the signed token and `auth.users` (never user metadata). Proven in `tests/unit/rls.test.ts`.
 * **The Library is internal to the school** (agreed with the Head of Cambridge): `noindex`, private buckets, 60-second signed URLs, Library packs marked `origin: library` and refused by Pack for friends. A deterrent, not DRM (docs/LIBRARY_POLICY.md).
 * **No service-role key in the client, ever.** Only `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` (public). Backend choice: Supabase if both set, mock in dev or with `VITE_BACKEND=mock`, otherwise none.
-* **Sync is small records only**, newest write wins per record, per-record version map, resumable cursors. Never PDFs or Library sets.
+* **Sync uses compare-and-set writes**, server revision cursors and atomic session-pair staging. Finished-session snapshots sync, PDF/image bytes do not. Stats derive from complete attempts. Transactional sessionRevisions tracks dirty attempt histories.
 
 ## Conventions
 
@@ -53,14 +53,16 @@ Supabase setup is click-by-click in `docs/SUPABASE_SETUP.md` (browser only). The
 
 ```
 src/app.tsx              shell, routes, top bar, sync triggers, palette
-src/lib/engine/          timer, random, mistakes + Daily 10, grading, session lifecycle, regrade/replay
+src/lib/engine/          timer, random, mistakes + legacy session compatibility, grading, session lifecycle, regrade/replay
 src/lib/stats/           rolling 3, verdict, rushed, KPIs, dashboard
 src/lib/format/          lenient reader, validator, merge, markup, SVG, prompts, filename parser,
                          mark-scheme reader, PDF cross-check, check (shared with the CLI)
 src/lib/data/            IndexedDB (v2), import, keys, PDFs, bare PDF import, backups, files/zip guards
 src/lib/backend/         Backend interface, Supabase implementation, mock (same rules)
 src/lib/library/         post (validate, upload, resume), download, default cover
-src/lib/sync/            sync engine
+src/lib/sync/            CAS sync engine, transactional attempt change tracking
+worker/                 authenticated NVIDIA proxy and shared Durable Object budget
+shared/                 browser/Worker AI protocol and validation
 src/lib/share/           result card, font embedding
 src/lib/pdf/             pdf.js wrapper
 src/screens/             pages and dialogs (session, results, pack, school-library, account, notebook…)
@@ -73,8 +75,8 @@ docs/                    PACK_FORMAT, PACK_BUILDER_GUIDE, SUPABASE_SETUP, LIBRAR
 
 ## Known limitations and unverified
 
-* The live Supabase project is not yet created: auth redirects, email links, signed URLs and upload progress are verified only against the mock; the SQL is verified in PGlite with stand-ins for Supabase's auth and storage schemas.
+* The live Supabase project is not yet created: email-code delivery, token verification, signed URLs and upload progress are verified only against the mock; the SQL is verified in PGlite with stand-ins for Supabase's auth and storage schemas.
 * Only Chromium is tested. Printing the notebook was not tested on paper.
 * The study-sheet logo `tab-outline` is not in `brand/`; the light lockup stands in until it is added.
 * Resume of a cancelled post is per file, not per byte.
-* Pack outlines sync; questions do not. On a second device, practise needs the pack file or a Library download.
+* Pack outlines and historical answered-content snapshots sync; full paper content and PDF/image assets do not. A second device needs an import or Library download to practise.

@@ -5,7 +5,6 @@ import { dataVersion, href, useStore } from '../lib/app-state';
 import type { Pack, SessionSummary } from '../lib/types';
 import { Badge, Button, plural, relDay, Ring, Skeleton } from '../ui/kit';
 import { Icon } from '../ui/icons';
-import { DailyPanel, useDaily } from './daily';
 import { AccountDialog, type AccountMode } from './account';
 import { authStore, backend } from '../lib/backend';
 import { settingsStore, updateSettings } from '../lib/app-state';
@@ -53,8 +52,6 @@ export function Library({ onPrompt, onImport }: { onPrompt: () => void; onImport
             : (b.p.lastPractisedAt ?? b.p.updatedAt) - (a.p.lastPractisedAt ?? a.p.updatedAt),
       );
   }, [packs, sessions, q, sort]);
-  const daily = useDaily(packs, sessions);
-  const dueNow = !!daily?.some((r) => r.due > 0);
 
   if (!packs)
     return (
@@ -131,14 +128,11 @@ export function Library({ onPrompt, onImport }: { onPrompt: () => void; onImport
             <h1 class="display"><span class="light">Your</span> packs</h1>
             <p class="muted">{packs.length} pack{packs.length === 1 ? '' : 's'} on this device.</p>
           </div>
-          <Button variant={dueNow ? 'default' : 'accent'} size="lg" onClick={onPrompt}>
+          <Button variant="accent" size="lg" onClick={onPrompt}>
             <Icon name="sparkles" size={18} /> Make a pack with AI
           </Button>
         </div>
       </section>
-      <div style={{ marginBottom: backend ? 'var(--space-4)' : 'var(--space-6)' }}>
-        <DailyPanel rows={daily} accent={dueNow} />
-      </div>
       {backend && (
         <div class="home-links">
           <a class="jy-btn" href={href.school()}><Icon name="folder" size={18} /> School Library</a>

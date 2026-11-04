@@ -11,8 +11,8 @@ export default defineConfig({
   reporter: [['list']],
   use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } },
   projects: [
-    { name: 'app', testIgnore: /library\.spec\.ts/, use: { baseURL: 'http://localhost:4173/' } },
-    { name: 'mock-backend', testMatch: /library\.spec\.ts/, use: { baseURL: 'http://localhost:4174/' } },
+    { name: 'app', testIgnore: /(?:library|ai-import|account)\.spec\.ts/, use: { baseURL: 'http://localhost:4173/' } },
+    { name: 'mock-backend', testMatch: /(?:library|ai-import|account)\.spec\.ts/, use: { baseURL: 'http://localhost:4174/' } },
   ],
   webServer: [
     { command: 'npm run build && npx vite preview --port 4173 --strictPort', port: 4173, reuseExistingServer: true, timeout: 120_000 },
