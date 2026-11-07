@@ -7,7 +7,7 @@ assets = { directory = "./dist", not_found_handling = "single-page-application",
 [vars]
 SUPABASE_URL = "https://dnlktutorkidejlljqjo.supabase.co"
 SUPABASE_ANON_KEY = "sb_publishable_HmSOeBdfNkAj0ny4xxjE-Q_X3pWyIDi"
-NVIDIA_MODEL = "nvidia/llama-3.1-nemotron-nano-vl-8b-v1"
+NVIDIA_MODEL = "nvidia/nemotron-3.5-bolt-e4b"
 AI_SHARED_RPM = "30"
 AI_USER_DAILY_REQUESTS = "100"
 AI_CONCURRENCY = "2"
@@ -31,7 +31,7 @@ routes = []
 [env.preview.vars]
 SUPABASE_URL = "https://your-preview-project-ref.supabase.co"
 SUPABASE_ANON_KEY = "your-preview-public-anon-key"
-NVIDIA_MODEL = "nvidia/llama-3.1-nemotron-nano-vl-8b-v1"
+NVIDIA_MODEL = "nvidia/nemotron-3.5-bolt-e4b"
 AI_SHARED_RPM = "10"
 AI_USER_DAILY_REQUESTS = "20"
 AI_CONCURRENCY = "1"
@@ -47,7 +47,7 @@ name = "dmc-api-development"
 workers_dev = false
 routes = []
 [env.development.vars]
-APP_ORIGIN = "http://localhost:5173"
+APP_ORIGIN = "https://dmc.josefyang.com/"
 SUPABASE_URL = "https://your-development-project-ref.supabase.co"
 SUPABASE_ANON_KEY = "your-development-public-anon-key"
 AI_SHARED_RPM = "5"
