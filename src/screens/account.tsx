@@ -13,7 +13,7 @@ import { Icon } from '../ui/icons';
 export type AccountMode = 'school' | 'personal';
 
 /** Email codes are entered here; no provider account chooser is required. */
-export function AccountDialog({ mode: initial, onClose }: { mode: AccountMode; onClose: () => void }) {
+export function AccountDialog({ mode: initial, onClose, welcome = false }: { mode: AccountMode; onClose: () => void; welcome?: boolean }) {
   const [mode, setMode] = useState<AccountMode>(initial);
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
@@ -38,7 +38,12 @@ export function AccountDialog({ mode: initial, onClose }: { mode: AccountMode; o
     catch { setError('The code is invalid or expired. Check the latest email, or request a new code.'); }
     finally { setBusy(false); }
   };
-  return <Modal title="Sign in by email" onClose={onClose}><div class="stack">
+  return <Modal title={welcome ? 'Sign in to save your progress' : 'Sign in by email'} onClose={onClose} {...(welcome ? { size: 'wide' as const } : {})}><div class="stack">
+    {welcome && <ul class="stack-s">
+      <li>Keep your results, mistakes and stats safe if this browser is cleared.</li>
+      <li>Pick up where you left off on another device.</li>
+      <li>Use AI import, and open the School Library with a school email.</li>
+    </ul>}
     <Seg label="Account type" value={mode} onChange={setMode} options={[{value:'school',label:'School email'},{value:'personal',label:'Personal'}]} />
     <p class="small muted">Any verified email can sync personal progress. School Library access is checked by the server. Guest data stays separate until you choose to import it.</p>
     {error && <p class="notice notice--bad" role="alert">{error}</p>}
@@ -53,7 +58,9 @@ export function AccountDialog({ mode: initial, onClose }: { mode: AccountMode; o
       </form>
       <div class="row"><Button disabled={busy || cooldown > 0} onClick={() => void send()}>{cooldown ? `Resend in ${cooldown} s` : 'Resend code'}</Button><Button variant="ghost" disabled={busy} onClick={() => {setSent(false);setCode('');setError('');}}>Change email</Button></div>
     </>}
-    <p class="small subtle">You can close this dialog and keep practising without an account.</p>
+    {welcome
+      ? <div><Button variant="ghost" onClick={onClose}>Continue as guest</Button></div>
+      : <p class="small subtle">You can close this dialog and keep practising without an account.</p>}
   </div></Modal>;
 }
 
@@ -65,7 +72,7 @@ export function AccountButton({ onSync, syncLabel }: { onSync?: () => void; sync
   const [working, setWorking] = useState(false);
   const [conflicts, setConflicts] = useState(0);
   useEffect(() => { if (menu) void db().then((d) => d.get('meta', 'syncConflicts')).then((rows) => setConflicts(Array.isArray(rows) ? rows.length : 0)); }, [menu]);
-  if (!backend) return null;
+  if (!backend) return <span class="small subtle" title="This build has no Supabase settings, so accounts and sync are off.">Sign-in unavailable</span>;
   if (!auth.account)
     return (
       <>
@@ -80,6 +87,7 @@ export function AccountButton({ onSync, syncLabel }: { onSync?: () => void; sync
       <button type="button" class="jy-btn jy-btn--ghost jy-btn--icon account-chip" aria-label={`Account: ${a.email}`} aria-haspopup="dialog" title={syncLabel} onClick={() => setMenu(true)}>
         <span aria-hidden="true">{(a.name || a.email).charAt(0).toUpperCase()}</span>
       </button>
+      <span class="small subtle hide-sm account-email">{a.email}</span>
       {menu && (
         <Modal title="Account" onClose={() => setMenu(false)}>
           <div class="stack">

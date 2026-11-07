@@ -90,3 +90,14 @@ test('shared-device removal exports a backup and removes the signed-in cache bef
   expect(await page.evaluate(async name => (await indexedDB.databases()).some(db => db.name === name), `dmc-account-${encodeURIComponent(id)}`)).toBe(false);
   await expect(page.getByText('Shared-device private paper',{exact:true})).toHaveCount(0);
 });
+
+test('signed-out visitors see the sign-in welcome once, and can continue as guest', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('dmc-force-welcome', '1'));
+  await page.goto('./');
+  const dialog = page.getByRole('dialog', { name: 'Sign in to save your progress' });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('button', { name: 'Continue as guest' }).click();
+  await expect(dialog).toBeHidden();
+  await page.reload();
+  await expect(dialog).toBeHidden();
+});

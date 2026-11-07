@@ -209,3 +209,4 @@ One line each: what was decided and why. Grouped by area.
 - Use one named SQLite Durable Object for provider reservations, account quotas and concurrency. Shared default 30 RPM remains below the stated 40 RPM; no public provider proxy or browser secret.
 - Wrangler is a development/deployment dependency because Worker/Pages builds and deploy commands need an explicit reproducible CLI. No new frontend runtime dependency.
 - Extend the incumbent builtbyjosef tokens/components for board and import controls; preserve docs/design/DESIGN.md and existing theme authority. The blank board half is layout only.
+- Signed-out visitors get a sign-in welcome dialog once per tab session (sessionStorage), never mid-session or over the resume prompt; automated browsers skip it unless `dmc-force-welcome` is set. With no Supabase build values the top bar says "Sign-in unavailable" instead of hiding the control.
