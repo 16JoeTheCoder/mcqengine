@@ -15,7 +15,16 @@ import { SessionScreen } from './screens/session';
 import { lazy } from './ui/lazy';
 import { authStore, backend, initAuth } from './lib/backend';
 import { syncLabel, syncNow, syncStore } from './lib/sync/sync';
-import { AccountButton } from './screens/account';
+import { AccountButton, AccountDialog } from './screens/account';
+
+/** The sign-in welcome shows once per tab session. Automated browsers skip it unless a test opts in. */
+function welcomeSuppressed(): boolean {
+  try {
+    if (sessionStorage.getItem('dmc-welcome-seen')) return true;
+    if (navigator.webdriver && localStorage.getItem('dmc-force-welcome') !== '1') return true;
+  } catch { /* storage blocked: show it */ }
+  return false;
+}
 
 const Results = lazy(() => import('./screens/results').then((m) => m.Results));
 const SettingsScreen = lazy(() => import('./screens/settings').then((m) => m.SettingsScreen));
@@ -59,6 +68,7 @@ export function App() {
   const [dragging, setDragging] = useState(false);
   const [crumb, setCrumb] = useState<Pack | null>(null);
   const [palette, setPalette] = useState(false);
+  const [welcomeClosed, setWelcomeClosed] = useState(() => welcomeSuppressed());
   const firstRoute = useRef(true);
 
   useEffect(() => {
@@ -203,6 +213,8 @@ export function App() {
   const openPrompt = (pack?: Pack) => setPrompt(pack ? { pack } : {});
   const openImport = (pack?: Pack) => setImporting(pack ? { pack } : {});
   const top = resume[0];
+  const showWelcome = !!backend && !auth.account && !welcomeClosed && !inSession && !top && !importing && !prompt;
+  const closeWelcome = () => { try { sessionStorage.setItem('dmc-welcome-seen', '1'); } catch { /* private mode */ } setWelcomeClosed(true); };
 
   const handleResume = async (action: 'resume' | 'submit' | 'discard') => {
     if (!top) return;
@@ -319,6 +331,7 @@ export function App() {
       )}
       {importing && <ImportWizard pack={importing.pack} initial={importing.source ?? null} {...(importing.pdfs ? { pdfs: importing.pdfs } : {})} onClose={() => setImporting(null)} />}
       {about && <AboutDialog onClose={() => setAbout(false)} />}
+      {showWelcome && <AccountDialog mode="school" welcome onClose={closeWelcome} />}
       {palette && !inSession && (
         <CommandPalette
           onClose={() => setPalette(false)}
