@@ -4,7 +4,8 @@ import { sanitizeSvg } from '../format/svg';
 import { slugify, validateDoc, type NDoc, type ValidationResult } from '../format/validate';
 import { uid } from '../engine/rng';
 import { regradePack } from '../engine/regrade';
-import type { ImageRecord, Pack, Paper } from '../types';
+import { setIdOf, type ImageRecord, type Pack, type Paper } from '../types';
+import { applyPaperKeys, resolvePaperKeys } from '../format/identity';
 import * as store from './db';
 import { sha256Hex, type ImportSource } from './files';
 
@@ -54,19 +55,48 @@ export async function prepareImages(doc: NDoc, files: ReadonlyMap<string, Blob>)
 
 export interface ImportTarget {
   packId: string | null;
-  /** `id` fixes the new pack's id (Library downloads use `lib-<set id>`, so every device agrees). */
-  newPack?: { title: string; subject: string; id?: string; origin?: Pack['origin'] };
+  /** `id` fixes the new pack's id; `setId` is the permanent set identity (a fresh UUID if absent). */
+  newPack?: { title: string; subject: string; id?: string; setId?: string; origin?: Pack['origin']; libraryVersion?: number };
 }
 
-export async function planImport(doc: NDoc, target: ImportTarget, source: ImportSource | null, overrides: Record<string, PaperOverrides>) {
+export interface PlanOptions {
+  /** Paper keys the user confirmed in the review table, by document paper id. */
+  keys?: Record<string, string>;
+  /** Cover page text of question paper PDFs, by path in the source. */
+  coverText?: ReadonlyMap<string, string>;
+  /** For edited questions: keep the stored copy or take the incoming one. */
+  prefer?: 'mine' | 'theirs';
+}
+
+/**
+ * Resolves where an import lands. A document that carries a set ID updates the local pack with
+ * that set ID, whatever the chosen target says about a new pack: the same set is never two packs.
+ */
+export async function resolveTarget(doc: NDoc, target: ImportTarget): Promise<ImportTarget> {
+  if (target.packId) return target;
+  const setId = target.newPack?.setId ?? doc.pack?.setId;
+  const linked = setId ? await store.findPackBySetId(setId) : undefined;
+  if (linked) return { ...target, packId: linked.id };
+  if (target.newPack && setId) return { ...target, newPack: { ...target.newPack, setId } };
+  return target;
+}
+
+export async function planImport(doc: NDoc, target0: ImportTarget, source: ImportSource | null, overrides: Record<string, PaperOverrides>, opts: PlanOptions = {}) {
+  const target = await resolveTarget(doc, target0);
   const known = target.packId ?? (target.newPack?.id && (await store.getPack(target.newPack.id)) ? target.newPack.id : null);
   const packId = known ?? '__new__';
   const existing = known ? await store.getPapers(known) : [];
+  const keys = resolvePaperKeys(doc, opts.coverText, opts.keys);
+  const renamed = applyPaperKeys(doc, keys, existing);
+  const ov = Object.fromEntries(Object.entries(overrides).map(([k, v]) => [renamed.get(k) ?? k, v]));
   const qov = known ? new Map((await store.getOverrides(known)).map((o) => [o.key, o] as const)) : new Map();
   const imgs = source ? await prepareImages(doc, source.files) : { map: new Map<string, string>(), records: [] };
-  const merge = mergeDoc(doc, packId, new Map(existing.map((p) => [p.id, p] as const)), imgs.map, overrides, qov);
+  const merge = mergeDoc(doc, packId, new Map(existing.map((p) => [p.id, p] as const)), imgs.map, ov, qov, Date.now(), opts.prefer);
   if (source?.pdfs.size) await attachPdfs(doc, merge, source.pdfs);
-  return { merge, images: imgs.records, imageMap: imgs.map };
+  if (target.packId && !target0.packId) merge.linkedPackId = target.packId;
+  const setId = target.newPack?.setId;
+  if (setId) merge.setId = setId;
+  return { merge, images: imgs.records, imageMap: imgs.map, target, keys };
 }
 
 /** PDFs stored by content hash and linked to their papers; snips become snip records. */
@@ -101,6 +131,9 @@ async function attachPdfs(doc: NDoc, merge: MergeResult, pdfs: ReadonlyMap<strin
 /** Writes a planned import. Refuses when the plan has conflicts. Returns the pack id. */
 export async function commitImport(target: ImportTarget, merge: MergeResult, images: ImageRecord[], now = Date.now()): Promise<string> {
   if (merge.conflicts.length) throw new Error('Resolve the conflicts before importing');
+  // A document that carries a set ID lands in the pack with that set ID (planned in planImport).
+  if (merge.linkedPackId && !target.packId) target = { ...target, packId: merge.linkedPackId };
+  else if (merge.setId && !target.packId && target.newPack && !target.newPack.setId) target = { ...target, newPack: { ...target.newPack, setId: merge.setId } };
   const packId = await writeImport(target, merge, images, now);
   // Keys that arrived with this import grade any session that was waiting for them.
   if (target.packId || target.newPack?.id) await regradePack(packId, now);
@@ -113,9 +146,13 @@ function writeImport(target: ImportTarget, merge: MergeResult, images: ImageReco
     const tx = (await store.db()).transaction(['packs', 'papers', 'images', 'pdfs', 'snips', 'meta'], 'readwrite');
     const packs = tx.objectStore('packs');
     let pack: Pack | undefined = target.packId ? await packs.get(target.packId) : target.newPack?.id ? await packs.get(target.newPack.id) : undefined;
+    if (!pack && target.newPack?.setId) {
+      // The set may have arrived between planning and writing (another tab): never make a second copy.
+      for (let c = await packs.openCursor(); c; c = await c.continue()) if (setIdOf(c.value) === target.newPack.setId) { pack = c.value; break; }
+    }
     if (!pack && target.newPack?.id) {
       const t = target.newPack;
-      pack = { id: t.id!, title: t.title.trim() || 'Untitled pack', subject: t.subject.trim(), createdAt: now, updatedAt: now, papers: [], ...(t.origin ? { origin: t.origin } : {}) };
+      pack = { id: t.id!, title: t.title.trim() || 'Untitled pack', subject: t.subject.trim(), createdAt: now, updatedAt: now, papers: [], setId: t.setId ?? crypto.randomUUID(), ...(t.origin ? { origin: t.origin } : {}) };
     }
     if (!pack) {
       const title = target.newPack?.title.trim() || 'Untitled pack';
@@ -124,8 +161,10 @@ function writeImport(target: ImportTarget, merge: MergeResult, images: ImageReco
       // a counter guarantees uniqueness on this device.
       let id = `${base}-${uid().slice(0, 6)}`;
       for (let k = 2; await packs.get(id); k++) id = `${base}-${uid().slice(0, 6)}-${k}`;
-      pack = { id, title, subject: target.newPack?.subject.trim() ?? '', createdAt: now, updatedAt: now, papers: [] };
+      pack = { id, title, subject: target.newPack?.subject.trim() ?? '', createdAt: now, updatedAt: now, papers: [], setId: target.newPack?.setId ?? crypto.randomUUID() };
     }
+    if (!pack.setId && !pack.origin) pack.setId = crypto.randomUUID();
+    if (target.newPack?.libraryVersion && setIdOf(pack) === target.newPack.setId) pack.libraryVersion = Math.max(pack.libraryVersion ?? 0, target.newPack.libraryVersion);
     const packId = pack.id;
     const papers: Paper[] = [];
     for (const p0 of merge.papers) {
