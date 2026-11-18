@@ -25,7 +25,7 @@ export const keyFor = (i: number) => 'abcd'[(i + 1) % 4]!;
 
 export async function importViaPaste(page: Page, doc: unknown) {
   await page.goto('./');
-  const btn = page.getByRole('button', { name: /Import a pack file|Add pack/ }).first();
+  const btn = page.getByRole('button', { name: /Import a paper-set file|Upload papers/ }).first();
   await btn.click();
   await page.getByRole('dialog').locator('textarea').fill('Here is the JSON:\n```json\n' + JSON.stringify(doc) + '\n```');
   await expect(page.getByText('Valid', { exact: true })).toBeVisible();

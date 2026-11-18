@@ -47,8 +47,8 @@ export function AccountDialog({ mode, onClose, welcome = false }: { mode: Accoun
       <Button variant={school ? 'default' : 'primary'} size="lg" block disabled={busy} onClick={() => void google(false)}><GoogleMark /> Continue with another Google account</Button>
     </div>
     <p class="small muted">Any Google account can save and sync your progress. The School Library opens for verified @{SCHOOL_DOMAINS[0]} accounts; the server checks this, not the app. Guest practice stays separate until you choose to import it.</p>
-    {backend.signInDev && backend.kind === 'mock' && <form class="stack-s" onSubmit={dev}>
-      <Field label="Development sign-in" hint="Only in development builds. Any address works; school addresses unlock the Library.">
+    {backend.signInDev && (backend.kind === 'mock' || ['localhost', '127.0.0.1'].includes(location.hostname)) && <form class="stack-s" onSubmit={dev}>
+      <Field label="Development sign-in" hint="Only on this computer, for development and tests. School addresses unlock the Library.">
         <input class="input" type="email" autoComplete="email" required value={email} onInput={(e) => setEmail(e.currentTarget.value)} />
       </Field>
       <div><Button type="submit" disabled={busy || !email.trim()}>Sign in with this email</Button></div>

@@ -14,9 +14,9 @@
     "e2e": "playwright test",
     "check": "npm run typecheck && npm run worker:typecheck && npm run lint && npm test && npm run build",
     "worker:typecheck": "tsc --noEmit -p worker/tsconfig.json",
-    "worker:dev": "wrangler dev --env development",
-    "worker:deploy": "wrangler deploy",
-    "pages:deploy": "wrangler pages deploy --config wrangler.pages.toml"
+    "worker:local": "npm run build && wrangler d1 migrations apply dmc-local --local --env local && wrangler dev --env local --port 8787",
+    "deploy:staging": "npm run build && wrangler deploy --env staging",
+    "deploy:production": "npm run build && wrangler deploy"
   },
   "dependencies": {
     "fflate": "^0.8.3",

@@ -1,5 +1,7 @@
 # Revision-tool upgrade
 
+> Historical (v2 upgrade). Phase 2 moved DMC to one Cloudflare Worker with D1 and R2; see [setup.md](../setup.md) and [decision.md](../decision.md).
+
 This document describes implemented source changes. No public deployment, production SQL, authentication setting, DNS record or production data was changed.
 
 ## Implemented

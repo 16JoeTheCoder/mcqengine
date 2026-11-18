@@ -7,7 +7,7 @@ import { bothThemes } from './a11y';
 // Runs against the build that uses the in-browser mock backend (same rules as supabase/schema.sql).
 
 async function importPack(page: Page) {
-  await page.getByRole('button', { name: /Import a pack file|Add pack/ }).first().click();
+  await page.getByRole('button', { name: /Import a paper-set file|Upload papers/ }).first().click();
   await page.getByRole('dialog').locator('textarea').fill(JSON.stringify(syntheticDoc([{ id: 'p1', count: 4 }, { id: 'p2', count: 4 }])));
   await expect(page.getByText('Valid', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: /Review import/ }).click();
@@ -20,7 +20,7 @@ test('first run leads with school sign-in and never blocks', async ({ page }) =>
   await expect(page.getByRole('button', { name: 'Sign in with school email' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Create a personal account' })).toBeVisible();
   await page.getByRole('button', { name: 'Continue without an account' }).click();
-  await expect(page.getByRole('button', { name: /Import a pack file/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Import a paper-set file/ })).toBeVisible();
 });
 
 test('a personal account syncs nothing yet but sees the Library locked with one line on how to unlock it', async ({ page }) => {
@@ -68,7 +68,7 @@ test('post a set from a pack, star it, download it as another student, re-share 
   await page.getByRole('button', { name: 'Open' }).click();
   await expect(page.getByRole('heading', { name: 'Synthetic Physics', level: 1 })).toBeVisible();
   expect(page.url()).toMatch(/#\/pack\/lib-/);
-  await page.getByRole('link', { name: 'Data' }).click();
+  await page.getByRole('link', { name: 'Share' }).click();
   await expect(page.getByText('This pack came from the school Library')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Export pack', exact: true })).toHaveCount(0);
 });

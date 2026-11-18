@@ -78,7 +78,7 @@ test('random exhausts unseen questions, then a mistakes drill', async ({ page })
     }
     await page.getByRole('button', { name: 'Finish' }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Submit', exact: true }).click();
-    await page.getByRole('button', { name: /Back to pack/ }).click();
+    await page.getByRole('button', { name: /Back to paper set/ }).click();
   }
   expect(seen.size).toBe(8);
   await expect(page.getByRole('button', { name: /0% unseen/ })).toBeVisible();
@@ -110,8 +110,8 @@ test('export everything, wipe, import restores', async ({ page }) => {
   await page.getByRole('button', { name: /Erase all data/ }).click();
   await page.getByLabel('Type ERASE to confirm').fill('ERASE');
   await page.getByRole('button', { name: 'Erase everything' }).click();
-  await expect(page.getByRole('button', { name: 'Make a pack with AI' })).toBeVisible();
-  await page.getByRole('button', { name: 'Import a pack file' }).click();
+  await expect(page.getByRole('button', { name: 'Make a paper set with AI' })).toBeVisible();
+  await page.getByRole('button', { name: 'Import a paper-set file' }).click();
   await page.getByRole('dialog').locator('input[type=file]').first().setInputFiles({ name: 'dmc-everything.zip', mimeType: 'application/zip', buffer: readFileSync(file!) });
   await expect(page.getByText('Checksum verified')).toBeVisible();
   await page.getByRole('button', { name: 'Import backup' }).click();
@@ -122,7 +122,7 @@ test('export everything, wipe, import restores', async ({ page }) => {
 
 test('validation errors produce a fix prompt', async ({ page }) => {
   await page.goto('./');
-  await page.getByRole('button', { name: 'Import a pack file' }).click();
+  await page.getByRole('button', { name: 'Import a paper-set file' }).click();
   const doc = syntheticDoc([{ id: 'p1', count: 3 }]);
   (doc.papers[0]!.questions[1] as { options: string[] }).options = ['a', 'b', 'c'];
   await page.getByRole('dialog').locator('textarea').fill(JSON.stringify(doc));

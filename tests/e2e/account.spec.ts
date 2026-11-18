@@ -4,7 +4,7 @@ import { importGuestProgress, signInByCode, signOutAccount } from './auth-helper
 import { keyFor, startPaper, syntheticDoc } from './helpers';
 
 async function importNamedPack(page: Page, title: string) {
-  await page.getByRole('button', { name: /Import a pack file|Add pack/ }).first().click();
+  await page.getByRole('button', { name: /Import a paper-set file|Upload papers/ }).first().click();
   await page.getByRole('dialog').locator('textarea').fill(JSON.stringify(syntheticDoc([{ id: 'p1', count: 4 }], title)));
   await expect(page.getByText('Valid', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: /Review import/ }).click();

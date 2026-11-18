@@ -13,7 +13,7 @@ test('AI PDF import requires consent, preserves unkeyed answers, and reuses pack
   });
   await page.goto('./');
   await expect(page.getByRole('button',{name:'Account: ai@example.com'})).toBeVisible();
-  await page.getByRole('button',{name:/Import a pack file|Add pack/}).first().click();
+  await page.getByRole('button',{name:/Import a paper-set file|Upload papers/}).first().click();
   await page.getByRole('button',{name:'Import PDF with AI',exact:true}).click();
   const dialog=page.getByRole('dialog',{name:'Import PDF with AI'});
   const file=Buffer.from(makePdf([['Synthetic question paper','1 Which value is correct? A One B Two C Three D Four','This document contains only synthetic educational material.']]));
@@ -40,7 +40,7 @@ test('AI import configuration errors preserve the manual import path',async({pag
   await page.addInitScript(()=>localStorage.setItem('dmc-mock-account',JSON.stringify({id:'mock-ai-user',email:'ai@example.com',name:'AI test',emailVerified:true})));
   await page.route('**/api/ai/config',route=>route.fulfill({json:{configured:false}}));
   await page.goto('./');
-  await page.getByRole('button',{name:/Import a pack file|Add pack/}).first().click();
+  await page.getByRole('button',{name:/Import a paper-set file|Upload papers/}).first().click();
   await page.getByRole('button',{name:'Import PDF with AI',exact:true}).click();
   await expect(page.getByText(/needs a model and NVIDIA Worker secret/)).toBeVisible();
   await page.getByRole('button',{name:'Manual import',exact:true}).click();
@@ -58,7 +58,7 @@ test('retry resumes completed pages from the account workspace without duplicate
     return route.fulfill({json:{questions:[{n,page:n,stem:`Synthetic question ${n}`,options:['One','Two','Three','Four'],answer:null}],warnings:[]}});
   });
   await page.goto('./');
-  await page.getByRole('button',{name:/Import a pack file|Add pack/}).first().click();
+  await page.getByRole('button',{name:/Import a paper-set file|Upload papers/}).first().click();
   await page.getByRole('button',{name:'Import PDF with AI',exact:true}).click();
   const dialog=page.getByRole('dialog',{name:'Import PDF with AI'});
   const file={name:'recovery.pdf',mimeType:'application/pdf',buffer:Buffer.from(makePdf([['Synthetic page one'],['Synthetic page two']]))};

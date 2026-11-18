@@ -11,8 +11,9 @@ Practise multiple-choice exam papers the way the real exam feels: full timed pap
 * **PDF papers (lighter path).** Drop question paper PDFs and mark schemes: practise from the PDF, confirm the key in a grid, snip questions for drills.
 * **Board mode.** A large question pane beside a completely blank writing half for external whiteboard tools; fullscreen, themes, reveal, jump, elimination and revisit.
 * **Import PDF with AI.** Selected-page NVIDIA vision extraction, explicit consent, retry/recovery and editable review through the existing importer.
-* **Email accounts.** Verification codes, isolated account/guest workspaces and explicit guest-progress adoption.
-* **School Library and sync.** Supabase: [docs/SUPABASE_SETUP.md](docs/SUPABASE_SETUP.md), [docs/LIBRARY_POLICY.md](docs/LIBRARY_POLICY.md).
+* **Two ways to practise a paper.** Typed questions (DMC mode) or the real PDF beside an A–D answer sheet (PDF mode), with the same grading and stats.
+* **Google accounts.** Sign in with Google; isolated account and guest workspaces; sync on by default for school accounts.
+* **School Library.** Paper sets shared inside the school, versioned, stored once by file hash, with an admin panel. Runs on Cloudflare: [setup.md](setup.md), [docs/LIBRARY_POLICY.md](docs/LIBRARY_POLICY.md).
 
 ## Run it
 
@@ -21,9 +22,8 @@ Needs Node 22. In a terminal (Ubuntu/WSL, macOS Terminal or the VS Code terminal
 ```bash
 npm install
 npm run dev          # http://localhost:5173 (uses the built-in development backend for accounts)
+npm run worker:local # the real Worker with local D1 and R2 at http://localhost:8787
 ```
-
-For the real accounts and Library, copy `.env.example` to `.env.local` and fill in the two public Supabase values (see docs/SUPABASE_SETUP.md).
 
 ## Check and build
 
@@ -41,17 +41,13 @@ The first time on a new machine, `npm run e2e` may need the browser: `npx playwr
 
 ## Deploy
 
-`dist/` is plain static files with relative paths and hash routing, so it works on any static host under any base path.
-
-The frontend is configured for **Cloudflare Pages** (`npm run build`, output `dist/`). An authenticated **Cloudflare Worker** serves same-origin `/api/*` AI requests. Supabase remains the Auth, database, and private storage backend. See [Cloudflare, email, SMTP, subdomain and NVIDIA setup](docs/CLOUDFLARE_SETUP.md) before deploying.
-
-Only public Supabase configuration belongs in frontend variables. Set private NVIDIA credentials as Worker secrets; `.dev.vars` is local and gitignored. No deployment or production configuration changes are performed by the source upgrade.
+One Cloudflare Worker serves the built app and every `/api/*` route, with D1 for the database, R2 for files and a nightly backup. Production is `https://dmc.stjbscouncil.org`, staging `https://dmc-staging.stjbscouncil.org`. Every step (databases, buckets, migrations, secrets, Google sign-in, custom domains, deploy, the one-time copy from Supabase, rollback and restore) is in [setup.md](setup.md). No secret ever goes into the frontend.
 
 When a new version is deployed, open copies of DMC show "A new version of DMC is ready". The update is never applied in the middle of a session.
 
-## Make a pack
+## Make a paper set
 
-1. In DMC, choose **Make a pack with AI** (or **Add papers** on a pack). Fill in the paper details and copy the prompt.
+1. In DMC, choose **Make a paper set with AI** (or **Add papers** on a paper set). Fill in the paper details and copy the prompt.
 2. Open any AI chat, attach the question paper PDF (and the mark scheme if you have it), and paste the prompt.
 3. Copy the reply, then choose **Import** in DMC and paste it. DMC tidies common formatting slips, checks every question, and shows a preview to compare with the paper. If something is wrong, **Copy fix prompt** gives the AI the exact errors.
 
@@ -61,7 +57,7 @@ Daily 10 is retired. Existing session records remain readable and survive backup
 
 ## Your data
 
-Packs, PDFs and progress live in this browser's storage on this device; clearing site data erases them. Signed in, progress, historical question snapshots and pack outlines sync to your account; full paper files and PDF/image assets stay local; your own packs can also be backed up to the account if you choose. Use **Settings > Data > Export everything** regularly; backups are checked with a checksum and merge without deleting anything.
+Paper sets, PDFs and progress live in this browser's storage on this device; clearing site data erases them. Signed in with sync on, progress, historical question snapshots and paper-set outlines sync to your account; full paper files and PDF/image assets stay local (Library sets download again on a new device); your own paper sets can also be backed up to the account if you choose. Use **Settings > Data > Export everything** regularly; backups are checked with a checksum and merge without deleting anything.
 
 Implementation, compatibility, test coverage and limitations are described in [Upgrade delivery notes](docs/UPGRADE.md).
 
@@ -72,16 +68,19 @@ src/lib/engine/   timer, random draw, mistakes bank, grading, session lifecycle
 src/lib/stats/    rolling averages, verdict, rushed-error alert, KPIs, dashboard
 src/lib/format/   lenient reader, validator, merge, markup, SVG sanitiser, prompts
 src/lib/data/     IndexedDB (versioned, with migrations), import, keys, PDFs, backups
-src/lib/backend/  Supabase and mock backends behind one typed interface
+src/lib/backend/  Cloudflare client and in-browser mock behind one typed interface
 src/lib/library/  posting, downloading and covers for the school Library
 src/lib/sync/     local-first sync
 src/lib/pdf/      pdf.js wrapper (lazy)
-supabase/         schema.sql: tables, RLS, storage policies (run in the Supabase SQL editor)
+worker/           the Cloudflare Worker: auth, Library, files, sync, AI, admin, backups
+migrations/       D1 schema
+shared/           code shared by app and Worker (paper keys, set manifest, AI prompts)
 tools/            validate-pack.mjs (CLI validator)
+scripts/          demo packs, restore-backup.mjs, migrate-supabase.mjs
 src/screens/      library, pack dashboard, question screen, results, settings
 src/ui/           design-system components, charts, brand
 brand/            builtbyjosef logo files (picked up automatically)
-docs/             PACK_FORMAT, PACK_BUILDER_GUIDE, SUPABASE_SETUP, LIBRARY_POLICY, DECISIONS, PROGRESS, reviews
+docs/             PACK_FORMAT, PACK_BUILDER_GUIDE, LIBRARY_POLICY, DECISIONS, PROGRESS, reviews
 ```
 
 Built by Josef Yang. Built to a standard. Built to move.
