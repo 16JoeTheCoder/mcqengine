@@ -7,11 +7,12 @@ import { crossCheck, type CrossCheckIssue } from '../lib/format/crosscheck';
 import { commitImport, parseImport, planImport, type ParseOutcome } from '../lib/data/importer';
 import { readProgressJson } from '../lib/data/backup';
 import { buildFixPrompt } from '../lib/format/prompt';
-import { toQuestion, type MergeResult, type PaperOverrides } from '../lib/format/merge';
+import { toQuestion, type PaperOverrides } from '../lib/format/merge';
 import type { NDoc } from '../lib/format/validate';
+import { isPaperKey, paperKeyFromName, qpKeyOf } from '../../shared/paper-key';
 import { bump, href, navigate, toast } from '../lib/app-state';
 import { broadcastChange } from '../lib/tablock';
-import { LETTERS, type ImageRecord, type Pack } from '../lib/types';
+import { LETTERS, type Pack } from '../lib/types';
 import { Badge, Button, copyText, Field, Modal } from '../ui/kit';
 import { Icon } from '../ui/icons';
 import { FigureView, OptionBody, previewImages, Rich } from '../ui/content';
@@ -87,7 +88,7 @@ export function ImportWizard({ pack, initial, pdfs, onClose }: ImportProps) {
     }
   };
 
-  if (ai) return <AiImport onBack={() => setAi(false)} onReady={(src) => { setSource(src); setText(src.text ?? ''); setAi(false); }} />;
+  if (ai) return <AiImport onBack={() => setAi(false)} onClose={onClose} onReady={(src) => { setSource(src); setText(src.text ?? ''); setAi(false); }} />;
   if (restore) return <RestoreDialog source={restore} onClose={onClose} />;
   if (pdfFiles) return <PdfImport files={pdfFiles} {...(pack ? { pack } : {})} onClose={onClose} />;
 
@@ -99,7 +100,7 @@ export function ImportWizard({ pack, initial, pdfs, onClose }: ImportProps) {
   if (step === 'review' && outcome?.ok) return <Review pack={pack} doc={outcome.result.doc} warnings={outcome.result.warnings} source={source} onBack={() => setStep('input')} onClose={onClose} />;
 
   return (
-    <Modal title={pack ? `Import into ${pack.title}` : 'Import a pack'} size="wide" onClose={onClose}>
+    <Modal title={pack ? `Import into ${pack.title}` : 'Upload papers'} size="wide" onClose={onClose}>
       <div class="stack">
         <p class="small muted">Paste the AI's reply, or choose a .json file, a .zip (JSON plus images and PDFs) or a folder. Or choose question paper PDFs with their mark schemes to practise straight from the PDF. You can also drop files anywhere on the page.</p>
         <div class="row">
@@ -199,11 +200,17 @@ function Review({ pack, doc, warnings, source, onBack, onClose }: { pack?: Pack;
   const [targetId, setTargetId] = useState<string>(pack?.id ?? (same ? reviewDraft.targetId ?? '' : ''));
   const [newTitle, setNewTitle] = useState(same && reviewDraft.newTitle !== undefined ? reviewDraft.newTitle : doc.pack?.title ?? '');
   const [newSubject, setNewSubject] = useState(same && reviewDraft.newSubject !== undefined ? reviewDraft.newSubject : doc.pack?.subject ?? '');
+  const [keyEdits, setKeyEdits] = useState<Record<string, string>>({});
+  const confirmedKeys = useMemo(() => Object.fromEntries(Object.entries(keyEdits).map(([id, v]) => {
+    const t = v.trim().toLowerCase();
+    const k = isPaperKey(t) ? t : paperKeyFromName(t);
+    return [id, k ? qpKeyOf(k) : ''];
+  }).filter(([, v]) => v)), [keyEdits]);
   const [ov, setOv] = useState<Record<string, PaperOverrides & { groupText?: string }>>(() =>
     same && reviewDraft.ov ? reviewDraft.ov :
     Object.fromEntries(doc.papers.map((p) => [p.id, { title: p.title, groupText: p.group.join(' > '), questionCount: p.questionCount, ...(p.timeLimitMin ? { timeLimitMin: p.timeLimitMin } : {}) }])),
   );
-  const [plan, setPlan] = useState<{ merge: MergeResult; images: ImageRecord[]; imageMap: Map<string, string> } | null>(null);
+  const [plan, setPlan] = useState<Awaited<ReturnType<typeof planImport>> | null>(null);
   const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [checks, setChecks] = useState<{ title: string; issues: CrossCheckIssue[] }[] | null>(null);
@@ -253,7 +260,7 @@ function Review({ pack, doc, warnings, source, onBack, onClose }: { pack?: Pack;
   useEffect(() => {
     let live = true;
     const t = setTimeout(async () => {
-      const r = await planImport(doc, { packId: targetId || null }, source, overrides);
+      const r = await planImport(doc, { packId: targetId || null }, source, overrides, { keys: confirmedKeys });
       if (!live) return;
       for (const img of r.images) previewImages.set(img.id, img.blob);
       setPlan(r);
@@ -262,7 +269,7 @@ function Review({ pack, doc, warnings, source, onBack, onClose }: { pack?: Pack;
       live = false;
       clearTimeout(t);
     };
-  }, [doc, targetId, source, overrides]);
+  }, [doc, targetId, source, overrides, confirmedKeys]);
 
   useEffect(() => {
     Object.assign(reviewDraft, { text: draft.text, targetId, newTitle, newSubject, ov });
@@ -274,8 +281,10 @@ function Review({ pack, doc, warnings, source, onBack, onClose }: { pack?: Pack;
     ...(plan?.merge.papers ?? []).filter((p) => p.present !== p.questionCount).map((p) => `"${p.title}" will have ${p.present} of ${p.questionCount} questions; it can be started once the rest arrive.`),
   ];
   const missingTime = doc.papers.some((p) => !ov[p.id]?.timeLimitMin);
+  // A key guessed from an AI-written id must be confirmed; a key that cannot be found is optional.
+  const unconfirmedKeys = (plan?.keys ?? []).filter((k) => k.status === 'confirm');
   const conflicts = plan?.merge.conflicts ?? [];
-  const canCommit = !!plan && !conflicts.length && !missingTime && (!mismatches.length || confirmed) && (targetId || newTitle.trim()) && !busy;
+  const canCommit = !!plan && !conflicts.length && !missingTime && !unconfirmedKeys.length && (!mismatches.length || confirmed) && (targetId || newTitle.trim()) && !busy;
   const set = (id: string, patch: Partial<PaperOverrides & { groupText: string }>) => setOv({ ...ov, [id]: { ...ov[id], ...patch } });
   const applyTimeToAll = (m: number) => setOv(Object.fromEntries(Object.entries(ov).map(([k, v]) => [k, { ...v, timeLimitMin: m }])));
 
@@ -313,9 +322,9 @@ function Review({ pack, doc, warnings, source, onBack, onClose }: { pack?: Pack;
           <div class="jy-panel jy-panel--sunken stack-s">
             <div class="label">Destination</div>
             <div class="grid-even">
-              <Field label="Pack">
+              <Field label="Paper set">
                 <select class="select" value={targetId} onChange={(e) => setTargetId((e.target as HTMLSelectElement).value)}>
-                  <option value="">New pack</option>
+                  <option value="">New paper set</option>
                   {packs.map((p) => (
                     <option value={p.id} key={p.id}>{p.title}</option>
                   ))}
@@ -360,24 +369,37 @@ function Review({ pack, doc, warnings, source, onBack, onClose }: { pack?: Pack;
                 <thead>
                   <tr>
                     <th>Title</th>
-                    <th>Group (use &gt;)</th>
+                    <th>Paper key</th>
+                    <th>Folder (use &gt;)</th>
                     <th class="n">Questions</th>
                     <th class="n">Time cap (min)</th>
                     <th>Status</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {doc.papers.map((p) => {
+                  {doc.papers.map((p, i) => {
                     const o = ov[p.id] ?? {};
-                    const pl = plan?.merge.plan.find((x) => x.id === p.id);
+                    const pl = plan?.merge.plan.find((x) => x.id === (plan.renamed.get(p.id) ?? p.id));
+                    const k = plan?.keys[i];
                     return (
                       <tr key={p.id}>
                         <td data-label="Title" style={{ minWidth: '200px' }}>
                           <input class="input" aria-label={`Title for ${p.id}`} value={o.title} onInput={(e) => set(p.id, { title: (e.target as HTMLInputElement).value })} />
                           <div class="small subtle num" style={{ marginTop: '4px' }}>{p.id} · found {p.questions.length}</div>
                         </td>
-                        <td data-label="Group" style={{ minWidth: '160px' }}>
-                          <input class="input" aria-label={`Group for ${p.id}`} value={o.groupText} onInput={(e) => set(p.id, { groupText: (e.target as HTMLInputElement).value })} />
+                        <td data-label="Paper key" style={{ minWidth: '190px' }}>
+                          {k?.status === 'found' ? (
+                            <div class="stack-s"><code class="small">{k.key}</code><span class="small subtle">{k.from === 'confirmed' ? 'confirmed' : `from the ${k.from}`}</span></div>
+                          ) : (
+                            <div class="stack-s">
+                              <input class="input num" aria-label={`Paper key for ${p.id}`} placeholder={k?.suggestion ?? '9702_s24_qp_12'} value={keyEdits[p.id] ?? ''} aria-invalid={!!keyEdits[p.id] && !isPaperKey(qpKeyOf(keyEdits[p.id]!.trim().toLowerCase()))} onInput={(e) => setKeyEdits({ ...keyEdits, [p.id]: (e.target as HTMLInputElement).value })} />
+                              {k?.status === 'confirm' && k.suggestion && <button type="button" class="jy-btn jy-btn--ghost jy-btn--sm" onClick={() => setKeyEdits({ ...keyEdits, [p.id]: k.suggestion! })}>Use {k.suggestion}</button>}
+                              {k?.status === 'confirm' ? <Badge status="warn">Confirm</Badge> : <span class="small subtle">Optional</span>}
+                            </div>
+                          )}
+                        </td>
+                        <td data-label="Folder" style={{ minWidth: '160px' }}>
+                          <input class="input" aria-label={`Folder for ${p.id}`} value={o.groupText} onInput={(e) => set(p.id, { groupText: (e.target as HTMLInputElement).value })} />
                         </td>
                         <td data-label="Questions" class="n" style={{ width: '110px' }}>
                           <input class="input num" aria-label={`Question count for ${p.id}`} inputMode="numeric" value={o.questionCount ?? ''} onInput={(e) => set(p.id, { questionCount: numField((e.target as HTMLInputElement).value, 200) })} />
@@ -397,6 +419,7 @@ function Review({ pack, doc, warnings, source, onBack, onClose }: { pack?: Pack;
                 </tbody>
               </table>
             </div>
+            {unconfirmedKeys.length > 0 && <p class="small" role="status">Confirm the paper key for {unconfirmedKeys.map((k) => k.title).join(', ')}. Keys link the same paper across devices and the Library, so it is never duplicated.</p>}
             {missingTime ? <p class="small" style={{ color: 'var(--status-bad)' }}>Set the time cap for every paper. It is the hard maximum for any timer.</p> : <p class="small muted">Time caps are 1 to 600 minutes; larger values are capped at 600.</p>}
           </div>
         )}

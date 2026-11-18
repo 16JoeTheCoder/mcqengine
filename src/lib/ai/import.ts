@@ -5,6 +5,9 @@ import { validateAiBatch, type AiPage, type AiBatch, type AiConfig } from '../..
 import { BackendError, type Backend } from '../backend/types';
 export type { AiPage, AiQuestion, AiBatch, AiConfig } from '../../../shared/ai-protocol';
 
+/** Twice the largest display width of a figure (560 CSS px), so crops stay sharp on 2x screens. */
+export const FIGURE_PX = 1120;
+
 /** Explicit page selection prevents accidentally sending a whole paper. */
 export function selectedPages(value: string, total: number, limit: number): number[] {
   const out = new Set<number>();
@@ -89,8 +92,10 @@ export async function makePack(batches: AiBatch[], doc: PDFDocumentProxy, title:
   for (const q of all) {
     let figure: { file: string } | { needed: true; note: string } | undefined;
     if (q.crop) {
-      const path = `images/q${q.n}-page${q.page}.png`;
-      files.set(path, await cropPage(doc, q.page, q.crop, 700));
+      // Figures display at most 560 px wide: crop at twice that, as WebP at about 85% quality.
+      const blob = await cropPage(doc, q.page, q.crop, FIGURE_PX, 'image/webp', 0.85);
+      const path = `images/q${q.n}-page${q.page}.${blob.type === 'image/webp' ? 'webp' : 'png'}`;
+      files.set(path, blob);
       figure = { file: path };
     } else if (q.figureNeeded) figure = { needed: true, note: 'Source figure needs checking. Open the original PDF page.' };
     questions.push({ n:q.n, page:q.page, stem:q.stem, options:q.options, answer:keyed ? q.answer : null, ...(figure ? {figure} : {}), ...(q.table ? {table:q.table} : {}), ...(q.explanation ? {explanation:q.explanation} : {}), uncertain: [q.uncertain, 'AI extraction: compare with the original page before confirming.'].filter(Boolean).join(' ') });

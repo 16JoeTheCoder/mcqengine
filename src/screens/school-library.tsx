@@ -478,6 +478,12 @@ function PostDialog({ resume, onClose }: { resume: PostPlan | null; onClose: (po
                 <textarea class="textarea" style={{ fontFamily: 'var(--font-sans)', minHeight: '80px' }} maxLength={1000} value={desc} onInput={(e) => setDesc((e.target as HTMLTextAreaElement).value)} />
               </Field>
               <div class="chips" aria-label="Detected">{prep.facts.map((f) => <span class="jy-badge jy-badge--ink" key={f}>{f}</span>)}</div>
+              {!prep.packId && prep.report.papers.some((p) => p.bare && p.keyed < p.questionCount) && (
+                <div class="notice notice--warn" role="status">
+                  <Badge status="warn">No answer key</Badge>
+                  <div class="small">PDFs posted straight from files go up without an answer key, so students can only sit them in Exam mode. To include the key, cancel, add the papers on this device first (Upload papers, then PDF papers, where you check the key read from the mark scheme), and post that paper set.</div>
+                </div>
+              )}
               <div class="stack-s">
                 <h3 class="h3" style={{ fontSize: '16px' }}>Papers</h3>
                 <table class="key-table">

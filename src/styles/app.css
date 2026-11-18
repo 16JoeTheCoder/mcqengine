@@ -586,7 +586,13 @@ main.page { padding-bottom: var(--space-8); }
 .set-status { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }
 .advanced > summary { cursor: pointer; min-height: var(--hit-min); display: flex; align-items: center; font-weight: 500; }
 .advanced > summary::marker { color: var(--ink-muted); }
-@media (max-width: 560px) { .stepper { grid-template-columns: 1fr; } .key-table th:nth-child(3), .key-table td:nth-child(3) { display: none; } }
+@media (max-width: 560px) {
+  .stepper { grid-template-columns: 1fr; }
+  /* On phones the cover is a thumbnail beside its button, so the papers table stays in view. */
+  .post-grid .post-cover { max-width: 96px; }
+  .key-table th, .key-table td { padding-right: var(--space-1); }
+  .key-table td { overflow-wrap: anywhere; }
+}
 @media (prefers-reduced-motion: reduce) { .stepper li::before { transition: none; } }
 
 /* ---------- PDF mode: the printed paper beside an answer sheet ---------- */

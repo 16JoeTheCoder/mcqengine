@@ -81,7 +81,9 @@ export async function resolveTarget(doc: NDoc, target: ImportTarget): Promise<Im
   return target;
 }
 
-export async function planImport(doc: NDoc, target0: ImportTarget, source: ImportSource | null, overrides: Record<string, PaperOverrides>, opts: PlanOptions = {}) {
+export async function planImport(doc0: NDoc, target0: ImportTarget, source: ImportSource | null, overrides: Record<string, PaperOverrides>, opts: PlanOptions = {}) {
+  // Keys rename papers; work on a copy so a review screen can plan the same document again.
+  const doc = structuredClone(doc0);
   const target = await resolveTarget(doc, target0);
   const known = target.packId ?? (target.newPack?.id && (await store.getPack(target.newPack.id)) ? target.newPack.id : null);
   const packId = known ?? '__new__';
@@ -96,7 +98,7 @@ export async function planImport(doc: NDoc, target0: ImportTarget, source: Impor
   if (target.packId && !target0.packId) merge.linkedPackId = target.packId;
   const setId = target.newPack?.setId;
   if (setId) merge.setId = setId;
-  return { merge, images: imgs.records, imageMap: imgs.map, target, keys };
+  return { merge, images: imgs.records, imageMap: imgs.map, target, keys, renamed };
 }
 
 /** PDFs stored by content hash and linked to their papers; snips become snip records. */

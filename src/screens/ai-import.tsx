@@ -14,7 +14,8 @@ interface ChosenPdf { file: File; doc: PDFDocumentProxy; hash: string }
 interface Recovery { batches: Record<string, AiBatch> }
 
 /** AI drafts enter the same editable, validated review and conflict pipeline as manual packs. */
-export function AiImport({ onBack, onReady }: { onBack: () => void; onReady: (source: ImportSource) => void }) {
+/** Escape and the close button end the whole import; "Manual import" goes back one step. */
+export function AiImport({ onBack, onClose, onReady }: { onBack: () => void; onClose: () => void; onReady: (source: ImportSource) => void }) {
   const auth = useStore(authStore);
   const account = auth.account?.id;
   const [qp, setQp] = useState<ChosenPdf | null>(null);
@@ -123,7 +124,7 @@ export function AiImport({ onBack, onReady }: { onBack: () => void; onReady: (so
     onReady({name:qp.file.name,text:draft.text,files:draft.files,pdfs,skipped:[]});
   };
 
-  return <Modal title="Import PDF with AI" size="wide" onClose={() => { controller.current?.abort(); onBack(); }}>
+  return <Modal title="Import PDF with AI" size="wide" onClose={() => { controller.current?.abort(); onClose(); }}>
     <div class="stack">
       <p class="muted">Extract a draft from selected PDF pages, then check it against the original. Your PDFs stay on this device. Selected page text and images are sent to NVIDIA only when you start.</p>
       {!account && <div class="notice notice--warn" role="status">Sign in to use AI import. You can import PDFs manually without an account.</div>}

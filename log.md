@@ -44,3 +44,18 @@ Not measured yet: the pilot's files live in Supabase storage, which this session
 - Subagent tests found one product bug: workerd rejects `fetch(..., { redirect: 'error' })`, so every NVIDIA call failed. Fixed (`redirect: 'manual'`, 3xx is a failure).
 - Client: `src/lib/backend/cloudflare.ts`, mock rewritten to the same interface, Supabase removed (code, schema, PGlite RLS test, dependency). Library post/download rewritten for manifests and hashed files; sync on/off per device.
 - Next: admin panel, practice modes (PDF mode), pack empty state, copy changes, accessibility fixes, e2e against the local Worker, setup.md, migration script, docs.
+
+### Milestone 9–11: client, UX, docs, verification (done)
+
+- Admin panel (`#/admin`), PDF practice mode, sync switch, paper-set wording, Advanced section in the make-a-set dialog, first-visit paper-set screen, More menu on set cards, stepped post progress, paper-key table in the post dialog and the import review.
+- `setup.md` (deploy, Google OAuth by hand, migration, rollback, restore), `scripts/migrate-supabase.mjs` (tested end to end against the Worker), `scripts/restore-backup.mjs` (tested round trip), CLAUDE.md, README, LIBRARY_POLICY, docs/DECISIONS.md, docs/PROGRESS.md updated.
+- New e2e project against the real Worker (`wrangler dev --env local`, local D1/R2): post PDFs, download as another student, PDF mode, version 2, Update available, admin panel, backup, axe light/dark. Found and fixed: Cambridge-named PDFs posted from files lost their names (keys had to be confirmed by hand); the PDF page pane was not keyboard-scrollable (axe).
+- Design pass (`/impeccable`, screenshots at 390 and 1440 px, then 800 px for the breadcrumb): fixed the phone post dialog (cover pushed the papers table off screen), a CSS rule that hid the third column of every table on phones, and Escape in AI import leaving the import dialog open (the reported "dialog stays after Escape"). Teacher walkthrough: posting PDFs straight from files publishes no key; the dialog now says so and points to the confirmed-key path. Detector hits (Space Grotesk; the 4 px orange cap) are the pinned brand and stay.
+- Also found while wiring the import review: `planImport` renamed paper ids on the caller's document; it now plans a copy.
+- Results: `npm run check` passes (520 unit tests, including 182 Worker route tests and the sync scenarios against the Worker); Playwright 32/32 across the plain app, the mock backend and the real local Worker.
+
+### Still open
+
+- Live staging and production (needs the council account token and the Google OAuth clients; setup.md is ready).
+- Pilot file sizes (printed by the migration dry run; paste above).
+- Workers Rate Limiting bindings and the Cache API path run only on Cloudflare; locally they are no-ops.
