@@ -43,7 +43,7 @@ test('PDF papers: mark scheme read into a grid, practised from the PDF, snipped'
   await expect(dlg.getByText('Read, not confirmed')).toBeVisible();
   await dlg.getByRole('button', { name: 'Check key' }).click();
   const key = page.getByRole('dialog', { name: /Key for/ });
-  await expect(key.getByRole('radiogroup', { name: 'Question 1' }).getByRole('radio', { name: 'B' })).toHaveAttribute('aria-checked', 'true');
+  await expect(key.getByRole('radiogroup', { name: 'Question 1', exact: true }).getByRole('radio', { name: 'B' })).toHaveAttribute('aria-checked', 'true');
   await key.getByRole('button', { name: 'Confirm key' }).click();
   await expect(dlg.getByText('Key confirmed')).toBeVisible();
   await dlg.getByRole('button', { name: /Add 1 paper/ }).click();
@@ -56,7 +56,7 @@ test('PDF papers: mark scheme read into a grid, practised from the PDF, snipped'
   await expect(canvas).toBeVisible();
   await expect.poll(async () => (await canvas.boundingBox())?.height ?? 0).toBeGreaterThan(200);
   // A paper without typed questions opens in PDF mode: the printed paper beside an answer sheet.
-  await page.getByRole('radiogroup', { name: 'Question 1' }).getByRole('radio', { name: /^B/ }).click();
+  await page.getByRole('radiogroup', { name: 'Question 1', exact: true }).getByRole('radio', { name: /^B/ }).click();
   await expect(page.locator('.sheet-row').first().getByText('Right')).toBeVisible();
   await page.getByRole('button', { name: 'End session' }).click();
   await page.getByRole('dialog').getByRole('button', { name: /Save for later/ }).click();

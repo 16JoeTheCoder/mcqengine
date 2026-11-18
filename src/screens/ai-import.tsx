@@ -51,7 +51,6 @@ export function AiImport({ onBack, onReady }: { onBack: () => void; onReady: (so
     const abort = new AbortController();
     void (async () => {
       try {
-        if (backend.kind !== 'cloudflare') throw new Error('AI import needs the DMC server. Manual import remains available.');
         const response = await fetch('/api/ai/config', { credentials: 'same-origin', cache: 'no-store', signal: abort.signal });
         if (!response.ok) throw new Error('AI import is unavailable on this deployment. Use manual import, or check the Worker configuration.');
         const result = await response.json() as AiConfig;

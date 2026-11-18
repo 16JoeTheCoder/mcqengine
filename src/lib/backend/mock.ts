@@ -1,5 +1,6 @@
 import { openDB, type IDBPDatabase } from 'idb';
 import { validateManifest, type SetManifest } from '../../../shared/manifest';
+import { createCloudflareBackend } from './cloudflare';
 import { BackendError, SCHOOL_DOMAINS, type Account, type Backend, type LibrarySet, type LibraryStatus, type RegistryPaper, type SyncRecord } from './types';
 
 /**
@@ -284,9 +285,9 @@ export function createMockBackend(): Backend {
       return ((await (await db()).get('files', `backups/${a.id}`)) as Blob | undefined) ?? null;
     },
 
-    async aiRun() {
-      throw new BackendError('AI import is not configured. Manual import is available.', 503);
-    },
+    // The mock has no AI of its own: it calls the same route as production, so a dev server
+    // proxied to `wrangler dev` (or a test that intercepts /api/ai/run) behaves like the real app.
+    aiRun: (task, input, onEvent, signal) => createCloudflareBackend().aiRun(task, input, onEvent, signal),
     async admin<T>(path0: string): Promise<T> {
       const path = path0.split('?')[0]!;
       const a = me();

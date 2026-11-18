@@ -553,11 +553,11 @@ function DataSection({ data }: { data: PackData }) {
         <div class="jy-panel stack-s">
           <h3>Share with friends</h3>
           {pack.origin?.kind === 'library' ? (
-            <p class="small muted">This pack came from the school Library, so it is shared through the Library only. Friends at school can download it there.</p>
+            <p class="small muted">This paper set came from the school Library, so it is shared through the Library only. Friends at school can download it there.</p>
           ) : (
             <>
               <p class="small muted">A zip with papers, keys, typed questions, PDFs and snips, with your fixes applied. Never your sessions or progress.</p>
-              <div><Button onClick={exportPack}><Icon name="download" size={18} /> Export pack</Button></div>
+              <div><Button onClick={exportPack}><Icon name="download" size={18} /> Export paper set</Button></div>
             </>
           )}
         </div>

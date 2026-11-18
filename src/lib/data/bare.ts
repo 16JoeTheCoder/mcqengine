@@ -19,6 +19,8 @@ export interface BarePaperInput {
  * Builds a pack document plus an in-memory source for bare PDF papers, so they go through the
  * same validator, merge and commit as every other import (one hostile-input pipeline).
  */
+const nameOf = (b: Blob) => (typeof (b as File).name === 'string' ? (b as File).name.slice(0, 200) : '');
+
 export function bareImport(papers: BarePaperInput[], pack?: { title: string; subject: string }): { text: string; source: ImportSource } {
   const pdfs = new Map<string, Blob>();
   const doc = {
@@ -38,6 +40,8 @@ export function bareImport(papers: BarePaperInput[], pack?: { title: string; sub
         optionCount: p.optionCount,
         bare: true,
         pdf: { questionPaper: qp, ...(ms ? { markScheme: ms } : {}) },
+        // The original file names carry the Cambridge paper key (9702_s24_qp_12.pdf).
+        ...(nameOf(p.qp) ? { source: { questionPaper: nameOf(p.qp), ...(p.ms && nameOf(p.ms) ? { markScheme: nameOf(p.ms) } : {}) } } : {}),
         ...(p.boundaries?.length ? { gradeBoundaries: Object.fromEntries(p.boundaries.map((b) => [b.grade, b.min])) } : {}),
       };
     }),

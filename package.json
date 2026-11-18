@@ -14,7 +14,7 @@
     "e2e": "playwright test",
     "check": "npm run typecheck && npm run worker:typecheck && npm run lint && npm test && npm run build",
     "worker:typecheck": "tsc --noEmit -p worker/tsconfig.json",
-    "worker:local": "npm run build && wrangler d1 migrations apply dmc-local --local --env local && wrangler dev --env local --port 8787",
+    "worker:local": "vite build --outDir dist-worker && wrangler d1 migrations apply dmc-local --local --env local && wrangler dev --env local --port 8787",
     "deploy:staging": "npm run build && wrangler deploy --env staging",
     "deploy:production": "npm run build && wrangler deploy"
   },

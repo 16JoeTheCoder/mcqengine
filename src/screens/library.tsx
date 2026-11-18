@@ -70,13 +70,13 @@ export function Library({ onPrompt, onImport }: { onPrompt: () => void; onImport
             <h1 class="display">
               <span class="light">Welcome to</span> DMC.
             </h1>
-            <p class="lead">Timed, exam-realistic practice on past papers, with honest progress. Your school email unlocks the school Library of shared paper sets and syncs your progress.</p>
+            <p class="lead">Timed, exam-realistic practice on past papers, with honest progress. Your school Google account unlocks the school Library of shared paper sets and syncs your progress.</p>
             <div class="row">
-              <Button variant="accent" size="lg" onClick={() => setAccount('school')}>Sign in with school email</Button>
+              <Button variant="accent" size="lg" onClick={() => setAccount('school')}>Sign in with school account</Button>
             </div>
             <div class="row">
               <Button variant="ghost" onClick={() => void updateSettings({ dismissedTips: [...settings.dismissedTips, 'welcome'] })}>Continue without an account</Button>
-              <Button variant="ghost" onClick={() => setAccount('personal')}>Create a personal account</Button>
+              <Button variant="ghost" onClick={() => setAccount('personal')}>Use a personal Google account</Button>
             </div>
           </div>
           <div class="jy-panel stack-s">
