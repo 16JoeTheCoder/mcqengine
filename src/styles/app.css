@@ -561,3 +561,27 @@ main.page { padding-bottom: var(--space-8); }
   .jy-badge { color: #000 !important; }
   .nb-sign { position: fixed; bottom: 0; left: 0; right: 0; gap: 12pt; align-items: center; }
 }
+
+/* ---------- Phase 2: menu, stepped progress, paper matching table ---------- */
+.menu-wrap { position: relative; display: inline-block; }
+.menu { position: absolute; right: 0; top: calc(100% + var(--space-1)); z-index: 30; min-width: 180px; display: grid; padding: var(--space-1); background: var(--surface-raised); border: 1px solid var(--line-strong); border-radius: var(--radius-md); box-shadow: 0 8px 24px color-mix(in oklch, var(--ink) 18%, transparent); }
+.menu-item { min-height: var(--hit-min); padding: 0 var(--space-3); text-align: left; background: none; border: 0; border-radius: var(--radius-sm); color: var(--ink); font: inherit; font-size: 14px; cursor: pointer; }
+.menu-item:hover, .menu-item:focus-visible { background: var(--surface-sunken); }
+.menu-item--danger { color: var(--status-bad); }
+.stepper { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); }
+.stepper li { display: grid; gap: var(--space-2); font-size: 13px; line-height: 20px; color: var(--ink-subtle); }
+.stepper li::before { content: ""; height: 4px; border-radius: 2px; background: var(--line); transition: background var(--dur-base) var(--ease-out); }
+.stepper li[data-state="done"] { color: var(--ink-muted); }
+.stepper li[data-state="done"]::before { background: var(--ink); }
+.stepper li[data-state="now"] { color: var(--ink); font-weight: 500; }
+.stepper li[data-state="now"]::before { background: var(--accent); }
+.key-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.key-table th { text-align: left; font-size: 12px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-muted); padding: var(--space-2) var(--space-2) var(--space-2) 0; border-bottom: 1px solid var(--line); }
+.key-table td { padding: var(--space-2) var(--space-2) var(--space-2) 0; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.key-table .input { min-height: 36px; font-family: var(--font-mono); font-size: 13px; }
+.key-table code { font-family: var(--font-mono); font-size: 13px; }
+.set-status { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }
+.advanced > summary { cursor: pointer; min-height: var(--hit-min); display: flex; align-items: center; font-weight: 500; }
+.advanced > summary::marker { color: var(--ink-muted); }
+@media (max-width: 560px) { .stepper { grid-template-columns: 1fr; } .key-table th:nth-child(3), .key-table td:nth-child(3) { display: none; } }
+@media (prefers-reduced-motion: reduce) { .stepper li::before { transition: none; } }

@@ -34,6 +34,8 @@ export function sanitizeSvg(input: string): SvgResult {
   if (input.length > MAX_SVG_BYTES) return { svg: null, removed: ['too large'] };
   // Doctypes and entities enable expansion attacks; refuse them outright.
   if (/<!DOCTYPE|<!ENTITY/i.test(input)) return { svg: null, removed: ['doctype/entity'] };
+  // The Worker has no DOMParser; SVG is sanitised in the browser, where it is rendered.
+  if (typeof DOMParser === 'undefined') return { svg: null, removed: ['not available here'] };
   const doc = new DOMParser().parseFromString(input, 'image/svg+xml');
   const root = doc.documentElement;
   if (!root || root.nodeName.toLowerCase() !== 'svg' || doc.getElementsByTagName('parsererror').length)

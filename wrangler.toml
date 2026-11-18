@@ -1,19 +1,42 @@
-name = "mcqengine"
+# DMC Worker: the static app plus /api/*, on the student council Cloudflare account.
+# Production is the top level; staging and local are [env.*] sections. Wrangler does not inherit
+# vars or bindings into environments, so each repeats them. IDs marked REPLACE are filled in by
+# setup.md step 3 (the output of `wrangler d1 create`). Secrets are never written here.
+name = "dmc"
 main = "worker/index.ts"
 compatibility_date = "2026-10-01"
-workers_dev = true
-assets = { directory = "./dist", not_found_handling = "single-page-application", run_worker_first = ["/api/*"] }
+workers_dev = false
+routes = [{ pattern = "dmc.stjbscouncil.org", custom_domain = true }]
+assets = { directory = "./dist", binding = "ASSETS", not_found_handling = "single-page-application", run_worker_first = ["/api/*"] }
+
+[observability]
+enabled = true
+head_sampling_rate = 1
+
+[triggers]
+# 17:00 UTC = 00:00 Asia/Jakarta: nightly D1 backup to R2, then unreferenced-file collection.
+crons = ["0 17 * * *"]
 
 [vars]
-SUPABASE_URL = "https://dnlktutorkidejlljqjo.supabase.co"
-SUPABASE_ANON_KEY = "sb_publishable_HmSOeBdfNkAj0ny4xxjE-Q_X3pWyIDi"
+ENVIRONMENT = "production"
+APP_ORIGIN = "https://dmc.stjbscouncil.org"
 NVIDIA_MODEL = "nvidia/nemotron-3.5-bolt-e4b"
-AI_SHARED_RPM = "30"
+AI_SHARED_RPM = "38"
 AI_USER_DAILY_REQUESTS = "100"
-AI_CONCURRENCY = "2"
+AI_CONCURRENCY = "4"
 AI_MAX_PAGES = "4"
 AI_TIMEOUT_MS = "45000"
-AI_MAX_RETRIES = "1"
+AI_QUEUE_MAX = "60"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "dmc-prod"
+database_id = "REPLACE_WITH_PROD_D1_ID"
+migrations_dir = "migrations"
+
+[[r2_buckets]]
+binding = "FILES"
+bucket_name = "dmc-files"
 
 [[durable_objects.bindings]]
 name = "AI_BUDGET"
@@ -23,39 +46,89 @@ class_name = "AiBudget"
 tag = "v1-ai-budget"
 new_sqlite_classes = ["AiBudget"]
 
-# Every environment must repeat vars and bindings: Wrangler does not inherit them.
-[env.preview]
-name = "dmc-api-preview"
+[[ratelimits]]
+name = "UPLOAD_LIMITER"
+namespace_id = "2101"
+simple = { limit = 120, period = 60 }
+
+[[ratelimits]]
+name = "WRITE_LIMITER"
+namespace_id = "2102"
+simple = { limit = 20, period = 60 }
+
+[[ratelimits]]
+name = "ERROR_LIMITER"
+namespace_id = "2103"
+simple = { limit = 10, period = 60 }
+
+# ---------------- staging: its own Worker, D1, R2 and OAuth client ----------------
+[env.staging]
+name = "dmc-staging"
 workers_dev = true
-routes = []
-[env.preview.vars]
-SUPABASE_URL = "https://your-preview-project-ref.supabase.co"
-SUPABASE_ANON_KEY = "your-preview-public-anon-key"
+routes = [{ pattern = "dmc-staging.stjbscouncil.org", custom_domain = true }]
+[env.staging.observability]
+enabled = true
+head_sampling_rate = 1
+[env.staging.triggers]
+crons = ["0 17 * * *"]
+[env.staging.vars]
+ENVIRONMENT = "staging"
+APP_ORIGIN = "https://dmc-staging.stjbscouncil.org"
 NVIDIA_MODEL = "nvidia/nemotron-3.5-bolt-e4b"
 AI_SHARED_RPM = "10"
-AI_USER_DAILY_REQUESTS = "20"
-AI_CONCURRENCY = "1"
+AI_USER_DAILY_REQUESTS = "30"
+AI_CONCURRENCY = "2"
 AI_MAX_PAGES = "4"
 AI_TIMEOUT_MS = "45000"
-AI_MAX_RETRIES = "1"
-[[env.preview.durable_objects.bindings]]
+AI_QUEUE_MAX = "20"
+[[env.staging.d1_databases]]
+binding = "DB"
+database_name = "dmc-staging"
+database_id = "REPLACE_WITH_STAGING_D1_ID"
+migrations_dir = "migrations"
+[[env.staging.r2_buckets]]
+binding = "FILES"
+bucket_name = "dmc-files-staging"
+[[env.staging.durable_objects.bindings]]
 name = "AI_BUDGET"
 class_name = "AiBudget"
+[[env.staging.ratelimits]]
+name = "UPLOAD_LIMITER"
+namespace_id = "2201"
+simple = { limit = 120, period = 60 }
+[[env.staging.ratelimits]]
+name = "WRITE_LIMITER"
+namespace_id = "2202"
+simple = { limit = 20, period = 60 }
+[[env.staging.ratelimits]]
+name = "ERROR_LIMITER"
+namespace_id = "2203"
+simple = { limit = 10, period = 60 }
 
-[env.development]
-name = "dmc-api-development"
+# ---------------- local: `npm run worker:dev` and the end-to-end tests ----------------
+# Local D1 and R2 live in .wrangler/state. DEV_LOGIN enables POST /api/auth/dev, which the
+# Worker refuses unless ENVIRONMENT is "local" and the host is localhost.
+[env.local]
+name = "dmc-local"
 workers_dev = false
 routes = []
-[env.development.vars]
-APP_ORIGIN = "https://dmc.josefyang.com/"
-SUPABASE_URL = "https://your-development-project-ref.supabase.co"
-SUPABASE_ANON_KEY = "your-development-public-anon-key"
-AI_SHARED_RPM = "5"
-AI_USER_DAILY_REQUESTS = "10"
-AI_CONCURRENCY = "1"
+[env.local.vars]
+ENVIRONMENT = "local"
+DEV_LOGIN = "1"
+SESSION_SECRET = "local-development-only-secret-0123456789abcdef"
+AI_SHARED_RPM = "38"
+AI_USER_DAILY_REQUESTS = "100"
+AI_CONCURRENCY = "2"
 AI_MAX_PAGES = "4"
 AI_TIMEOUT_MS = "45000"
-AI_MAX_RETRIES = "0"
-[[env.development.durable_objects.bindings]]
+[[env.local.d1_databases]]
+binding = "DB"
+database_name = "dmc-local"
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "migrations"
+[[env.local.r2_buckets]]
+binding = "FILES"
+bucket_name = "dmc-files-local"
+[[env.local.durable_objects.bindings]]
 name = "AI_BUDGET"
 class_name = "AiBudget"

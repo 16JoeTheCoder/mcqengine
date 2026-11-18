@@ -1,6 +1,8 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as store from '../../src/lib/data/db';
-import { backend } from '../../src/lib/backend';
+import { backend as mockBackend } from '../../src/lib/backend';
+import { createCloudflareBackend } from '../../src/lib/backend/cloudflare';
+import { startWorker, type Harness } from './worker-harness';
 import type { Backend } from '../../src/lib/backend/types';
 import { collectLocal, getSyncMeta, syncNow, syncStore, syncLabel } from '../../src/lib/sync/sync';
 import { createSession, submitSession } from '../../src/lib/engine/session';
@@ -12,13 +14,19 @@ let n = 0;
 let me = '';
 const device = (name: 'A' | 'B') => store.useDbName(`sync-${n}-${name}`);
 
-beforeEach(async () => {
-  n++;
-  // A fresh mock server per test: wipe its database.
-  indexedDB.deleteDatabase('dmc-mock-server');
-  await backend!.signInEmail(`student${n}@gmail.com`);
-  me = (await backend!.account())!.id;
+/**
+ * The same sync scenarios run against the in-browser mock and against the real Worker (D1 in
+ * workerd via Miniflare), through the Cloudflare client the app uses in production.
+ */
+let backend: Backend | null = mockBackend;
+let harness: Harness | null = null;
+let cookie = '';
+const workerBackend = () => createCloudflareBackend({
+  base: 'http://localhost',
+  fetchImpl: (async (url: RequestInfo | URL, init?: RequestInit) => harness!.fetch(String(url).replace('http://localhost', ''), { ...(init as object), as: cookie } as never)) as typeof fetch,
 });
+const TARGET = process.env.DMC_SYNC_TARGET;
+const targets = TARGET ? [TARGET] : ['mock', 'worker'];
 
 async function practiceOnA(wrongFirst = true) {
   device('A');
@@ -30,7 +38,23 @@ async function practiceOnA(wrongFirst = true) {
   return { id, sessionId: summary.id };
 }
 
-describe('sync between two devices', () => {
+for (const target of targets) describe(`sync between two devices (${target})`, () => {
+  beforeAll(async () => { if (target === 'worker') { harness = await startWorker(); backend = workerBackend(); } else backend = mockBackend; }, 60_000);
+  afterAll(async () => { await harness?.dispose(); harness = null; });
+  beforeEach(async () => {
+    n++;
+    if (target === 'worker') {
+      const s = await harness!.signIn(`student${n}@gmail.com`);
+      cookie = s.cookie;
+      me = s.id;
+    } else {
+      // A fresh mock server per test: wipe its database.
+      indexedDB.deleteDatabase('dmc-mock-server');
+      await backend!.signInDev!(`student${n}@gmail.com`);
+      me = (await backend!.account())!.id;
+    }
+  });
+
   it('a personal account syncs: B receives the outline, the session and rebuilt stats, never the questions or PDFs', async () => {
     const { id, sessionId } = await practiceOnA();
     await syncNow(backend, me);

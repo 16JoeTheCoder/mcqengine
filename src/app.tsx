@@ -14,7 +14,7 @@ import { PackScreen } from './screens/pack';
 import { SessionScreen } from './screens/session';
 import { lazy } from './ui/lazy';
 import { authStore, backend, initAuth } from './lib/backend';
-import { syncLabel, syncNow, syncStore } from './lib/sync/sync';
+import { syncEnabled, syncLabel, syncNow, syncStore } from './lib/sync/sync';
 import { AccountButton, AccountDialog } from './screens/account';
 
 /** The sign-in welcome shows once per tab session. Automated browsers skip it unless a test opts in. */
@@ -129,8 +129,8 @@ export function App() {
   useEffect(() => {
     if (!backend) return;
     const run = () => {
-      const a = authStore.get().account;
-      if (a) void syncNow(backend, a.id);
+      const { account: a, syncDefault } = authStore.get();
+      if (a && syncEnabled(a.id, syncDefault)) void syncNow(backend, a.id);
     };
     let last: string | null = null;
     const off = authStore.sub((s) => {

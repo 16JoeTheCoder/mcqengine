@@ -80,13 +80,12 @@ function CloudBackup() {
   const [pct, setPct] = useState<number | null>(null);
   const [restore, setRestore] = useState<{ manifest: string; data: string; images: Map<string, Blob>; pdfs: Map<string, Blob> } | null>(null);
   if (!backend || !auth.account) return null;
-  const path = `${auth.account.id}/packs.zip`;
   const up = async () => {
     setPct(0);
     try {
       const { blob } = await createBackup('packs', Date.now(), { excludeLibrary: true });
       if (blob.size > 200 * 1024 * 1024) throw new Error('Your packs are over 200 MB; export them to a file instead.');
-      await backend!.upload('backups', { path, blob, contentType: 'application/zip' }, (n) => setPct(Math.round((n / blob.size) * 100)), new AbortController().signal, true);
+      await backend!.putBackup(blob, (n) => setPct(Math.round((n / blob.size) * 100)));
       toast('Your packs are backed up to your account.');
     } catch (e) {
       toast((e as Error).message || 'Backup failed.');
@@ -94,7 +93,7 @@ function CloudBackup() {
     setPct(null);
   };
   const down = async () => {
-    const blob = await backend!.download('backups', path).catch(() => null);
+    const blob = await backend!.getBackup().catch(() => null);
     if (!blob) return toast('No pack backup in your account yet.');
     const src = await readZip(blob, 'packs.zip');
     if (src.backup) setRestore(src.backup);

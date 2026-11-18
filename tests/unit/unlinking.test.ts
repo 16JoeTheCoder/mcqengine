@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import * as store from '../../src/lib/data/db';
 import { backend } from '../../src/lib/backend';
-import { postSet, prepareFromPack } from '../../src/lib/library/post';
+import { buildPlan, postSet, prepareFromPack } from '../../src/lib/library/post';
 import { downloadSet } from '../../src/lib/library/download';
 import { exportPackZip } from '../../src/lib/data/backup';
 import { readZip } from '../../src/lib/data/files';
@@ -24,11 +24,10 @@ async function importZip(blob: Blob) {
 
 describe('one set, one local pack', () => {
   it('posting my pack and downloading it back on the same device keeps one pack', async () => {
-    await backend!.signInEmail('ana@stjbs.sch.id');
+    await backend!.signInDev!('ana@stjbs.sch.id');
     const id = await importPack(doc(syntheticPaper('p1', 4)));
     const prep = await prepareFromPack((await store.getPack(id))!);
-    const me = (await backend!.account())!;
-    await postSet({ id: crypto.randomUUID(), ownerId: me.id, meta: prep.meta, ownerName: 'Ana', zip: prep.zip, cover: null, done: [] }, () => {}, new AbortController().signal);
+    await postSet(await buildPlan(prep, prep.meta, {}, null), () => {}, new AbortController().signal);
     const [set] = await backend!.listSets({ search: '', limit: 10, offset: 0 });
     await downloadSet(set!);
     expect((await store.getPacks()).length).toBe(1);

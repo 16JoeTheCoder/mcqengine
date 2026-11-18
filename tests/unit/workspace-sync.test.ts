@@ -18,7 +18,7 @@ beforeEach(async () => {
   n++;
   invalidateSync();
   server = createMockBackend();
-  await server.signInEmail(`workspace-${n}@example.com`);
+  await server.signInDev!(`workspace-${n}@example.com`);
   account = (await server.account())!.id;
   selectWorkspace(null);
   await store.wipeAll();

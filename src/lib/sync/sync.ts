@@ -236,6 +236,25 @@ export function syncNow(be: Backend | null, account: string | null): Promise<voi
   return running;
 }
 
+/**
+ * Whether this device syncs this account. A per-device choice, kept outside synced settings:
+ * on by default for school accounts, off for personal ones (the server says which), and anyone
+ * can change it in Settings.
+ */
+const syncKey = (account: string) => `dmc-sync:${account}`;
+export function syncEnabled(account: string, schoolDefault: boolean): boolean {
+  try {
+    const v = localStorage.getItem(syncKey(account));
+    return v === null ? schoolDefault : v === 'on';
+  } catch {
+    return schoolDefault;
+  }
+}
+export function setSyncEnabled(account: string, on: boolean) {
+  try { localStorage.setItem(syncKey(account), on ? 'on' : 'off'); } catch { /* private mode: default applies */ }
+  if (!on) syncStore.set({ state: 'off' });
+}
+
 /** "Synced 2 min ago", "Offline, will sync later", … */
 export function syncLabel(s: SyncState, now = Date.now()): string {
   if (s.state === 'off') return 'Saved locally · sync is off';

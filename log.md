@@ -35,3 +35,12 @@ Not measured yet: the pilot's files live in Supabase storage, which this session
 - Regression test `tests/unit/unlinking.test.ts` written first; on the old code all three failed: post-then-download left 2 packs; export-then-import made `re-import-5g4b2h` beside `synthetic-physics-1f4g1g`; one Cambridge paper under two AI ids became 2 papers. All pass now.
 - Added `shared/paper-key.ts`, `src/lib/format/identity.ts`, `pack.setId`, `paper.paperKey`, set-ID targeting in the importer, `prefer` in merge. 35 identity tests (`tests/unit/identity.test.ts`).
 - Next: Worker foundation (D1 migrations, router, Miniflare route tests).
+
+### Milestone 3–9 (core): Worker, auth, Library on D1 + R2, sync, AI, backups, client (done)
+
+- Worker modules in `worker/`: auth (Google OAuth + PKCE, JWKS, hashed rolling sessions), library (sets, versions, registry, stars, reports), blobs (verified streamed upload, ranged cached download, quotas, rate limits), sync (CAS port), ai (prompt registry, queue, repair), backup (nightly gz JSONL, retention, GC), admin.
+- D1 schema in `migrations/0001_init.sql`, seed in `0002_seed.sql`.
+- Tests run the real Worker in workerd via Miniflare (`tests/unit/worker-harness.ts`): 182 route tests across access rules (port of the RLS tests), blobs, auth, AI, backup/restore. The existing sync scenarios also run against the Worker.
+- Subagent tests found one product bug: workerd rejects `fetch(..., { redirect: 'error' })`, so every NVIDIA call failed. Fixed (`redirect: 'manual'`, 3xx is a failure).
+- Client: `src/lib/backend/cloudflare.ts`, mock rewritten to the same interface, Supabase removed (code, schema, PGlite RLS test, dependency). Library post/download rewritten for manifests and hashed files; sync on/off per device.
+- Next: admin panel, practice modes (PDF mode), pack empty state, copy changes, accessibility fixes, e2e against the local Worker, setup.md, migration script, docs.

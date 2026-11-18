@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'preact/hooks';
 import { authStore, backend } from '../lib/backend';
 import { href, navigate, toast, useStore } from '../lib/app-state';
-import { Button, Field, Modal, Seg } from '../ui/kit';
+import { Button, Field, Modal } from '../ui/kit';
+import { SCHOOL_DOMAINS } from '../lib/backend/types';
 import { adoptGuest, adoptLegacy, removeWorkspace } from '../lib/data/workspace';
 import { createBackup } from '../lib/data/backup';
 import { downloadBlob } from '../lib/data/files';
@@ -12,56 +13,74 @@ import { Icon } from '../ui/icons';
 
 export type AccountMode = 'school' | 'personal';
 
-/** Email codes are entered here; no provider account chooser is required. */
-export function AccountDialog({ mode: initial, onClose, welcome = false }: { mode: AccountMode; onClose: () => void; welcome?: boolean }) {
-  const [mode, setMode] = useState<AccountMode>(initial);
+/**
+ * Sign-in is Google only: the Worker runs the OAuth flow and sets an HttpOnly session cookie.
+ * The school button only pre-selects the school account in Google's chooser; the server decides
+ * Library access from the verified account. Development builds add an email sign-in.
+ */
+export function AccountDialog({ mode, onClose, welcome = false }: { mode: AccountMode; onClose: () => void; welcome?: boolean }) {
   const [email, setEmail] = useState('');
-  const [code, setCode] = useState('');
-  const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [cooldown, setCooldown] = useState(0);
-  useEffect(() => { if (!cooldown) return; const timer = setTimeout(() => setCooldown((v) => v - 1), 1000); return () => clearTimeout(timer); }, [cooldown]);
-  if (!backend) return <Modal title="Accounts" onClose={onClose}><p>Accounts are not configured. You can still practise as a guest.</p></Modal>;
-  const send = async (e?: Event) => {
-    e?.preventDefault(); setBusy(true); setError('');
-    try {
-      await backend!.signInEmail(email.trim().toLowerCase(), true);
-      setSent(true); setCooldown(60);
-
-    } catch (err) { setError((err as Error).message); }
-    finally { setBusy(false); }
+  if (!backend) return <Modal title="Accounts" onClose={onClose}><p>Accounts are not set up on this copy of DMC. You can still practise as a guest.</p></Modal>;
+  const google = async (school: boolean) => {
+    setBusy(true); setError('');
+    try { await backend!.signInGoogle(school); }
+    catch (err) { setError((err as Error).message); setBusy(false); }
   };
-  const verify = async (e: Event) => {
+  const dev = async (e: Event) => {
     e.preventDefault(); setBusy(true); setError('');
-    try { await backend!.verifyEmailCode(email, code); toast('Email verified. Opening your personal workspace…'); onClose(); }
-    catch { setError('The code is invalid or expired. Check the latest email, or request a new code.'); }
+    try { await backend!.signInDev!(email.trim().toLowerCase()); onClose(); }
+    catch (err) { setError((err as Error).message); }
     finally { setBusy(false); }
   };
-  return <Modal title={welcome ? 'Sign in to save your progress' : 'Sign in by email'} onClose={onClose} {...(welcome ? { size: 'wide' as const } : {})}><div class="stack">
+  const school = mode === 'school';
+  return <Modal title={welcome ? 'Sign in to save your progress' : 'Sign in'} onClose={onClose}><div class="stack">
     {welcome && <ul class="stack-s">
       <li>Keep your results, mistakes and stats safe if this browser is cleared.</li>
       <li>Pick up where you left off on another device.</li>
-      <li>Use AI import, and open the School Library with a school email.</li>
+      <li>Use AI import, and open the School Library with your school account.</li>
     </ul>}
-    <Seg label="Account type" value={mode} onChange={setMode} options={[{value:'school',label:'School email'},{value:'personal',label:'Personal'}]} />
-    <p class="small muted">Any verified email can sync personal progress. School Library access is checked by the server. Guest data stays separate until you choose to import it.</p>
     {error && <p class="notice notice--bad" role="alert">{error}</p>}
-    {!sent ? <form class="stack" onSubmit={send}>
-      <Field label="Email"><input class="input" type="email" autoComplete="email" required value={email} onInput={(e) => setEmail(e.currentTarget.value)} /></Field>
-      <Button type="submit" variant="primary" disabled={busy || !email.trim()}>{busy ? 'Sending…' : 'Send verification code'}</Button>
-    </form> : <>
-      <p role="status">Code sent to {email}. Enter the latest code before it expires.{backend.kind === 'mock' ? ' Development code: 123456.' : ''}</p>
-      <form class="stack" onSubmit={verify}>
-        <Field label="Verification code"><input class="input" autoComplete="one-time-code" inputMode="numeric" pattern="[0-9]{6,10}" minLength={6} maxLength={10} required value={code} onInput={(e) => setCode(e.currentTarget.value)} autoFocus /></Field>
-        <Button type="submit" variant="primary" disabled={busy || code.length < 6}>{busy ? 'Verifying…' : 'Verify and sign in'}</Button>
-      </form>
-      <div class="row"><Button disabled={busy || cooldown > 0} onClick={() => void send()}>{cooldown ? `Resend in ${cooldown} s` : 'Resend code'}</Button><Button variant="ghost" disabled={busy} onClick={() => {setSent(false);setCode('');setError('');}}>Change email</Button></div>
-    </>}
+    <div class="stack-s">
+      <Button variant={school ? 'primary' : 'default'} size="lg" block disabled={busy} onClick={() => void google(true)}><GoogleMark /> Continue with school Google account</Button>
+      <Button variant={school ? 'default' : 'primary'} size="lg" block disabled={busy} onClick={() => void google(false)}><GoogleMark /> Continue with another Google account</Button>
+    </div>
+    <p class="small muted">Any Google account can save and sync your progress. The School Library opens for verified @{SCHOOL_DOMAINS[0]} accounts; the server checks this, not the app. Guest practice stays separate until you choose to import it.</p>
+    {backend.signInDev && backend.kind === 'mock' && <form class="stack-s" onSubmit={dev}>
+      <Field label="Development sign-in" hint="Only in development builds. Any address works; school addresses unlock the Library.">
+        <input class="input" type="email" autoComplete="email" required value={email} onInput={(e) => setEmail(e.currentTarget.value)} />
+      </Field>
+      <div><Button type="submit" disabled={busy || !email.trim()}>Sign in with this email</Button></div>
+    </form>}
     {welcome
       ? <div><Button variant="ghost" onClick={onClose}>Continue as guest</Button></div>
-      : <p class="small subtle">You can close this dialog and keep practising without an account.</p>}
+      : <p class="small subtle">You can close this and keep practising without an account.</p>}
   </div></Modal>;
+}
+
+/** Google's "G", drawn in the current text colour (the design standard has no multicolour icons). */
+function GoogleMark() {
+  return <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20.5 12.2c0-.6-.1-1.2-.2-1.7H12v3.4h4.8a4.4 4.4 0 0 1-1.9 2.8" /><path d="M18 18.6A8.5 8.5 0 1 1 17.6 5.6" /><path d="M12 12h8.5" /></svg>;
+}
+
+/** The display name, from the email at first sign-in ("Josef Yang"); the person can change it. */
+function NameEditor({ name }: { name: string }) {
+  const [value, setValue] = useState(name);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => setValue(name), [name]);
+  const save = async (e: Event) => {
+    e.preventDefault(); setBusy(true);
+    try { await backend!.updateName(value); toast('Name saved.'); }
+    catch (err) { toast((err as Error).message); }
+    finally { setBusy(false); }
+  };
+  return <form class="row" style={{ alignItems: 'flex-end' }} onSubmit={save}>
+    <Field label="Your name" hint="Shown on paper sets you post.">
+      <input class="input" maxLength={80} required value={value} onInput={(e) => setValue(e.currentTarget.value)} />
+    </Field>
+    <Button type="submit" disabled={busy || !value.trim() || value.trim() === name}>Save name</Button>
+  </form>;
 }
 
 /** Top-bar account control: Sign in when signed out; a menu with status and sign out when signed in. */
@@ -72,7 +91,7 @@ export function AccountButton({ onSync, syncLabel }: { onSync?: () => void; sync
   const [working, setWorking] = useState(false);
   const [conflicts, setConflicts] = useState(0);
   useEffect(() => { if (menu) void db().then((d) => d.get('meta', 'syncConflicts')).then((rows) => setConflicts(Array.isArray(rows) ? rows.length : 0)); }, [menu]);
-  if (!backend) return <span class="small subtle" title="This build has no Supabase settings, so accounts and sync are off.">Sign-in unavailable</span>;
+  if (!backend) return <span class="small subtle" title="This build has no account server, so accounts and sync are off.">Sign-in unavailable</span>;
   if (!auth.account)
     return (
       <>
@@ -92,9 +111,10 @@ export function AccountButton({ onSync, syncLabel }: { onSync?: () => void; sync
         <Modal title="Account" onClose={() => setMenu(false)}>
           <div class="stack">
             <div>
-              <b>{a.email}</b>
+              <b>{a.name}</b> <span class="small muted">{a.email}</span>
               <div class="small muted">{auth.status.member ? (auth.status.admin ? 'School Library: member, admin' : 'School Library: member') : 'School Library: locked (needs a school email)'}</div>
             </div>
+            <NameEditor name={a.name} />
             {syncLabel && (
               <div class="row">
                 <span class="small muted" style={{ flex: 1 }}>{syncLabel}</span>
@@ -116,7 +136,7 @@ export function AccountButton({ onSync, syncLabel }: { onSync?: () => void; sync
             }}>Recover previous-version data</Button>
             <Button disabled={working} onClick={async () => { if (!confirm('Copy guest packs and progress into this account? This explicitly allows their progress to sync. Existing account records are kept.')) return; setWorking(true); try { const count = await adoptGuest(); bump(); toast(`Imported ${count} guest records. Originals remain in the guest workspace.`); } catch (e) { toast((e as Error).message); } finally { setWorking(false); } }}>Import guest progress</Button>
             <Button disabled={working} onClick={async () => {
-              if (!confirm('For a shared device: first download a complete backup and sync pending progress, then remove this account’s local cache and sign out. Keep the downloaded backup safe; PDFs do not sync. Continue?')) return;
+              if (!confirm('For a shared device: first download a complete backup and sync pending progress, then remove this account’s local cache and sign out. Keep the downloaded backup safe; files on this device do not sync. Continue?')) return;
               setWorking(true);
               try {
                 if ((await getOpenSessions()).length) throw new Error('Finish or discard open sessions before removing the cache.');

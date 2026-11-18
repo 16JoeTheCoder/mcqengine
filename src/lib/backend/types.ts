@@ -1,7 +1,10 @@
+import type { PublishedManifest, SetManifest } from '../../../shared/manifest';
+import type { AiTask, TaskInput, TaskOutput } from '../../../shared/prompts';
+
 /**
- * The backend the app talks to: Supabase in production, an in-browser mock in development and
- * tests. Access rules live on the server (supabase/schema.sql); the client only reads the
- * server's verdict (`status`) to decide what to show.
+ * The backend the app talks to: the DMC Worker on Cloudflare in production, an in-browser mock
+ * in development and tests. Access rules live on the server (worker/*.ts); the client only reads
+ * the server's verdict (`status`) to decide what to show.
  */
 export interface Account {
   id: string;
@@ -15,7 +18,18 @@ export interface LibraryStatus {
   admin: boolean;
 }
 
-export interface SetMeta {
+export interface Me {
+  account: Account | null;
+  status: LibraryStatus;
+  /** On by default for school accounts, off for personal ones. Settings can override it. */
+  syncDefault: boolean;
+  quota?: { used: number; limit: number };
+}
+
+export interface LibrarySet {
+  id: string;
+  owner: string;
+  ownerName: string;
   title: string;
   description: string;
   subject: string;
@@ -23,20 +37,16 @@ export interface SetMeta {
   paperCount: number;
   questionCount: number;
   keyed: boolean;
-}
-
-export interface LibrarySet extends SetMeta {
-  id: string;
-  owner: string;
-  ownerName: string;
+  /** Latest version number. */
+  version: number;
+  bytes: number;
+  coverHash: string | null;
+  status: 'approved' | 'hidden';
   stars: number;
   starred: boolean;
-  status: 'approved' | 'hidden';
   reports: number;
   createdAt: string;
-  filePath: string;
-  fileSize: number;
-  coverPath: string | null;
+  updatedAt: string;
   mine: boolean;
 }
 
@@ -50,46 +60,56 @@ export interface SyncRecord {
   data: unknown;
 }
 
-export interface Upload {
-  /** Path inside the bucket. */
-  path: string;
-  blob: Blob;
-  contentType: string;
-}
+export interface RegistryPaper { key: string; msKey: string; qp: string | null; ms: string | null; questionCount: number | null }
+
+/** One line of the AI stream. */
+export type AiEvent = { type: 'queued'; position: number } | { type: 'repairing' };
 
 export interface Backend {
-  kind: 'supabase' | 'mock';
+  kind: 'cloudflare' | 'mock';
+  me(): Promise<Me>;
   /** Current account, or null when signed out. */
   account(): Promise<Account | null>;
   onAuthChange(fn: (a: Account | null) => void): () => void;
-  /** Google sign-in. `school` adds the school domain as a hint to Google's account chooser only. */
-  signInGoogle(school: boolean): Promise<void>;
-  /** Request an email code. codeOnly keeps legacy mock fixture sign-in compatible. */
-  signInEmail(email: string, codeOnly?: boolean): Promise<void>;
-  verifyEmailCode(email: string, code: string): Promise<void>;
-  accessToken(): Promise<string | null>;
+  /** Google sign-in: leaves the page for Google and comes back to `returnTo`. `school` only pre-selects the school account. */
+  signInGoogle(school: boolean, returnTo?: string): Promise<void>;
+  /** Development and tests only: sign in as an email without Google. */
+  signInDev?(email: string): Promise<void>;
   signOut(): Promise<void>;
   status(): Promise<LibraryStatus>;
+  updateName(name: string): Promise<string>;
 
   listSets(o: { search: string; limit: number; offset: number }): Promise<LibrarySet[]>;
-  /** Creates the set row (the server checks membership, folder and quota). */
-  createSet(id: string, meta: SetMeta & { ownerName: string; fileSize: number; hasCover: boolean; coverExt: string }): Promise<{ filePath: string; coverPath: string | null }>;
-  upload(bucket: 'sets' | 'backups', u: Upload, onProgress: (sent: number) => void, signal: AbortSignal, upsert?: boolean): Promise<void>;
-  /** Removes a set's files, then its row (owner or admin). */
-  deleteSet(s: LibrarySet): Promise<void>;
+  getSet(id: string, version?: number): Promise<{ set: LibrarySet; manifest: PublishedManifest }>;
+  lookupPapers(keys: string[]): Promise<RegistryPaper[]>;
+  /** Hashes the server does not have yet. */
+  checkBlobs(hashes: string[]): Promise<string[]>;
+  uploadBlob(hash: string, blob: Blob, type: string, onProgress: (sent: number) => void, signal: AbortSignal): Promise<void>;
+  getBlob(hash: string, signal?: AbortSignal): Promise<Blob | null>;
+  /** A URL an <img> can show (same-origin for the Worker; an object URL for the mock). */
+  blobUrl(hash: string): Promise<string | null>;
+  publishVersion(setId: string, base: number, manifest: SetManifest): Promise<{ version: number }>;
   updateSet(id: string, patch: { title?: string; description?: string; status?: 'approved' | 'hidden' }): Promise<void>;
-  /** A short-lived URL for a file the caller may read. */
-  signedUrl(bucket: 'sets' | 'backups', path: string): Promise<string | null>;
-  download(bucket: 'sets' | 'backups', path: string): Promise<Blob | null>;
+  deleteSet(id: string): Promise<void>;
   star(setId: string, on: boolean): Promise<void>;
   report(setId: string, reason: string): Promise<void>;
 
   syncPush(records: SyncRecord[], expectedAccount?: string): Promise<number>;
   /** Records changed on the server after `cursor` (opaque), oldest first. */
   syncPull(cursor: string | null, limit: number, expectedAccount?: string): Promise<{ records: SyncRecord[]; cursor: string | null }>;
+
+  /** One private zip of the account's own packs. */
+  putBackup(blob: Blob, onProgress: (sent: number) => void): Promise<void>;
+  getBackup(): Promise<Blob | null>;
+
+  aiRun<T extends AiTask>(task: T, input: TaskInput[T], onEvent: (e: AiEvent) => void, signal: AbortSignal): Promise<TaskOutput[T]>;
+  /** Admin panel: GET a JSON route under /api/admin/. */
+  admin<T = unknown>(path: string, init?: { method?: 'GET' | 'POST' | 'DELETE'; body?: unknown }): Promise<T>;
 }
 
-export class BackendError extends Error {}
+export class BackendError extends Error {
+  constructor(message: string, public status = 0, public retryAfter?: number) { super(message); }
+}
 
 /** The school email domains. The server's library_domains table is the authority; this is for hints. */
 export const SCHOOL_DOMAINS = ['stjbs.sch.id'];

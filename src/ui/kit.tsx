@@ -253,3 +253,47 @@ export async function copyText(text: string): Promise<boolean> {
     return ok;
   }
 }
+
+export interface MenuItem { label: string; onSelect: () => void; danger?: boolean; hidden?: boolean }
+/**
+ * A small action menu (button + list). Arrow keys move between items, Escape and outside clicks
+ * close it, focus returns to the button. Used where secondary actions would clutter a card.
+ */
+export function Menu({ label, items, buttonLabel = 'More' }: { label: string; items: MenuItem[]; buttonLabel?: string }) {
+  const [open, setOpen] = useState(false);
+  const btn = useRef<HTMLButtonElement>(null);
+  const list = useRef<HTMLDivElement>(null);
+  const id = useId();
+  const shown = items.filter((i) => !i.hidden);
+  useEffect(() => {
+    if (!open) return;
+    list.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus();
+    const away = (e: PointerEvent) => { if (!list.current?.contains(e.target as Node) && e.target !== btn.current) setOpen(false); };
+    document.addEventListener('pointerdown', away);
+    return () => document.removeEventListener('pointerdown', away);
+  }, [open]);
+  if (!shown.length) return null;
+  const close = () => { setOpen(false); btn.current?.focus(); };
+  const onKey = (e: KeyboardEvent) => {
+    const els = [...(list.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]') ?? [])];
+    const i = els.indexOf(document.activeElement as HTMLButtonElement);
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); }
+    else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); els[(i + (e.key === 'ArrowDown' ? 1 : els.length - 1)) % els.length]?.focus(); }
+    else if (e.key === 'Home' || e.key === 'End') { e.preventDefault(); els[e.key === 'Home' ? 0 : els.length - 1]?.focus(); }
+    else if (e.key === 'Tab') setOpen(false);
+  };
+  return (
+    <div class="menu-wrap">
+      <button ref={btn} type="button" class="jy-btn jy-btn--ghost jy-btn--sm" aria-haspopup="menu" aria-expanded={open} aria-controls={open ? id : undefined} aria-label={label} onClick={() => setOpen(!open)}>
+        {buttonLabel} <Icon name="down" size={16} />
+      </button>
+      {open && (
+        <div ref={list} id={id} class="menu" role="menu" aria-label={label} onKeyDown={onKey}>
+          {shown.map((it) => (
+            <button key={it.label} type="button" role="menuitem" class={`menu-item${it.danger ? ' menu-item--danger' : ''}`} onClick={() => { setOpen(false); it.onSelect(); }}>{it.label}</button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}

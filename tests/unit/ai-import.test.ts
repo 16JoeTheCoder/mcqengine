@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { checkBatch, extractBatch, selectedPages, makePack, abortableDelay } from '../../src/lib/ai/import';
+import { createCloudflareBackend } from '../../src/lib/backend/cloudflare';
 import { parseImport } from '../../src/lib/data/importer';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 
@@ -32,30 +33,43 @@ describe('AI import trust boundary',()=>{
   });
 });
 
+const ndjson = (...lines: unknown[]) => new Response(lines.map((l) => JSON.stringify(l)).join('\n') + '\n', { headers: { 'content-type': 'application/x-ndjson' } });
+const be = (request: ReturnType<typeof vi.fn>) => createCloudflareBackend({ fetchImpl: request as unknown as typeof fetch });
+
 describe('AI batch requests',()=>{
-  it('uses authenticated same-origin calls and retries provider throttling',async()=>{
-    const request = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({error:'Busy'}),{status:429,headers:{'Retry-After':'0'}})).mockResolvedValueOnce(new Response(JSON.stringify(batch)));
-    const result = await extractBatch([{page:2,role:'question',text:'source'}],false,'session-token',new AbortController().signal,request);
+  it('sends only a task name and inputs, shows queue position, and retries throttling',async()=>{
+    const request = vi.fn().mockResolvedValueOnce(ndjson({type:'error',status:429,error:'Busy',retryAfter:0.001})).mockResolvedValueOnce(ndjson({type:'queued',position:2},{type:'result',data:batch}));
+    const queue: (number|null)[] = [];
+    const result = await extractBatch(be(request),[{page:2,role:'question',text:'source'}],false,new AbortController().signal,(p)=>queue.push(p));
     expect(result.questions[0]!.answer).toBeNull();
     expect(request).toHaveBeenCalledTimes(2);
-    expect(request.mock.calls[0]![0]).toBe('/api/ai/extract');
-    expect(request.mock.calls[0]![1].headers.Authorization).toBe('Bearer session-token');
-    expect(JSON.stringify(request.mock.calls)).not.toContain('NVIDIA_API_KEY');
+    expect(request.mock.calls[0]![0]).toBe('/api/ai/run');
+    const body = JSON.parse(request.mock.calls[0]![1].body as string) as Record<string, unknown>;
+    expect(Object.keys(body).sort()).toEqual(['input','task']);
+    expect(body.task).toBe('extract');
+    expect(queue).toEqual([2]);
+    expect(JSON.stringify(request.mock.calls)).not.toMatch(/NVIDIA_API_KEY|system/);
   });
-  it('does not retry invalid schema or authorization failures',async()=>{
-    const request = vi.fn().mockResolvedValue(new Response(JSON.stringify({error:'Sign in'}),{status:401}));
-    await expect(extractBatch([],false,'token',new AbortController().signal,request)).rejects.toThrow('Sign in');
+  it('does not retry validation or authorization failures',async()=>{
+    const request = vi.fn().mockResolvedValue(new Response(JSON.stringify({error:'Sign in first'}),{status:401}));
+    await expect(extractBatch(be(request),[],false,new AbortController().signal)).rejects.toThrow('Sign in');
     expect(request).toHaveBeenCalledTimes(1);
+    const bad = vi.fn().mockResolvedValue(ndjson({type:'error',status:422,error:'still had problems'}));
+    await expect(extractBatch(be(bad),[],false,new AbortController().signal)).rejects.toThrow('still had problems');
+    expect(bad).toHaveBeenCalledTimes(1);
   });
-  it('honors long Retry-After by returning control without immediate retries',async()=>{
-    const request = vi.fn().mockResolvedValue(new Response(JSON.stringify({error:'Try later'}),{status:429,headers:{'Retry-After':'120'}}));
-    await expect(extractBatch([],false,'token',new AbortController().signal,request)).rejects.toThrow('Try later');
+  it('honours a long Retry-After and a used-up daily allowance by returning control',async()=>{
+    const request = vi.fn().mockResolvedValue(ndjson({type:'error',status:429,error:'Try later',retryAfter:120}));
+    await expect(extractBatch(be(request),[],false,new AbortController().signal)).rejects.toThrow('Try later');
     expect(request).toHaveBeenCalledTimes(1);
+    const daily = vi.fn().mockResolvedValue(ndjson({type:'error',status:429,error:'Daily AI allowance reached',retryAfter:1}));
+    await expect(extractBatch(be(daily),[],false,new AbortController().signal)).rejects.toThrow('allowance');
+    expect(daily).toHaveBeenCalledTimes(1);
   });
   it('cancels retry waits and prevents additional requests',async()=>{
     const abort = new AbortController();
-    const request = vi.fn().mockImplementation(async()=>{ setTimeout(()=>abort.abort(),1); return new Response('{}',{status:503}); });
-    await expect(extractBatch([],false,'token',abort.signal,request)).rejects.toMatchObject({name:'AbortError'});
+    const request = vi.fn().mockImplementation(async()=>{ setTimeout(()=>abort.abort(),1); return ndjson({type:'error',status:503,error:'busy',retryAfter:1}); });
+    await expect(extractBatch(be(request),[],false,abort.signal)).rejects.toMatchObject({name:'AbortError'});
     expect(request).toHaveBeenCalledTimes(1);
     await expect(abortableDelay(100,abort.signal)).rejects.toMatchObject({name:'AbortError'});
   });
