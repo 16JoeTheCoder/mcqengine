@@ -56,3 +56,4 @@ One line each, with the reason. Made during the Phase 2 build; the long-term lis
 - Set cards keep Download and Star visible; Report, Restore and Delete move into a More menu; Delete asks in a dialog that says copies on devices stay.
 - The make-a-set (AI prompt) dialog keeps subject, papers, title and mark schemes up front; folder path, counts, time, paper id, options, diagrams and splitting move under Advanced with the same defaults.
 - A paper set with no finished sessions shows Start, Papers and Share only; the analytics appear after the first submitted session.
+- Branch previews (`wrangler preview`, run by Workers Builds) need a `[previews]` block: they bind the staging D1 and R2, never production; their own AI limits and rate-limit namespaces; no `APP_ORIGIN`, so the same-origin check uses the preview URL. Google sign-in is not expected to work on preview URLs.

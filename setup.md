@@ -50,7 +50,7 @@ npx wrangler d1 create dmc-staging --location apac
 npx wrangler d1 create dmc-prod --location apac
 ```
 
-Each prints a `database_id`. Open `wrangler.toml` and replace `REPLACE_WITH_STAGING_D1_ID` and `REPLACE_WITH_PROD_D1_ID` with them. Commit that change (the IDs are not secrets).
+Each prints a `database_id`. Open `wrangler.toml` and replace every `REPLACE_WITH_STAGING_D1_ID` (two places: `[env.staging]` and `[previews]`) and `REPLACE_WITH_PROD_D1_ID` with them. Commit that change (the IDs are not secrets). Until this is done, branch preview builds fail at upload.
 
 Check D1 Time Travel, the second safety net beside the nightly backups (7 days on the Workers Free plan, 30 days on Workers Paid):
 
@@ -225,6 +225,8 @@ Invoke-RestMethod https://dmc.stjbscouncil.org/api/health
 ```
 
 `ok: True` and `environment: production`. Repeat step 8 items 1, 3, 4 and 8 on production.
+
+Automatic builds from GitHub (optional): in the dashboard, **Workers & Pages → dmc → Settings → Builds**, connect `16JoeTheCoder/mcqengine` on the council account. Build command `npm run build`; deploy command `npx wrangler deploy` for `main`; non-production branches run `npx wrangler preview`, which uses the `[previews]` block in `wrangler.toml` (staging D1 and R2, its own Durable Object, no Google sign-in). Disconnect any older build connected to this repository on another account (it builds a Worker named `mcqengine`, which no longer matches `wrangler.toml`), or every pull request shows a failed check.
 
 ### 11. Roll back
 
