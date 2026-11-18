@@ -221,7 +221,7 @@ function PaperPdfs({ paper, onChange }: { paper: Paper; onChange: () => void }) 
   );
   return (
     <div class="stack">
-      <p class="small muted">PDFs stay on this device and travel with Pack for friends. They never sync.</p>
+      <p class="small muted">PDFs stay on this device and travel with Share with friends. They never sync.</p>
       {row('qp', 'Question paper')}
       {row('ms', 'Mark scheme')}
       {view && <PdfViewer pdfId={view} title={paper.title} onClose={() => setView(null)} />}

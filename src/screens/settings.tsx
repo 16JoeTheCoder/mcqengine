@@ -64,7 +64,7 @@ export function SettingsScreen({ onImport, onAbout }: { onImport: () => void; on
 
         <section class="jy-panel stack" aria-labelledby="s-data">
           <h2 id="s-data">Data</h2>
-          <p class="small muted prose">Packs and PDFs are stored in this workspace. Signed-in progress syncs; full backups preserve your files. Clearing site data erases local files, so back up regularly.</p>
+          <p class="small muted prose">Paper sets and PDFs are stored in this workspace. Signed-in progress syncs; full backups preserve your files. Clearing site data erases local files, so back up regularly.</p>
           <Toggle label="Backup reminder" hint={`Offer a full backup every ${s.backupEvery} completed sessions.`} checked={s.backupReminder} onChange={(v) => set({ backupReminder: v })} />
           {s.backupReminder && (
             <Field label="Remind every (sessions)">
@@ -78,7 +78,7 @@ export function SettingsScreen({ onImport, onAbout }: { onImport: () => void; on
             try { const count = await adoptLegacy(authStore.get().account?.id ?? null); bump(); toast(`Recovered ${count} legacy records.`); } catch(e) { toast((e as Error).message); }
           }}>Recover previous-version data</Button></div>
           <div class="row">
-            <Button onClick={onImport}><Icon name="upload" size={18} /> Import pack or backup</Button>
+            <Button onClick={onImport}><Icon name="upload" size={18} /> Import paper set or backup</Button>
             <span class="spacer" />
             <Button variant="danger" onClick={() => setWipe(true)}><Icon name="trash" size={18} /> Erase all data</Button>
           </div>
@@ -152,7 +152,7 @@ export function AboutDialog({ onClose }: { onClose: () => void }) {
           </div>
           <div class="stack-s">
             <div class="label">Your data</div>
-            <span>Packs and progress stay on this device. Signed in, your practice progress can sync through DMC's own server on Cloudflare. PDF import sends only selected pages to NVIDIA after your confirmation. Cloud backups are optional.</span>
+            <span>Paper sets and progress stay on this device. Signed in, your practice progress can sync through DMC's own server on Cloudflare. PDF import sends only selected pages to NVIDIA after your confirmation. Cloud backups are optional.</span>
           </div>
         </div>
         <div class="small muted stack-s">

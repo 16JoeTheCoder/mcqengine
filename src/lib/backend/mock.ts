@@ -287,7 +287,8 @@ export function createMockBackend(): Backend {
     async aiRun() {
       throw new BackendError('AI import is not configured. Manual import is available.', 503);
     },
-    async admin<T>(path: string): Promise<T> {
+    async admin<T>(path0: string): Promise<T> {
+      const path = path0.split('?')[0]!;
       const a = me();
       need(statusOf(a).admin, 'Admins only');
       const s = await load();

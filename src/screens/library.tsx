@@ -101,10 +101,10 @@ export function Library({ onPrompt, onImport }: { onPrompt: () => void; onImport
             <p class="lead">DMC turns your past papers into timed, exam-realistic practice and shows honest progress. Everything stays on this device.</p>
             <div class="row">
               <Button variant="accent" size="lg" onClick={onPrompt}>
-                <Icon name="sparkles" size={18} /> Make a pack with AI
+                <Icon name="sparkles" size={18} /> Make a paper set with AI
               </Button>
               <Button size="lg" onClick={onImport}>
-                <Icon name="upload" size={18} /> Import a pack file
+                <Icon name="upload" size={18} /> Import a paper-set file
               </Button>
             </div>
           </div>
@@ -125,11 +125,11 @@ export function Library({ onPrompt, onImport }: { onPrompt: () => void; onImport
       <section class="hero" style={{ paddingBottom: 'var(--space-6)' }}>
         <div class="row" style={{ alignItems: 'flex-end', gap: 'var(--space-5)' }}>
           <div class="stack-s" style={{ flex: 1, minWidth: '240px' }}>
-            <h1 class="display"><span class="light">Your</span> packs</h1>
-            <p class="muted">{packs.length} pack{packs.length === 1 ? '' : 's'} on this device.</p>
+            <h1 class="display"><span class="light">Your</span> paper sets</h1>
+            <p class="muted">{packs.length} paper set{packs.length === 1 ? '' : 's'} on this device.</p>
           </div>
           <Button variant="accent" size="lg" onClick={onPrompt}>
-            <Icon name="sparkles" size={18} /> Make a pack with AI
+            <Icon name="sparkles" size={18} /> Make a paper set with AI
           </Button>
         </div>
       </section>
@@ -140,9 +140,9 @@ export function Library({ onPrompt, onImport }: { onPrompt: () => void; onImport
       )}
       {packs.length > 3 && (
         <div class="lib-tools">
-          <label class="sr-only" for="pack-search">Search packs</label>
-          <input id="pack-search" class="input" type="search" placeholder="Search packs" value={q} onInput={(e) => setQ((e.target as HTMLInputElement).value)} />
-          <label class="sr-only" for="pack-sort">Sort packs</label>
+          <label class="sr-only" for="pack-search">Search paper sets</label>
+          <input id="pack-search" class="input" type="search" placeholder="Search paper sets" value={q} onInput={(e) => setQ((e.target as HTMLInputElement).value)} />
+          <label class="sr-only" for="pack-sort">Sort paper sets</label>
           <select id="pack-sort" class="select" style={{ width: 'auto' }} value={sort} onChange={(e) => setSort((e.target as HTMLSelectElement).value as never)}>
             <option value="recent">Recently practised</option>
             <option value="name">Name</option>
@@ -155,7 +155,7 @@ export function Library({ onPrompt, onImport }: { onPrompt: () => void; onImport
           <a class="jy-panel jy-panel--link pack-card" href={href.pack(p.id)} key={p.id}>
             <div class="top">
               <div class="stack-s" style={{ minWidth: 0 }}>
-                <span class="label">{p.subject || 'Pack'}</span>
+                <span class="label">{p.subject || 'Paper set'}</span>
                 <h2 style={{ fontSize: '22px', lineHeight: '28px', overflowWrap: 'anywhere' }}>{p.title}</h2>
               </div>
               <Ring size={64} value={p.papers.length ? done / p.papers.length : 0} text={`${done}/${p.papers.length}`} label={`${done} of ${p.papers.length} papers done`} />
@@ -175,8 +175,8 @@ export function Library({ onPrompt, onImport }: { onPrompt: () => void; onImport
         ))}
         <button type="button" class="jy-panel jy-panel--link add-card" onClick={onImport}>
           <Icon name="plus" size={28} />
-          <b>Add pack</b>
-          <span class="small muted">Import JSON, a zip or a folder</span>
+          <b>Upload papers</b>
+          <span class="small muted">PDFs, a paper-set zip or typed questions</span>
         </button>
       </div>
     </main>

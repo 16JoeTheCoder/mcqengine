@@ -15,7 +15,7 @@ export default defineConfig({
     { name: 'mock-backend', testMatch: /(?:library|ai-import|account)\.spec\.ts/, use: { baseURL: 'http://localhost:4174/' } },
   ],
   webServer: [
-    { command: 'npm run build && npx vite preview --port 4173 --strictPort', port: 4173, reuseExistingServer: true, timeout: 120_000 },
+    { command: 'VITE_BACKEND=none npx vite build && npx vite preview --port 4173 --strictPort', port: 4173, reuseExistingServer: true, timeout: 120_000 },
     { command: 'VITE_BACKEND=mock npx vite build --outDir dist-mock && npx vite preview --outDir dist-mock --port 4174 --strictPort', port: 4174, reuseExistingServer: true, timeout: 120_000 },
   ],
 });

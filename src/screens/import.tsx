@@ -323,7 +323,7 @@ function Review({ pack, doc, warnings, source, onBack, onClose }: { pack?: Pack;
               </Field>
               {!targetId && (
                 <div class="grid-even">
-                  <Field label="Pack name">
+                  <Field label="Paper set name">
                     <input class="input" value={newTitle} onInput={(e) => setNewTitle((e.target as HTMLInputElement).value)} placeholder="AS Physics Paper 1" />
                   </Field>
                   <Field label="Subject">

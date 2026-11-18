@@ -461,7 +461,7 @@ const EXT: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', '
 export class ShareError extends Error {}
 
 /**
- * "Pack for friends": a zip in the documented import format with papers, keys, typed content,
+ * "Share with friends": a zip in the documented import format with papers, keys, typed content,
  * PDFs and snips, and the user's fixes applied. Never personal sessions or stats. Packs that came
  * from the school Library are refused: they are shared through the Library only.
  */

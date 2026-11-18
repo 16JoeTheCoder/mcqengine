@@ -1,9 +1,9 @@
 import { useState } from 'preact/hooks';
-import { createSession, packStandardLength, sessionCapMin } from '../lib/engine/session';
+import { createSession, packStandardLength, paperViews, sessionCapMin } from '../lib/engine/session';
 import { getOpenSessions } from '../lib/data/db';
 import { formatClock, perQuestionMaxSec } from '../lib/engine/timer';
 import { bump, href, navigate, settingsStore, toast, useStore } from '../lib/app-state';
-import type { Pack, PaperMeta, SessionMode, SessionType, TimerKind } from '../lib/types';
+import type { Pack, PaperMeta, SessionMode, SessionType, SessionView, TimerKind } from '../lib/types';
 import { Badge, Button, Field, Modal, Seg } from '../ui/kit';
 import { Icon } from '../ui/icons';
 import { paperKeyed } from '../lib/format/merge';
@@ -35,6 +35,8 @@ export function StartDialog({ pack, req, blocked, onClose }: { pack: Pack; req: 
   const [details, setDetails] = useState(false);
   const [snipping, setSnipping] = useState(false);
   const keyed = !req.paper || paperKeyed(req.paper);
+  const views = req.paper ? paperViews(req.paper, !req.paper.bare) : (['dmc'] as SessionView[]);
+  const [view, setView] = useState<SessionView>(views[0] ?? 'dmc');
   const clampMin = (v: number) => Math.min(capMin, Math.max(1, Math.round(v) || 1));
   const clampSec = (v: number) => Math.min(perQMax, Math.max(1, Math.round(v) || 1));
 
@@ -57,8 +59,9 @@ export function StartDialog({ pack, req, blocked, onClose }: { pack: Pack; req: 
         mode,
         ...(req.paper ? { paperId: req.paper.id } : {}),
         timer: { kind, minutes, perQSec: perQ, strict },
-        shuffle: req.type === 'paper' && shuffle,
+        shuffle: req.type === 'paper' && shuffle && view === 'dmc',
         smart: settings.smartRandom,
+        ...(req.type === 'paper' ? { view } : {}),
       });
       bump();
       onClose();
@@ -96,7 +99,17 @@ export function StartDialog({ pack, req, blocked, onClose }: { pack: Pack; req: 
         {blocked && (
           <div class="notice notice--warn">
             <Badge status="warn">Saved session</Badge>
-            <div class="small">This pack has a saved session. Resume, submit or discard it first (one saved session per pack).</div>
+            <div class="small">This paper set has a saved session. Resume, submit or discard it first (one saved session per pack).</div>
+          </div>
+        )}
+        {req.type === 'paper' && views.length > 0 && (
+          <div class="jy-field">
+            <span>Show as</span>
+            <Seg label="Show as" value={view} onChange={setView} options={[...(views.includes('dmc') ? [{ value: 'dmc' as SessionView, label: 'Typed questions' }] : []), ...(views.includes('pdf') ? [{ value: 'pdf' as SessionView, label: 'PDF and answer sheet' }] : [])]} />
+            <small>
+              {view === 'dmc' ? 'One question at a time, with eliminate, flags and instant checks.' : 'The real paper beside an A–D answer sheet, like the exam hall. Same grading and stats.'}
+              {views.length === 1 && views[0] === 'pdf' ? ' This paper has no typed questions yet, so it opens as a PDF.' : ''}
+            </small>
           </div>
         )}
         <div class="jy-field">
@@ -173,7 +186,7 @@ export function StartDialog({ pack, req, blocked, onClose }: { pack: Pack; req: 
         )}
         {details && req.paper && <PaperDialog packId={pack.id} paperId={req.paper.id} onClose={() => setDetails(false)} />}
         {snipping && req.paper && <SnipEditor packId={pack.id} paperId={req.paper.id} onClose={() => setSnipping(false)} />}
-        {req.type === 'paper' && (
+        {req.type === 'paper' && view === 'dmc' && (
           <label class="check">
             <input type="checkbox" checked={shuffle} onChange={(e) => setShuffle((e.target as HTMLInputElement).checked)} /> Shuffle question order
           </label>

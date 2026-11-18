@@ -78,6 +78,7 @@ export type Route =
   | { name: 'results'; id: string }
   | { name: 'settings' }
   | { name: 'school' }
+  | { name: 'admin' }
   | { name: 'notebook'; id: string };
 
 export function parseRoute(hash: string): Route {
@@ -90,6 +91,7 @@ export function parseRoute(hash: string): Route {
   if (parts[0] === 'results' && parts[1]) return { name: 'results', id: parts[1] };
   if (parts[0] === 'settings') return { name: 'settings' };
   if (parts[0] === 'library') return { name: 'school' };
+  if (parts[0] === 'admin') return { name: 'admin' };
   return { name: 'library' };
 }
 
@@ -100,12 +102,13 @@ export const href = {
   results: (id: string) => `#/results/${encodeURIComponent(id)}`,
   settings: () => '#/settings',
   school: () => '#/library',
+  admin: () => '#/admin',
   notebook: (id: string) => `#/pack/${encodeURIComponent(id)}/notebook`,
 };
 
 export const routeStore = createStore<Route>(parseRoute(typeof location !== 'undefined' ? location.hash : ''));
 
-/** Scroll positions per route, restored when returning (e.g. from a session to the pack page). */
+/** Scroll positions per route, restored when returning (e.g. from a session to the paper set page). */
 const scrolls = new Map<string, number>();
 export function navigate(to: string, replace = false) {
   scrolls.set(location.hash || '#/', scrollY);

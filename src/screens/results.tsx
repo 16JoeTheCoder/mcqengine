@@ -244,7 +244,7 @@ export function Results({ id }: { id: string }) {
 
       <div class="row" style={{ marginBottom: 'var(--space-5)' }}>
         <Button variant={pb !== null ? 'default' : 'primary'} onClick={() => navigate(href.pack(s.packId))}>
-          <Icon name="left" size={18} /> Back to pack
+          <Icon name="left" size={18} /> Back to paper set
         </Button>
         {canShare && (
           <Button onClick={() => setSharing(true)}>

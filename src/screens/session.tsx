@@ -5,7 +5,7 @@ import { loadSessionQuestions, submitSession } from '../lib/engine/session';
 import { acquireSessionLock, broadcastChange, finalWrite, setFinalWrite } from '../lib/tablock';
 import { bump, href, navigate, settingsStore, toast, useStore } from '../lib/app-state';
 import { LETTERS, type AnswerRecord, type Question, type SessionDetail, type SessionSummary } from '../lib/types';
-import { Badge, Button, Modal } from '../ui/kit';
+import { Badge, Button, Modal, Seg } from '../ui/kit';
 import { Icon } from '../ui/icons';
 import { FigureView, OptionBody, QuestionImage, Rich } from '../ui/content';
 import { FixQuestion } from './fix';
@@ -121,6 +121,7 @@ function Runner({ initial }: { initial: Loaded }) {
   const q = questions.get(qid);
   const a = d.answers[cur] as AnswerRecord;
   const exam = summary.mode === 'exam';
+  const pdfMode = d.view === 'pdf';
   const timer = d.timer ? { ...d.timer, config: sanitizeTimer(d.timer.config, n) } : undefined;
   const strict = !!(timer?.config.kind === 'perq' && timer.config.strict);
   const ended = useRef(false);
@@ -200,9 +201,9 @@ function Runner({ initial }: { initial: Loaded }) {
       }
       const s: SessionSummary = { ...summary, status, answered: det.answers.filter((x) => x.choice !== null).length, updatedAt: Date.now() };
       try {
-        // Refused if the session was submitted or discarded elsewhere (another tab, the pack page).
+        // Refused if the session was submitted or discarded elsewhere (another tab, the paper set page).
         if (!(await store.persistOpenSession(s, structuredClone(det)))) {
-          // Finished or discarded elsewhere (another tab, the pack page): leave instead of going dead.
+          // Finished or discarded elsewhere (another tab, the paper set page): leave instead of going dead.
           ended.current = true;
           if (!refused.current) {
             refused.current = true;
@@ -216,7 +217,7 @@ function Runner({ initial }: { initial: Loaded }) {
         setSaveStatus('Saved locally');
       } catch {
         // Same wording as the global storage-full notice, so the two merge into one toast.
-        if (lastOk.current) toast('Storage is full. Export a backup and delete packs you no longer need.', undefined, 10_000);
+        if (lastOk.current) toast('Storage is full. Export a backup and delete paper sets you no longer need.', undefined, 10_000);
         lastOk.current = false;
         setSaveStatus('Save failed');
       }
@@ -259,7 +260,7 @@ function Runner({ initial }: { initial: Loaded }) {
         setBusy(false);
         // An automatic submit is not retried every tick; the user can press Submit.
         if (auto) autoFailed.current = true;
-        toast(lastOk.current ? 'Could not submit. Your answers are saved; try again, or save the session for later.' : 'Could not submit: storage is full. Free some space (export a backup and delete unused packs), then submit again.', undefined, 10_000);
+        toast(lastOk.current ? 'Could not submit. Your answers are saved; try again, or save the session for later.' : 'Could not submit: storage is full. Free some space (export a backup and delete unused paper sets), then submit again.', undefined, 10_000);
       }
     },
     [attribute, persist, summary.id],
@@ -273,12 +274,12 @@ function Runner({ initial }: { initial: Loaded }) {
     if (refused.current) return;
     if (!lastOk.current) {
       ended.current = false;
-      toast('Could not save the session: storage is full. Free some space (export a backup and delete unused packs), then try again.', undefined, 12_000);
+      toast('Could not save the session: storage is full. Free some space (export a backup and delete unused paper sets), then try again.', undefined, 12_000);
       return;
     }
     bump();
     broadcastChange();
-    toast('Session saved. Resume it from the pack page or when you next open DMC.');
+    toast('Session saved. Resume it from the paper set page or when you next open DMC.');
     navigate(href.pack(summary.packId), true);
   }, [attribute, persist, summary.packId]);
 
@@ -369,7 +370,7 @@ function Runner({ initial }: { initial: Loaded }) {
         attribute();
         void persist('saved', true).then(() => {
           bump();
-          toast('Session saved. Resume it from the pack page.');
+          toast('Session saved. Resume it from the paper set page.');
         });
       }
     };
@@ -394,6 +395,27 @@ function Runner({ initial }: { initial: Loaded }) {
       schedule();
     },
     [q, exam, schedule, attribute, board, eliminating, qid],
+  );
+  /** PDF mode: answer any row of the sheet; the row becomes the current question (for timing). */
+  const answerAt = useCallback(
+    (j: number, i: number) => {
+      const det = detailRef.current;
+      if (j !== det.current) goto(j);
+      if (det.current !== j) return;
+      const rec = det.answers[j];
+      const qq = questions.get(det.questionIds[j] as string);
+      if (!rec || rec.locked || rec.checked || timeUp.current || !qq || i >= qq.optionCount) return;
+      if (rec.choice === null) rec.first = i;
+      else if (rec.choice !== i) rec.changes++;
+      rec.choice = i;
+      if (!exam) {
+        rec.checked = true;
+        attribute();
+      }
+      rerender();
+      schedule();
+    },
+    [questions, exam, schedule, attribute, goto],
   );
   const toggle = useCallback(
     (k: 'flagged' | 'unsure') => {
@@ -522,6 +544,19 @@ function Runner({ initial }: { initial: Loaded }) {
         <div class="sr-only" aria-live="polite" aria-atomic="true">{qAnnounce}</div>
       </header>
 
+      {pdfMode ? (
+        <PdfSession
+          pdfId={questions.get(d.questionIds[0] as string)?.pdfId}
+          ids={d.questionIds}
+          questions={questions}
+          answers={d.answers}
+          current={cur}
+          exam={exam}
+          page={pdfPage}
+          onPage={setPdfPage}
+          onAnswer={answerAt}
+        />
+      ) : (
       <main class="qs-main" id="main" tabIndex={-1}>
         <div class="qs-col">
           <section class="jy-panel qcard" aria-labelledby="qhead">
@@ -666,13 +701,14 @@ function Runner({ initial }: { initial: Loaded }) {
           )}
         </aside>
       </main>
+      )}
 
-      <footer class="qs-foot show-sm">
+      {!pdfMode && <footer class="qs-foot show-sm">
         <Button onClick={() => setGridOpen(true)}>
           <Icon name="grid" size={18} /> Questions
         </Button>
         <span class="small muted">{flaggedCount ? `${flaggedCount} flagged` : ''}</span>
-      </footer>
+      </footer>}
 
       {viewPdf && q?.pdfId && <PdfViewer pdfId={q.snip?.pdfId ?? q.pdfId} page={q.snip?.page ?? q.page ?? 1} title={`Question ${q.n} in the paper`} onClose={() => setViewPdf(false)} />}
       {gridOpen && (
@@ -736,3 +772,63 @@ function Runner({ initial }: { initial: Loaded }) {
   );
 }
 
+
+/**
+ * PDF mode: the printed paper on the left and an A–D (or A–E) answer sheet on the right; on
+ * narrow screens they stack, with a switch between them. Same question IDs, grading and stats
+ * as typed questions.
+ */
+function PdfSession({ pdfId, ids, questions, answers, current, exam, page, onPage, onAnswer }: {
+  pdfId: string | undefined;
+  ids: string[];
+  questions: Map<string, Question>;
+  answers: AnswerRecord[];
+  current: number;
+  exam: boolean;
+  page: number;
+  onPage: (p: number) => void;
+  onAnswer: (j: number, i: number) => void;
+}) {
+  const [show, setShow] = useState<'paper' | 'sheet'>('paper');
+  const answered = answers.filter((x) => x.choice !== null).length;
+  return (
+    <main class="qs-main pdf-mode" id="main" tabIndex={-1}>
+      <div class="pdf-switch show-sm">
+        <Seg label="Show" value={show} onChange={setShow} options={[{ value: 'paper', label: 'Paper' }, { value: 'sheet', label: `Answer sheet (${answered}/${ids.length})` }]} />
+      </div>
+      <div class="pdf-split" data-show={show}>
+        <section class="pdf-split-paper" aria-label="Question paper">
+          {pdfId ? <PdfPane pdfId={pdfId} page={page} onPage={onPage} /> : <p class="muted">The question paper PDF is not on this device. Download the set again, or attach the PDF from the paper's details.</p>}
+        </section>
+        <section class="pdf-split-sheet jy-panel" aria-labelledby="sheet-head">
+          <h1 id="sheet-head" class="h3">Answer sheet <span class="small muted num">{answered} of {ids.length}</span></h1>
+          <ol class="sheet">
+            {ids.map((id, j) => {
+              const q = questions.get(id);
+              const a = answers[j]!;
+              const count = q?.optionCount ?? 4;
+              const showKey = !exam && a.checked && q?.answer !== null && q?.answer !== undefined;
+              return (
+                <li key={id} class={`sheet-row${j === current ? ' is-current' : ''}`}>
+                  <span class="sheet-n num" id={`sheet-${j}`}>{q?.n ?? j + 1}</span>
+                  <div class="sheet-opts" role="radiogroup" aria-label={`Question ${q?.n ?? j + 1}`}>
+                    {Array.from({ length: count }, (_, i) => {
+                      const chosen = a.choice === i;
+                      const state = showKey ? (i === q!.answer ? 'correct' : chosen ? 'wrong' : '') : '';
+                      return (
+                        <button key={i} type="button" role="radio" aria-checked={chosen} disabled={a.locked || (a.checked && !chosen)} class={`sheet-opt${chosen ? ' is-chosen' : ''}${state ? ` is-${state}` : ''}`} onClick={() => onAnswer(j, i)} aria-label={`${LETTERS[i]}${state === 'correct' ? ', correct answer' : state === 'wrong' ? ', wrong' : ''}`}>
+                          {LETTERS[i]}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {showKey && <span class="sheet-mark small">{a.choice === q!.answer ? <Badge status="ok">Right</Badge> : <Badge status="bad">{LETTERS[q!.answer!]}</Badge>}</span>}
+                </li>
+              );
+            })}
+          </ol>
+        </section>
+      </div>
+    </main>
+  );
+}

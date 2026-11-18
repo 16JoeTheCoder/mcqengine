@@ -122,6 +122,8 @@ export const CAUSES: { value: Cause; label: string }[] = [
   { value: 'time', label: 'Ran out of time' },
 ];
 export type SessionMode = 'exam' | 'practice';
+/** DMC mode shows typed questions; PDF mode shows the printed paper beside an answer sheet. */
+export type SessionView = 'dmc' | 'pdf';
 export type SessionStatus = 'active' | 'saved' | 'submitted' | 'auto-submitted';
 
 export type TimerKind = 'none' | 'total' | 'perq';
@@ -215,6 +217,8 @@ export interface SessionDetail {
   key?: (number | null)[];
   /** Content actually shown when submitted, retained for historical review. */
   snapshots?: Question[];
+  /** PDF mode: the real paper with an answer sheet. Same question IDs, grading and stats. */
+  view?: SessionView;
   regrades?: { at: number; previousKey: (number | null)[]; key: (number | null)[]; previousCorrect: number; correct: number }[];
 }
 
