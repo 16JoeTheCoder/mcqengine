@@ -64,7 +64,8 @@ test('PDF mode answer sheet: follow toggle persists, bubbles clear, rows flag', 
   await imp.getByRole('button', { name: /Add 1 paper/ }).click();
   await expect(page.getByRole('heading', { name: 'Physics 9702', level: 1 })).toBeVisible();
 
-  await startPaper(page);
+  await page.locator('.paper-card').first().click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Start', exact: true }).click();
   const follow = page.getByRole('button', { name: /^Follow o(n|ff)$/ });
   await expect(follow).toBeVisible();
   await expect(follow).toHaveText('Follow off');

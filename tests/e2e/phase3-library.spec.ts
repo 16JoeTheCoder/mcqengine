@@ -11,9 +11,9 @@ const ADMIN = 'josef.yang@stjbs.sch.id';
 test('profiles: edit, see them, find a person, report, then go private', async ({ page }) => {
   await page.goto('./');
   await signInDev(page, ANA);
-  // Known mock gap: backend.account() has no handle, so the Account dialog's "View profile" button
-  // does not render in the mock build (the Worker's /me includes it). Open the profile by address.
-  await page.goto('./#/u/ana.lim');
+  await page.getByRole('button', { name: `Account: ${ANA}`, exact: true }).click();
+  await page.getByRole('dialog', { name: 'Account', exact: true }).getByRole('button', { name: 'View profile' }).click();
+  await expect(page).toHaveURL(/#\/u\/ana\.lim$/);
   await expect(page.getByRole('heading', { name: 'Ana Lim', level: 1 })).toBeVisible();
   await page.getByRole('button', { name: 'Edit profile' }).click();
   const ed = page.getByRole('dialog', { name: 'Edit profile' });
