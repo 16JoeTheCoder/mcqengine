@@ -72,6 +72,21 @@ export function createCloudflareBackend(opts: { base?: string; fetchImpl?: typeo
       return (await call<{ sets: import('./types').LibrarySet[] }>(`/sets?${q}`)).sets;
     },
     getSet: (id, version) => call(`/sets/${encodeURIComponent(id)}${version ? `/versions/${version}` : ''}`),
+    search: (q, signal) => call(`/search?q=${encodeURIComponent(q)}`, signal ? { signal } : {}),
+    profile: async (handle) => (await call<{ profile: import('./types').Profile }>(`/profiles/${encodeURIComponent(handle)}`)).profile,
+    async updateProfile(patch) {
+      const r = await call<{ handle: string }>('/me/profile', { method: 'PATCH', json: patch });
+      cached = null;
+      return r;
+    },
+    async setAvatar(photo) {
+      await call('/me/avatar', photo ? { method: 'PUT', body: photo, headers: { 'Content-Type': photo.type || 'image/webp' } } : { method: 'DELETE' });
+    },
+    reportProfile: async (handle, reason) => void (await call(`/profiles/${encodeURIComponent(handle)}/report`, { method: 'POST', json: { reason } })),
+    async matchPapers(papers) {
+      if (!papers.length) return [];
+      return (await call<{ matches: (import('./types').PaperMatch | null)[] }>('/papers/match', { method: 'POST', json: { papers } })).matches;
+    },
     async lookupPapers(keys) {
       if (!keys.length) return [];
       return (await call<{ papers: import('./types').RegistryPaper[] }>('/papers/lookup', { method: 'POST', json: { keys } })).papers;

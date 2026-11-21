@@ -23,11 +23,19 @@ async function bundle(): Promise<string> {
 
 export function migrationStatements(): string[] {
   const files = readdirSync('migrations').filter((f) => f.endsWith('.sql')).sort();
-  return files.flatMap((f) =>
-    readFileSync(join('migrations', f), 'utf8')
-      .split('\n').filter((l) => !l.trim().startsWith('--')).join('\n')
-      .split(/;\s*\n/).map((s) => s.trim()).filter(Boolean),
-  );
+  return files.flatMap((f) => {
+    const out: string[] = [];
+    let cur = '';
+    const lines = readFileSync(join('migrations', f), 'utf8').split('\n').filter((l) => !l.trim().startsWith('--'));
+    for (const line of lines) {
+      cur += `${line}\n`;
+      // A trigger body holds semicolons: it ends at END;, any other statement at the first semicolon.
+      const inTrigger = /^\s*CREATE\s+TRIGGER/im.test(cur);
+      if (inTrigger ? /\bEND;\s*$/i.test(cur) : /;\s*$/.test(cur)) { out.push(cur.trim()); cur = ''; }
+    }
+    if (cur.trim()) out.push(cur.trim());
+    return out;
+  });
 }
 
 export interface Harness {

@@ -22,6 +22,11 @@
   --status-ok: #0B5FB5;
   --status-warn: #8F5B00;
   --status-bad: #C41E3A;
+  /* Practice feedback (Phase 3): light fills behind a right or wrong answer; always paired with an icon and a word. */
+  --practice-right: #DDF1E3;
+  --practice-right-line: #1E7B3A;
+  --practice-wrong: #FADDE1;
+  --practice-wrong-line: #C41E3A;
   --data-1: #D9480F;
   --data-2: #0B63C5;
   --data-3: #00796B;
@@ -68,6 +73,10 @@
   --status-ok: #6DB3FF;
   --status-warn: #F0B429;
   --status-bad: #FF6B7F;
+  --practice-right: #12321D;
+  --practice-right-line: #5FD38A;
+  --practice-wrong: #3A161C;
+  --practice-wrong-line: #FF6B7F;
   --data-1: #FF5B1F;
   --data-2: #56B4E9;
   --data-3: #2FD3A3;
@@ -114,6 +123,10 @@
   --status-ok: #6DB3FF;
   --status-warn: #F0B429;
   --status-bad: #FF6B7F;
+  --practice-right: #12321D;
+  --practice-right-line: #5FD38A;
+  --practice-wrong: #3A161C;
+  --practice-wrong-line: #FF6B7F;
   --data-1: #FF5B1F;
   --data-2: #56B4E9;
   --data-3: #2FD3A3;

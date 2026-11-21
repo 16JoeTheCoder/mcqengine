@@ -1,6 +1,7 @@
 import { openDB, type IDBPDatabase } from 'idb';
 import { validateManifest, type SetManifest } from '../../../shared/manifest';
-import { BackendError, SCHOOL_DOMAINS, type Account, type Backend, type LibrarySet, type LibraryStatus, type RegistryPaper, type SyncRecord } from './types';
+import { FP_SAME, similarity } from '../../../shared/fingerprint';
+import { BackendError, SCHOOL_DOMAINS, type Account, type Backend, type LibrarySet, type LibraryStatus, type ProfileStats, type RegistryPaper, type SyncRecord } from './types';
 
 /**
  * In-browser stand-in for the DMC Worker, used by `npm run dev` without a Worker and by the
@@ -19,11 +20,16 @@ interface State {
   versions: { setId: string; version: number; manifest: SetManifest }[];
   blobs: { hash: string; size: number; type: string; uploader: string }[];
   papers: RegistryPaper[];
+  /** Paper identity (D1 paper_prints): question paper hash, fingerprint, code. */
+  prints?: { qp: string; ms: string | null; fp: string | null; label: string | null; questionCount: number }[];
   stars: { setId: string; userId: string }[];
   reports: { setId: string; userId: string; reason: string }[];
   sync: (SyncRecord & { userId: string; seq: number })[];
   seq: number;
+  /** Profiles (D1 users columns), by account id. */
+  profiles?: Record<string, MockProfile>;
 }
+interface MockProfile { id: string; email: string; name: string; handle: string; headline: string; bio: string; subjects: string[]; visibility: 'school' | 'private'; showStats: boolean; stats: ProfileStats; avatar: string | null; createdAt: number; reports: string[] }
 
 let dbp: Promise<IDBPDatabase> | null = null;
 // Tests reset the "server" by deleting its database: close on request so the delete can proceed.
@@ -69,6 +75,21 @@ export function createMockBackend(): Backend {
     return a;
   };
   const readable = (r: Row, a: Account) => r.status === 'approved' || r.owner === a.id || statusOf(a).admin;
+  const visible = (p: MockProfile, a: Account) => p.id === a.id || statusOf(a).admin || (p.visibility === 'school' && statusOf({ ...a, email: p.email, emailVerified: true }).member);
+  /** The account's profile, made from its email the first time (like the Worker's ensureHandle). */
+  const profileOf = async (a: Account): Promise<MockProfile> => {
+    const s = await load();
+    const had = s.profiles?.[a.id];
+    if (had) return { ...had, name: a.name };
+    const base = (a.email.split('@')[0] ?? 'user').toLowerCase().replace(/[^a-z0-9._-]+/g, '').slice(0, 24).padEnd(3, '0');
+    const taken = new Set(Object.values(s.profiles ?? {}).map((x) => x.handle));
+    let handle = base;
+    for (let n = 2; taken.has(handle); n++) handle = `${base}${n}`;
+    const p: MockProfile = { id: a.id, email: a.email.toLowerCase(), name: a.name, handle, headline: '', bio: '', subjects: [], visibility: 'school', showStats: false, stats: {}, avatar: null, createdAt: Date.now(), reports: [] };
+    s.profiles = { ...(s.profiles ?? {}), [a.id]: p };
+    await save(s);
+    return p;
+  };
   const signIn = (email: string) => {
     const e = email.trim().toLowerCase();
     need(/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e), 'Enter an email address', 400);
@@ -84,7 +105,73 @@ export function createMockBackend(): Backend {
     async me() {
       const a = current();
       const st = statusOf(a);
-      return { account: a, status: { member: st.member, admin: st.admin }, syncDefault: st.school };
+      const handle = a ? (await profileOf(a)).handle : undefined;
+      return { account: a ? { ...a, ...(handle ? { handle } : {}) } : null, status: { member: st.member, admin: st.admin }, syncDefault: st.school };
+    },
+    async search(q) {
+      const a = current();
+      if (!a || !statusOf(a).member || !q.trim()) return { sets: [], people: [] };
+      const s = await load();
+      const words = q.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
+      const hit = (text: string) => words.every((w) => text.toLowerCase().split(/[^\p{L}\p{N}]+/u).some((t) => t.startsWith(w)));
+      const sets = s.sets.filter((x) => readable(x, a) && x.version > 0 && hit(`${x.title} ${x.description} ${x.subject} ${x.ownerName}`)).slice(0, 20)
+        .map((x) => ({ id: x.id, title: x.title, subject: x.subject, ownerName: x.ownerName, paperCount: x.paperCount, version: x.version }));
+      const people = Object.values(s.profiles ?? {}).filter((p) => visible(p, a) && hit(`${p.name} ${p.handle} ${p.headline} ${p.subjects.join(' ')}`)).slice(0, 10)
+        .map((p) => ({ handle: p.handle, name: p.name, headline: p.headline }));
+      return { sets, people };
+    },
+    async profile(handle) {
+      const a = member();
+      await profileOf(a);
+      const s = await load();
+      const p = Object.values(s.profiles ?? {}).find((x) => x.handle === handle && visible(x, a));
+      need(!!p, 'No such profile', 404);
+      const mine = p!.id === a.id;
+      const sets = s.sets.filter((x) => x.owner === p!.id && (x.status === 'approved' || mine || statusOf(a).admin) && x.version > 0);
+      return {
+        handle: p!.handle, name: p!.name, headline: p!.headline, bio: p!.bio, subjects: p!.subjects, avatar: p!.avatar, joined: p!.createdAt, mine,
+        ...(mine || statusOf(a).admin ? { visibility: p!.visibility } : {}), showStats: p!.showStats, stats: p!.showStats || mine ? p!.stats : null,
+        starsReceived: sets.filter((x) => x.status === 'approved').reduce((t, x) => t + x.stars, 0),
+        sets: sets.map((x) => ({ id: x.id, title: x.title, subject: x.subject, paperCount: x.paperCount, questionCount: x.questionCount, stars: x.stars, version: x.version, updatedAt: x.updatedAt })),
+      };
+    },
+    async updateProfile(patch) {
+      const a = me();
+      const p = await profileOf(a);
+      const s = await load();
+      if (patch.handle !== undefined) {
+        const h = patch.handle.trim().toLowerCase();
+        need(/^[a-z0-9][a-z0-9._-]{2,29}$/.test(h), 'Profile names use 3 to 30 letters, digits, dots, dashes or underscores', 400);
+        need(!Object.values(s.profiles ?? {}).some((x) => x.handle === h && x.id !== a.id), 'That profile name is taken', 409);
+        p.handle = h;
+      }
+      if (patch.headline !== undefined) { need(patch.headline.length <= 80, 'Headline is at most 80 characters', 400); p.headline = patch.headline.trim(); }
+      if (patch.bio !== undefined) { need(patch.bio.length <= 160, 'Bio is at most 160 characters', 400); p.bio = patch.bio.trim(); }
+      if (patch.subjects !== undefined) { need(patch.subjects.length <= 8, 'List at most 8 subjects', 400); p.subjects = [...new Set(patch.subjects.map((x) => x.trim()).filter(Boolean))]; }
+      if (patch.visibility !== undefined) p.visibility = patch.visibility;
+      if (patch.showStats !== undefined) p.showStats = patch.showStats;
+      if (patch.stats !== undefined) p.stats = patch.stats;
+      s.profiles = { ...(s.profiles ?? {}), [a.id]: p };
+      await save(s);
+      return { handle: p.handle };
+    },
+    async setAvatar(photo) {
+      const a = me();
+      const p = await profileOf(a);
+      need(!photo || photo.size <= 512 * 1024, 'Photos are limited to 512 KB', 413);
+      p.avatar = photo ? await new Promise<string>((ok) => { const r = new FileReader(); r.onload = () => ok(String(r.result)); r.readAsDataURL(photo); }) : null;
+      const s = await load();
+      s.profiles = { ...(s.profiles ?? {}), [a.id]: p };
+      await save(s);
+    },
+    async reportProfile(handle, reason) {
+      const a = member();
+      const s = await load();
+      const p = Object.values(s.profiles ?? {}).find((x) => x.handle === handle && visible(x, a));
+      need(!!p, 'No such profile', 404);
+      need(p!.id !== a.id, 'You cannot report your own profile', 400);
+      p!.reports = [...new Set([...p!.reports, `${a.id}:${reason.slice(0, 500)}`])];
+      await save(s);
     },
     account: async () => current(),
     onAuthChange(fn) {
@@ -128,6 +215,18 @@ export function createMockBackend(): Backend {
       const v = s.versions.find((x) => x.setId === id && x.version === (version ?? r!.version));
       need(!!v, 'That version is no longer kept; download the latest', 404);
       return { set: view(r!, a, s), manifest: { ...v!.manifest, setId: id, version: v!.version } };
+    },
+    async matchPapers(asks) {
+      member();
+      const prints = (await load()).prints ?? [];
+      return asks.map((a) => {
+        const exact = a.qp ? prints.find((p) => p.qp === a.qp) : undefined;
+        if (exact) return { qp: exact.qp, ms: exact.ms, questionCount: exact.questionCount, label: exact.label, how: 'file' as const, similarity: 1 };
+        const best = a.fp ? prints.map((p) => [p.fp ? similarity(a.fp!, p.fp) : 0, p] as const).filter(([x]) => x >= FP_SAME).sort((x, y) => y[0] - x[0])[0] : undefined;
+        if (best) return { qp: best[1].qp, ms: best[1].ms, questionCount: best[1].questionCount, label: best[1].label, how: 'text' as const, similarity: Math.round(best[0] * 100) / 100 };
+        const code = a.key ? prints.find((p) => p.label === a.key && (!a.fp || !p.fp)) : undefined;
+        return code ? { qp: code.qp, ms: code.ms, questionCount: code.questionCount, label: code.label, how: 'code' as const, similarity: 0 } : null;
+      });
     },
     async lookupPapers(keys) {
       member();
@@ -195,6 +294,13 @@ export function createMockBackend(): Backend {
       s.versions.push({ setId, version, manifest });
       s.versions = s.versions.filter((v) => v.setId !== setId || v.version > version - 2);
       for (const p of manifest.papers) if (p.key && p.qp && !s.papers.some((x) => x.key === p.key)) s.papers.push({ key: p.key, msKey: p.key.replace('_qp_', '_ms_'), qp: p.qp, ms: p.ms ?? null, questionCount: p.questionCount });
+      s.prints ??= [];
+      for (const p of manifest.papers) {
+        if (!p.qp) continue;
+        const had = s.prints.find((x) => x.qp === p.qp);
+        if (had) { had.ms ??= p.ms ?? null; had.fp ??= p.fp ?? null; had.label ??= p.key; }
+        else s.prints.push({ qp: p.qp, ms: p.ms ?? null, fp: p.fp ?? null, label: p.key, questionCount: p.questionCount });
+      }
       await save(s);
       return { version };
     },

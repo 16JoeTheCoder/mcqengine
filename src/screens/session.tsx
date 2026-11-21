@@ -12,6 +12,7 @@ import { FixQuestion } from './fix';
 import { lazy } from '../ui/lazy';
 import { isViewable } from '../lib/engine/session';
 import { Presentation } from './presentation';
+import { applyChoice, practiceState, practiceTally, unansweredAt } from '../lib/engine/answer';
 
 const SnipImage = lazy(() => import('./pdf-tools').then((m) => m.SnipImage), <div class="skel" style={{ height: '200px' }} />);
 const PdfPane = lazy(() => import('./pdf-tools').then((m) => m.PdfPane), <div class="skel" style={{ height: '50vh' }} />);
@@ -383,14 +384,11 @@ function Runner({ initial }: { initial: Loaded }) {
       if (board) return;
       if (eliminating) { crossOut(i); return; }
       const rec = detailRef.current.answers[detailRef.current.current];
-      if (!rec || rec.locked || rec.checked || timeUp.current || !q || i >= q.optionCount) return;
-      if (rec.choice === null) rec.first = i;
-      else if (rec.choice !== i) rec.changes++;
-      rec.choice = rec.choice === i && exam ? rec.choice : i;
-      if (!exam) {
-        rec.checked = true;
-        attribute();
-      }
+      if (!rec || timeUp.current || !q) return;
+      const r = applyChoice(rec, i, q.optionCount, exam);
+      if (r === 'ignored') return;
+      if (!exam) attribute();
+      if (r === 'cleared') setAnnounce('Answer cleared');
       rerender();
       schedule();
     },
@@ -404,18 +402,27 @@ function Runner({ initial }: { initial: Loaded }) {
       if (det.current !== j) return;
       const rec = det.answers[j];
       const qq = questions.get(det.questionIds[j] as string);
-      if (!rec || rec.locked || rec.checked || timeUp.current || !qq || i >= qq.optionCount) return;
-      if (rec.choice === null) rec.first = i;
-      else if (rec.choice !== i) rec.changes++;
-      rec.choice = i;
-      if (!exam) {
-        rec.checked = true;
-        attribute();
-      }
+      if (!rec || timeUp.current || !qq) return;
+      const r = applyChoice(rec, i, qq.optionCount, exam);
+      if (r === 'ignored') return;
+      if (!exam) attribute();
+      if (r === 'cleared') setAnnounce(`Question ${qq.n}: answer cleared`);
+      rerender();
+      schedule();
+      return r;
+    },
+    [questions, exam, schedule, attribute, goto],
+  );
+  /** PDF mode: flag any row of the sheet. */
+  const flagAt = useCallback(
+    (j: number) => {
+      const rec = detailRef.current.answers[j];
+      if (!rec) return;
+      rec.flagged = !rec.flagged;
       rerender();
       schedule();
     },
-    [questions, exam, schedule, attribute, goto],
+    [schedule],
   );
   const toggle = useCallback(
     (k: 'flagged' | 'unsure') => {
@@ -457,6 +464,9 @@ function Runner({ initial }: { initial: Loaded }) {
   const answered = d.answers.filter((x) => x.choice !== null).length;
   const unanswered = n - answered;
   const flaggedCount = d.answers.filter((x) => x.flagged).length;
+  const keyAt = (qid: string) => questions.get(qid)?.answer;
+  const tally = exam ? null : practiceTally(d.answers, keyAt);
+  const blanks = unansweredAt(d.answers);
   const frac = timer ? Math.max(0, Math.min(1, remaining / timer.config.totalMs)) : 1;
   const low = frac <= 0.1;
   const colour = timerColour(frac);
@@ -472,14 +482,14 @@ function Runner({ initial }: { initial: Loaded }) {
           <button
             type="button"
             key={r.qid}
-            class={r.choice !== null ? 'answered' : ''}
+            class={[r.choice !== null ? 'answered' : '', practiceState(r, keyAt(r.qid)) ? `is-${practiceState(r, keyAt(r.qid))}` : ''].join(' ').trim()}
             aria-current={i === cur ? 'true' : undefined}
             disabled={strict && i !== cur}
             onClick={() => {
               goto(i);
               setGridOpen(false);
             }}
-            aria-label={`Question ${i + 1}${r.choice !== null ? ', answered' : ''}${r.flagged ? ', flagged' : ''}${r.unsure ? ', unsure' : ''}`}
+            aria-label={`Question ${i + 1}${r.choice !== null ? ', answered' : ''}${practiceState(r, keyAt(r.qid)) === 'right' ? ', right' : practiceState(r, keyAt(r.qid)) === 'wrong' ? ', wrong' : ''}${r.flagged ? ', flagged' : ''}${r.unsure ? ', unsure' : ''}`}
           >
             {i + 1}
             {r.flagged && <span class="fl" aria-hidden="true" />}
@@ -487,10 +497,12 @@ function Runner({ initial }: { initial: Loaded }) {
           </button>
         ))}
       </div>
+      {tally && <PracticeTally tally={tally} />}
       <div class="legend" aria-hidden="true">
         <span class="jy-badge jy-badge--ink">Answered: filled</span>
         <span class="jy-badge jy-badge--ink jy-badge--flag">Flag: top right</span>
         <span class="jy-badge jy-badge--warn">Unsure: top left</span>
+        {tally && <span class="jy-badge jy-badge--ink">Right: green, wrong: red</span>}
       </div>
     </div>
   );
@@ -555,6 +567,8 @@ function Runner({ initial }: { initial: Loaded }) {
           page={pdfPage}
           onPage={setPdfPage}
           onAnswer={answerAt}
+          onFlag={flagAt}
+          tally={tally}
         />
       ) : (
       <main class="qs-main" id="main" tabIndex={-1}>
@@ -753,6 +767,17 @@ function Runner({ initial }: { initial: Loaded }) {
               )}
               .
             </p>
+            {blanks.length > 0 && (
+              <div class="stack-s">
+                <p class="small"><b>Not answered:</b> question{blanks.length === 1 ? '' : 's'}</p>
+                <div class="chips" role="group" aria-label="Unanswered questions">
+                  {blanks.slice(0, 40).map((i) => (
+                    <Button key={i} size="sm" disabled={strict} onClick={() => { setEndOpen(false); goto(i); if (pdfMode) requestAnimationFrame(() => document.getElementById(`sheet-${i}`)?.scrollIntoView({ block: 'center' })); }}>{i + 1}</Button>
+                  ))}
+                  {blanks.length > 40 && <span class="small muted">and {blanks.length - 40} more</span>}
+                </div>
+              </div>
+            )}
             {unanswered > 0 && answered > 0 && (
               <div class="notice notice--warn">
                 <Badge status="warn">Partial</Badge>
@@ -778,7 +803,19 @@ function Runner({ initial }: { initial: Loaded }) {
  * narrow screens they stack, with a switch between them. Same question IDs, grading and stats
  * as typed questions.
  */
-function PdfSession({ pdfId, ids, questions, answers, current, exam, page, onPage, onAnswer }: {
+const FOLLOW_KEY = 'dmc-sheet-follow';
+const readFollow = () => { try { return localStorage.getItem(FOLLOW_KEY) === '1'; } catch { return false; } };
+
+/** Running right/wrong count and accuracy in practice. */
+function PracticeTally({ tally }: { tally: ReturnType<typeof practiceTally> }) {
+  return (
+    <p class="tally small" role="status">
+      <span class="num">{tally.pct === null ? '–' : `${tally.pct}%`}</span> accuracy · <span class="tally-right"><Icon name="check" size={14} /> <span class="num">{tally.right}</span> right</span> · <span class="tally-wrong"><Icon name="x" size={14} /> <span class="num">{tally.wrong}</span> wrong</span>
+    </p>
+  );
+}
+
+function PdfSession({ pdfId, ids, questions, answers, current, exam, page, onPage, onAnswer, onFlag, tally }: {
   pdfId: string | undefined;
   ids: string[];
   questions: Map<string, Question>;
@@ -787,9 +824,25 @@ function PdfSession({ pdfId, ids, questions, answers, current, exam, page, onPag
   exam: boolean;
   page: number;
   onPage: (p: number) => void;
-  onAnswer: (j: number, i: number) => void;
+  onAnswer: (j: number, i: number) => 'set' | 'cleared' | 'ignored' | undefined;
+  onFlag: (j: number) => void;
+  tally: ReturnType<typeof practiceTally> | null;
 }) {
   const [show, setShow] = useState<'paper' | 'sheet'>('paper');
+  const [follow, setFollow] = useState(readFollow);
+  const sheetRef = useRef<HTMLOListElement>(null);
+  const toggleFollow = () => setFollow((f) => { try { localStorage.setItem(FOLLOW_KEY, f ? '0' : '1'); } catch { /* private mode */ } return !f; });
+  // Follow: answering row j brings row j+1 to the middle of the sheet; only the sheet scrolls.
+  const answer = (j: number, i: number) => {
+    const r = onAnswer(j, i);
+    if (!follow || r !== 'set' || j + 1 >= ids.length) return;
+    const row = sheetRef.current?.children[j + 1] as HTMLElement | undefined;
+    const box = row?.closest('.pdf-split-sheet') as HTMLElement | null;
+    if (!row || !box) return;
+    const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const top = row.offsetTop - box.clientHeight / 2 + row.offsetHeight / 2;
+    box.scrollTo({ top: Math.max(0, top), behavior: reduced ? 'auto' : 'smooth' });
+  };
   const answered = answers.filter((x) => x.choice !== null).length;
   return (
     <main class="qs-main pdf-mode" id="main" tabIndex={-1}>
@@ -801,28 +854,40 @@ function PdfSession({ pdfId, ids, questions, answers, current, exam, page, onPag
           {pdfId ? <PdfPane pdfId={pdfId} page={page} onPage={onPage} /> : <p class="muted">The question paper PDF is not on this device. Download the set again, or attach the PDF from the paper's details.</p>}
         </section>
         <section class="pdf-split-sheet jy-panel" aria-labelledby="sheet-head">
-          <h1 id="sheet-head" class="h3">Answer sheet <span class="small muted num">{answered} of {ids.length}</span></h1>
-          <ol class="sheet">
+          <div class="sheet-head">
+            <h1 id="sheet-head" class="h3">Answer sheet <span class="small muted num">{answered} of {ids.length}</span></h1>
+            <Button size="sm" aria-pressed={follow} onClick={toggleFollow} title="After each answer, move the next question to the middle of the sheet">
+              {follow ? 'Follow on' : 'Follow off'}
+            </Button>
+          </div>
+          {tally && <PracticeTally tally={tally} />}
+          <ol class="sheet" ref={sheetRef}>
             {ids.map((id, j) => {
               const q = questions.get(id);
               const a = answers[j]!;
               const count = q?.optionCount ?? 4;
               const showKey = !exam && a.checked && q?.answer !== null && q?.answer !== undefined;
+              const st = practiceState(a, q?.answer);
               return (
-                <li key={id} class={`sheet-row${j === current ? ' is-current' : ''}`}>
+                <li key={id} class={`sheet-row${j === current ? ' is-current' : ''}${st ? ` is-${st}` : ''}`}>
                   <span class="sheet-n num" id={`sheet-${j}`}>{q?.n ?? j + 1}</span>
                   <div class="sheet-opts" role="radiogroup" aria-label={`Question ${q?.n ?? j + 1}`}>
                     {Array.from({ length: count }, (_, i) => {
                       const chosen = a.choice === i;
                       const state = showKey ? (i === q!.answer ? 'correct' : chosen ? 'wrong' : '') : '';
                       return (
-                        <button key={i} type="button" role="radio" aria-checked={chosen} disabled={a.locked || (a.checked && !chosen)} class={`sheet-opt${chosen ? ' is-chosen' : ''}${state ? ` is-${state}` : ''}`} onClick={() => onAnswer(j, i)} aria-label={`${LETTERS[i]}${state === 'correct' ? ', correct answer' : state === 'wrong' ? ', wrong' : ''}`}>
+                        <button key={i} type="button" role="radio" aria-checked={chosen} disabled={a.locked || (a.checked && !chosen)} class={`sheet-opt${chosen ? ' is-chosen' : ''}${state ? ` is-${state}` : ''}`} onClick={() => answer(j, i)} aria-label={`${LETTERS[i]}${state === 'correct' ? ', correct answer' : state === 'wrong' ? ', wrong' : ''}`}>
                           {LETTERS[i]}
                         </button>
                       );
                     })}
                   </div>
-                  {showKey && <span class="sheet-mark small">{a.choice === q!.answer ? <Badge status="ok">Right</Badge> : <Badge status="bad">{LETTERS[q!.answer!]}</Badge>}</span>}
+                  <span class="sheet-mark small">
+                    {showKey && (a.choice === q!.answer ? <Badge status="ok">Right</Badge> : <Badge status="bad">{LETTERS[q!.answer!]}</Badge>)}
+                    <button type="button" class={`sheet-flag${a.flagged ? ' is-on' : ''}`} aria-pressed={a.flagged} aria-label={`Flag question ${q?.n ?? j + 1}`} onClick={() => onFlag(j)}>
+                      <Icon name="flag" size={16} />
+                    </button>
+                  </span>
                 </li>
               );
             })}

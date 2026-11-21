@@ -71,6 +71,8 @@ export interface PaperMeta {
   bare?: boolean;
   /** Canonical Cambridge key of the question paper (`9702_s24_qp_12`), when known. Papers match by it. */
   paperKey?: string;
+  /** Text fingerprint of the question paper: finds the same paper saved with different bytes. */
+  fingerprint?: string;
 }
 
 export interface GradeBoundary {
@@ -97,6 +99,8 @@ export interface Pack {
   papers: PaperMeta[];
   /** ISO date (yyyy-mm-dd), optional. */
   examDate?: string;
+  /** Optional note shown on the set page; also the Library description when posted. */
+  description?: string;
   /** Where the pack came from. Library packs cannot be re-shared with "pack for friends". */
   origin?: { kind: 'library'; setId: string; title?: string };
   /**

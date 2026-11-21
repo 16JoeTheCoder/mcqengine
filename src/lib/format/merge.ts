@@ -131,6 +131,7 @@ export function metaOf(p: Paper): PaperMeta {
     ...(p.pdf ? { pdf: p.pdf } : {}),
     ...(p.bare ? { bare: true } : {}),
     ...(p.paperKey ? { paperKey: p.paperKey } : {}),
+    ...(p.fingerprint ? { fingerprint: p.fingerprint } : {}),
   };
 }
 
@@ -203,6 +204,7 @@ export function mergeDoc(
           questions: [],
         };
     if (np.key && !base.paperKey) base.paperKey = np.key;
+    if (np.fingerprint && !base.fingerprint) base.fingerprint = np.fingerprint;
     if (np.boundaries) base.boundaries = np.boundaries;
     if (ov.title) base.title = ov.title;
     if (ov.group) base.group = ov.group;

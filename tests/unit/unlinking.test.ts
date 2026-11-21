@@ -27,7 +27,7 @@ describe('one set, one local pack', () => {
     await backend!.signInDev!('ana@stjbs.sch.id');
     const id = await importPack(doc(syntheticPaper('p1', 4)));
     const prep = await prepareFromPack((await store.getPack(id))!);
-    await postSet(await buildPlan(prep, prep.meta, {}, null), () => {}, new AbortController().signal);
+    await postSet(await buildPlan(prep, prep.meta, null), () => {}, new AbortController().signal);
     const [set] = await backend!.listSets({ search: '', limit: 10, offset: 0 });
     await downloadSet(set!);
     expect((await store.getPacks()).length).toBe(1);

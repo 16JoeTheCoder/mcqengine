@@ -19,6 +19,7 @@ import { lazy } from '../ui/lazy';
 const Insights = lazy(() => import('./insights').then((m) => m.Insights), <div class="skel" style={{ height: '400px' }} />);
 import { BackupPanel } from './data';
 import { FixQuestion } from './fix';
+import { EditSet } from './edit-set';
 
 const SECTIONS = [
   ['overview', 'Overview'],
@@ -48,6 +49,7 @@ export function PackScreen({ id, section, onImport, onPrompt }: { id: string; se
   const [trueScale, setTrueScale] = useState(false);
   const [includePractice, setIncludePractice] = useState(false);
   const [active, setActive] = useState('overview');
+  const [editing, setEditing] = useState(false);
   const [tipHidden, setTipHidden] = useState(false);
   const [lockElsewhere, setLockElsewhere] = useState(false);
   const [missing, setMissing] = useState(0);
@@ -119,7 +121,8 @@ export function PackScreen({ id, section, onImport, onPrompt }: { id: string; se
   const drillSize = Math.min(std, selectDrill(stats, std, new Set(stats.map((s) => s.qid))).length);
   const allPapersDone = a.coverage.papersDone >= pack.papers.filter(paperComplete).length && pack.papers.length > 0;
   const showTip = !allPapersDone && !tipHidden && !settings.dismissedTips.includes(`random:${pack.id}`);
-  const examDays = settings.examDate ? Math.ceil((Date.parse(settings.examDate) - Date.now()) / 86_400_000) : null;
+  const examDate = pack.examDate ?? settings.examDate;
+  const examDays = examDate ? Math.ceil((Date.parse(examDate) - Date.now()) / 86_400_000) : null;
   const qCount = a.q.length;
 
   const pick = (p: PaperMeta) => {
@@ -177,18 +180,23 @@ export function PackScreen({ id, section, onImport, onPrompt }: { id: string; se
             <div class="stack-s">
               <span class="label">{pack.subject || 'Paper set'}</span>
               <h1 class="display" style={{ overflowWrap: 'anywhere' }}>{pack.title}</h1>
+              {pack.description && <p class="muted" style={{ maxWidth: '60ch', margin: 0 }}>{pack.description}</p>}
               <div class="facts">
                 <span><b class="num">{fmtInt(pack.papers.length)}</b> paper{pack.papers.length === 1 ? '' : 's'}</span>
                 <span><b class="num">{fmtInt(questions)}</b> question{questions === 1 ? '' : 's'}</span>
                 <span><b class="num">{a.coverage.papersDone}</b> done</span>
                 {examDays !== null && examDays >= 0 && (
                   <span>
-                    Exam in <b class="num">{examDays}</b> day{examDays === 1 ? '' : 's'} ({settings.examDate})
+                    Exam in <b class="num">{examDays}</b> day{examDays === 1 ? '' : 's'} ({examDate})
                   </span>
                 )}
               </div>
             </div>
             <div class="row">
+              <Button size="lg" variant="ghost" onClick={() => setEditing(true)}>
+                <Icon name="pencil" size={18} /> Edit details
+              </Button>
+              {editing && <EditSet pack={pack} onClose={() => setEditing(false)} />}
               <Button size="lg" onClick={() => onPrompt(pack)}>
                 <Icon name="plus" size={18} /> Add papers
               </Button>

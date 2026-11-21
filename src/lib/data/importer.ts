@@ -63,7 +63,7 @@ export interface PlanOptions {
   /** Paper keys the user confirmed in the review table, by document paper id. */
   keys?: Record<string, string>;
   /** Cover page text of question paper PDFs, by path in the source. */
-  coverText?: ReadonlyMap<string, string>;
+  coverText?: ReadonlyMap<string, string | { cover: string; fingerprint: string | null }>;
   /** For edited questions: keep the stored copy or take the incoming one. */
   prefer?: 'mine' | 'theirs';
 }

@@ -51,7 +51,7 @@ export async function putBlob(req: Request, env: Env, ctx: ExecutionContext, h0:
   }
   // Quota counts only bytes new to the bucket, attributed to the first uploader.
   const used = await bytesUsed(env, c.user.id);
-  const limit = quotaOf(c.access);
+  const limit = quotaOf(c.access, c.user.quota_bytes);
   if (used + size > limit) {
     await req.body.cancel();
     throw new ApiError(`Upload quota reached: ${Math.round(used / 1048576)} of ${Math.round(limit / 1048576)} MB used. Delete an old set first.`, 413);

@@ -8,9 +8,9 @@ import { resolvePaperKeys, type KeyResolution } from '../format/identity';
 import { lenientParse } from '../format/lenient';
 import { validateDoc } from '../format/validate';
 import { MANIFEST_FORMAT, MANIFEST_LIMITS, type SetManifest, type SetMeta } from '../../../shared/manifest';
-import { isPaperKey, qpKeyOf } from '../../../shared/paper-key';
+import { readPaperTexts } from '../pdf/identity';
 import { backend, type Backend } from '../backend';
-import { BackendError } from '../backend/types';
+import { BackendError, type PaperMatch } from '../backend/types';
 import type { Pack } from '../types';
 
 /**
@@ -62,24 +62,10 @@ function docOf(src: ImportSource) {
   return validateDoc(value, new Set([...src.files.keys(), ...src.pdfs.keys()]), notes).doc;
 }
 
-/** Cover-page text of each question paper, read lazily with pdf.js; missing in tests and on failure. */
-async function coverText(src: ImportSource): Promise<Map<string, string>> {
-  const out = new Map<string, string>();
-  if (typeof document === 'undefined' || !src.pdfs.size) return out;
-  try {
-    const { openPdf, pdfText } = await import('../pdf/pdf');
-    for (const [path, blob] of src.pdfs) {
-      const doc = await openPdf(blob);
-      out.set(path, (await pdfText(doc, 1)).join('\n'));
-    }
-  } catch { /* the review table asks the user instead */ }
-  return out;
-}
-
 async function finish(src: ImportSource, setId: string, base: number, meta: SetMeta, packId?: string): Promise<Prepared> {
   const report = mustPass(checkSource(src));
   const doc = docOf(src);
-  return { source: src, setId, base, ...(packId ? { packId } : {}), meta, report, keys: resolvePaperKeys(doc, await coverText(src)), facts: factsOf(report, src) };
+  return { source: src, setId, base, ...(packId ? { packId } : {}), meta, report, keys: resolvePaperKeys(doc, await readPaperTexts(src.pdfs)), facts: factsOf(report, src) };
 }
 
 /** A pack on this device. Someone else's Library set cannot be re-posted. */
@@ -149,17 +135,21 @@ export interface PostPlan {
   files: PlanFile[];
   /** Hashes already on the server or uploaded by this post. */
   done: string[];
+  /** Per paper: its Cambridge code (when read) and whether it links to the Library's copy. */
+  links?: PaperLink[];
 }
 
+/** How each paper will reach the Library: linked to a copy already there, or uploaded. */
+export interface PaperLink { docId: string; title: string; label: string | null; linked: PaperMatch['how'] | null }
+
 /**
- * Builds the manifest: the pack document (with its set ID and confirmed keys written in), every
- * file it references by hash, and for each paper whose key the Library already knows, a link to
- * the stored files instead of an upload of this device's copy.
+ * Builds the manifest: the pack document (with its set ID, Cambridge codes and fingerprints
+ * written in), every file it references by hash, and for each paper the Library already has
+ * (same file, same text, or same code), a link to the stored files instead of an upload.
+ * Nobody types a code: identity comes from the files themselves.
  */
-export async function buildPlan(prep: Prepared, meta: SetMeta, confirmed: Record<string, string>, cover: Blob | null, be: Backend | null = backend): Promise<PostPlan> {
-  const keys = prep.keys.map((k) => (confirmed[k.docId] && isPaperKey(confirmed[k.docId]) ? { ...k, key: qpKeyOf(confirmed[k.docId]!), status: 'found' as const } : k));
-  const missing = keys.filter((k) => !k.key);
-  if (missing.length && missing.some((k) => k.status === 'confirm')) throw new BackendError(`Confirm the paper key for ${missing.filter((k) => k.status === 'confirm').map((k) => k.title).join(', ')} first`);
+export async function buildPlan(prep: Prepared, meta: SetMeta, cover: Blob | null, be: Backend | null = backend): Promise<PostPlan> {
+  const keys = prep.keys;
   const raw = lenientParse(prep.source.text ?? '').value as { pack?: Record<string, unknown>; papers?: Record<string, unknown>[] };
   raw.pack = { ...(raw.pack ?? {}), title: meta.title, subject: meta.subject, setId: prep.setId };
   const files: PlanFile[] = [];
@@ -174,17 +164,27 @@ export async function buildPlan(prep: Prepared, meta: SetMeta, confirmed: Record
   for (const [path, blob] of prep.source.pdfs) await add(path, blob, path.split('/').pop() ?? path);
   for (const [path, blob] of prep.source.files) await add(path, blob, path.split('/').pop() ?? path);
 
-  const registry = be ? await be.lookupPapers([...new Set(keys.map((k) => k.key).filter((k): k is string => !!k))]) : [];
   const doc = docOf(prep.source);
+  const fpOf = (i: number) => keys[i]?.fingerprint ?? doc.papers[i]?.fingerprint;
+  const asks = doc.papers.map((p, i) => ({
+    ...(p.pdf?.questionPaper && byPath[p.pdf.questionPaper] ? { qp: byPath[p.pdf.questionPaper] } : {}),
+    ...(fpOf(i) ? { fp: fpOf(i) } : {}),
+    ...(keys[i]?.key ? { key: keys[i]!.key! } : {}),
+  }));
+  const matches = be && asks.some((a) => a.qp || a.fp || a.key) ? await be.matchPapers(asks) : asks.map(() => null);
   const papers: SetManifest['papers'] = [];
+  const links: PaperLink[] = [];
   doc.papers.forEach((p, i) => {
     const key = keys[i]?.key ?? null;
+    const fp = fpOf(i);
     const rawPaper = raw.papers?.[i];
     if (rawPaper && key) rawPaper.key = key;
-    const reg = key ? registry.find((r) => r.key === key) : undefined;
+    if (rawPaper && fp) rawPaper.fingerprint = fp;
+    const reg = matches[i] ?? undefined;
     let qp = p.pdf?.questionPaper ? byPath[p.pdf.questionPaper] : undefined;
     let ms = p.pdf?.markScheme ? byPath[p.pdf.markScheme] : undefined;
-    // Same paper key already in the Library: link its stored files, upload nothing new for them.
+    links.push({ docId: p.id, title: p.title, label: key ?? reg?.label ?? null, linked: reg && (reg.qp !== qp || reg.how !== 'file') ? reg.how : reg ? 'file' : null });
+    // The same paper is already in the Library: link its stored files, upload nothing new for them.
     const link = (h: string | null | undefined, path: string | undefined, kind: 'questionPaper' | 'markScheme', name: string) => {
       if (!h) return undefined;
       const at = path ?? `pdfs/${name}.pdf`;
@@ -192,10 +192,11 @@ export async function buildPlan(prep: Prepared, meta: SetMeta, confirmed: Record
       if (rawPaper) rawPaper.pdf = { ...((rawPaper.pdf as Record<string, string> | undefined) ?? {}), [kind]: at };
       return h;
     };
-    if (reg?.qp && reg.qp !== qp) qp = link(reg.qp, p.pdf?.questionPaper, 'questionPaper', key!);
-    if (reg?.ms && reg.ms !== ms) ms = link(reg.ms, p.pdf?.markScheme, 'markScheme', reg.msKey);
+    const name = key ?? `paper-${reg?.qp.slice(0, 12) ?? i}`;
+    if (reg?.qp && reg.qp !== qp) qp = link(reg.qp, p.pdf?.questionPaper, 'questionPaper', name);
+    if (reg?.ms && reg.ms !== ms) ms = link(reg.ms, p.pdf?.markScheme, 'markScheme', key ? key.replace('_qp_', '_ms_') : `${name}-ms`);
     const r = prep.report.papers[i];
-    papers.push({ id: p.id, key, title: p.title, questionCount: p.questionCount, keyed: Math.min(p.questionCount, r?.keyed ?? 0), ...(qp ? { qp } : {}), ...(ms ? { ms } : {}), ...(p.bare ? { bare: true } : {}) });
+    papers.push({ id: p.id, key, title: p.title, questionCount: p.questionCount, keyed: Math.min(p.questionCount, r?.keyed ?? 0), ...(qp ? { qp } : {}), ...(ms ? { ms } : {}), ...(p.bare ? { bare: true } : {}), ...(fp ? { fp } : {}) });
   });
   // Files linked from the registry replace this device's copies, which then need no upload.
   const used = new Set(Object.values(byPath));
@@ -212,7 +213,7 @@ export async function buildPlan(prep: Prepared, meta: SetMeta, confirmed: Record
   const total = all.reduce((a, f) => a + f.size, 0) + [...used].filter((h) => !all.some((f) => f.hash === h)).length;
   if (total > MAX_SET_BYTES) throw new BackendError('A set version is limited to 200 MB. Split it into two sets.');
   const manifest: SetManifest = { format: MANIFEST_FORMAT, pack: packHash, ...(coverHash ? { cover: coverHash } : {}), files: Object.fromEntries(Object.entries(byPath).sort()), papers, meta: { title: meta.title.trim().slice(0, 120), description: meta.description.trim().slice(0, 1000), subject: meta.subject.slice(0, 80), code: meta.code.slice(0, 20) } };
-  return { setId: prep.setId, base: prep.base, ...(prep.packId ? { packId: prep.packId } : {}), manifest, files: all, done: [] };
+  return { setId: prep.setId, base: prep.base, ...(prep.packId ? { packId: prep.packId } : {}), manifest, files: all, done: [], links };
 }
 
 const PENDING = 'pendingPost';
