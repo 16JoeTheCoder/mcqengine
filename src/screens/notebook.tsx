@@ -47,7 +47,7 @@ export function Notebook({ packId }: { packId: string }) {
   if (data === 'missing')
     return (
       <main class="page" style={{ paddingTop: '96px' }}>
-        <h1>Pack not found</h1>
+        <h1>Paper set not found</h1>
       </main>
     );
   if (!data)
@@ -65,7 +65,7 @@ export function Notebook({ packId }: { packId: string }) {
         <h1 class="display"><span class="light">Mistakes</span> notebook</h1>
         <p class="muted">{entries.length} question{entries.length === 1 ? '' : 's'} in your mistakes bank, as of {fmtDate(Date.now())}.</p>
         <div class="row no-print">
-          <Button onClick={() => navigate(href.pack(packId))}><Icon name="left" size={18} /> Back to pack</Button>
+          <Button onClick={() => navigate(href.pack(packId))}><Icon name="left" size={18} /> Back to paper set</Button>
           <Button variant="primary" onClick={() => print()} disabled={!entries.length}>Print</Button>
         </div>
       </section>

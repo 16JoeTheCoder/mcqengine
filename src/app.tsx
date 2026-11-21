@@ -14,7 +14,7 @@ import { PackScreen } from './screens/pack';
 import { SessionScreen } from './screens/session';
 import { lazy } from './ui/lazy';
 import { authStore, backend, initAuth } from './lib/backend';
-import { syncLabel, syncNow, syncStore } from './lib/sync/sync';
+import { syncEnabled, syncLabel, syncNow, syncStore } from './lib/sync/sync';
 import { AccountButton, AccountDialog } from './screens/account';
 
 /** The sign-in welcome shows once per tab session. Automated browsers skip it unless a test opts in. */
@@ -34,6 +34,7 @@ const PromptDialog = lazy(() => import('./screens/prompt').then((m) => m.PromptD
 const CommandPalette = lazy(() => import('./screens/palette').then((m) => m.CommandPalette));
 const Notebook = lazy(() => import('./screens/notebook').then((m) => m.Notebook));
 const SchoolLibrary = lazy(() => import('./screens/school-library').then((m) => m.SchoolLibrary));
+const AdminPanel = lazy(() => import('./screens/admin').then((m) => m.AdminPanel));
 
 /** Set by main.tsx when a new service worker is waiting. */
 export const updateReady = createStore<(() => void) | null>(null);
@@ -79,7 +80,7 @@ export function App() {
       void store.requestPersistence();
       setReady(true);
     })();
-    const quota = () => toast('Storage is full. Export a backup and delete packs you no longer need.');
+    const quota = () => toast('Storage is full. Export a backup and delete paper sets you no longer need.');
     const blocked = () => toast('DMC was updated in another tab. Reload to continue.', { label: 'Reload', run: () => location.reload() }, 30_000);
     addEventListener('dmc:quota', quota);
     addEventListener('dmc:db-blocked', blocked);
@@ -119,7 +120,7 @@ export function App() {
       if (!firstRoute.current) document.getElementById('main')?.focus({ preventScroll: true });
       firstRoute.current = false;
     });
-    const t = route.name === 'library' ? 'DMC' : route.name === 'school' ? 'Library · DMC' : route.name === 'settings' ? 'Settings · DMC' : route.name === 'results' ? 'Results · DMC' : route.name === 'session' ? 'Session · DMC' : 'Pack · DMC';
+    const t = route.name === 'library' ? 'DMC' : route.name === 'school' ? 'Library · DMC' : route.name === 'admin' ? 'Admin · DMC' : route.name === 'settings' ? 'Settings · DMC' : route.name === 'results' ? 'Results · DMC' : route.name === 'session' ? 'Session · DMC' : 'Paper set · DMC';
     document.title = t;
   }, [route]);
 
@@ -129,8 +130,8 @@ export function App() {
   useEffect(() => {
     if (!backend) return;
     const run = () => {
-      const a = authStore.get().account;
-      if (a) void syncNow(backend, a.id);
+      const { account: a, syncDefault } = authStore.get();
+      if (a && syncEnabled(a.id, syncDefault)) void syncNow(backend, a.id);
     };
     let last: string | null = null;
     const off = authStore.sub((s) => {
@@ -249,7 +250,7 @@ export function App() {
             </a>
             <nav class="crumbs hide-sm" aria-label="Breadcrumb">
               <span aria-hidden="true">/</span>
-              <a href={href.library()} aria-current={route.name === 'library' ? 'page' : undefined}>Packs</a>
+              <a href={href.library()} aria-current={route.name === 'library' ? 'page' : undefined}>Paper sets</a>
               {crumb && (
                 <>
                   <span aria-hidden="true">/</span>
@@ -266,6 +267,14 @@ export function App() {
                 <>
                   <span aria-hidden="true">/</span>
                   <a href={href.school()} aria-current="page">Library</a>
+                </>
+              )}
+              {route.name === 'admin' && (
+                <>
+                  <span aria-hidden="true">/</span>
+                  <a href={href.school()}>Library</a>
+                  <span aria-hidden="true">/</span>
+                  <span aria-current="page">Admin</span>
                 </>
               )}
               {route.name === 'settings' && (
@@ -305,6 +314,7 @@ export function App() {
       {route.name === 'results' && <Results id={route.id} />}
       {route.name === 'settings' && <SettingsScreen onImport={() => openImport()} onAbout={() => setAbout(true)} />}
       {route.name === 'school' && <SchoolLibrary />}
+      {route.name === 'admin' && <AdminPanel />}
       {route.name === 'notebook' && <Notebook packId={route.id} />}
 
       {!inSession && (
@@ -336,8 +346,8 @@ export function App() {
         <CommandPalette
           onClose={() => setPalette(false)}
           actions={[
-            { id: 'import', label: 'Import', hint: 'pack, zip, PDFs or backup', run: () => openImport() },
-            { id: 'prompt', label: 'Make a pack with AI', hint: 'prompt', run: () => openPrompt() },
+            { id: 'import', label: 'Import', hint: 'PDFs, a paper-set zip or a backup', run: () => openImport() },
+            { id: 'prompt', label: 'Make a paper set with AI', hint: 'prompt', run: () => openPrompt() },
           ]}
         />
       )}

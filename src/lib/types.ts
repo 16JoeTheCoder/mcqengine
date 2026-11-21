@@ -69,6 +69,8 @@ export interface PaperMeta {
   pdf?: { qp?: string; ms?: string };
   /** Bare PDF paper: questions have no typed content until snipped; practice reads the PDF. */
   bare?: boolean;
+  /** Canonical Cambridge key of the question paper (`9702_s24_qp_12`), when known. Papers match by it. */
+  paperKey?: string;
 }
 
 export interface GradeBoundary {
@@ -97,7 +99,17 @@ export interface Pack {
   examDate?: string;
   /** Where the pack came from. Library packs cannot be re-shared with "pack for friends". */
   origin?: { kind: 'library'; setId: string; title?: string };
+  /**
+   * Permanent set ID (UUID), made once when the set is first made on a device and carried by
+   * post, download, sync, export and re-import. Legacy packs get one on first export or post.
+   */
+  setId?: string;
+  /** The Library version this copy last matched; a newer one shows "Update available". */
+  libraryVersion?: number;
 }
+
+/** The set identity of a pack, including legacy `lib-<set id>` downloads. */
+export const setIdOf = (p: Pick<Pack, 'setId' | 'origin'>): string | undefined => p.setId ?? p.origin?.setId;
 
 export type SessionType = 'paper' | 'random' | 'drill' | 'daily';
 
@@ -110,6 +122,8 @@ export const CAUSES: { value: Cause; label: string }[] = [
   { value: 'time', label: 'Ran out of time' },
 ];
 export type SessionMode = 'exam' | 'practice';
+/** DMC mode shows typed questions; PDF mode shows the printed paper beside an answer sheet. */
+export type SessionView = 'dmc' | 'pdf';
 export type SessionStatus = 'active' | 'saved' | 'submitted' | 'auto-submitted';
 
 export type TimerKind = 'none' | 'total' | 'perq';
@@ -203,6 +217,8 @@ export interface SessionDetail {
   key?: (number | null)[];
   /** Content actually shown when submitted, retained for historical review. */
   snapshots?: Question[];
+  /** PDF mode: the real paper with an answer sheet. Same question IDs, grading and stats. */
+  view?: SessionView;
   regrades?: { at: number; previousKey: (number | null)[]; key: (number | null)[]; previousCorrect: number; correct: number }[];
 }
 

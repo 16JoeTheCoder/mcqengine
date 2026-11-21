@@ -6,14 +6,16 @@ import { useStore } from '../lib/app-state';
 import { db } from '../lib/data/db';
 import { sha256Hex, type ImportSource } from '../lib/data/files';
 import { openPdf } from '../lib/pdf/pdf';
-import { extractBatch, makePack, preparePage, selectedPages, type AiBatch, type AiConfig } from '../lib/ai/import';
+import { extractBatch, makePack, preparePage, selectedPages, type AiBatch } from '../lib/ai/import';
+import type { AiConfig } from '../../shared/ai-protocol';
 import { Badge, Button, Field, Modal } from '../ui/kit';
 
 interface ChosenPdf { file: File; doc: PDFDocumentProxy; hash: string }
 interface Recovery { batches: Record<string, AiBatch> }
 
 /** AI drafts enter the same editable, validated review and conflict pipeline as manual packs. */
-export function AiImport({ onBack, onReady }: { onBack: () => void; onReady: (source: ImportSource) => void }) {
+/** Escape and the close button end the whole import; "Manual import" goes back one step. */
+export function AiImport({ onBack, onClose, onReady }: { onBack: () => void; onClose: () => void; onReady: (source: ImportSource) => void }) {
   const auth = useStore(authStore);
   const account = auth.account?.id;
   const [qp, setQp] = useState<ChosenPdf | null>(null);
@@ -50,9 +52,7 @@ export function AiImport({ onBack, onReady }: { onBack: () => void; onReady: (so
     const abort = new AbortController();
     void (async () => {
       try {
-        const token = await backend.accessToken();
-        if (!token) throw new Error('Sign in again before using AI import.');
-        const response = await fetch('/api/ai/config', { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store', signal: abort.signal });
+        const response = await fetch('/api/ai/config', { credentials: 'same-origin', cache: 'no-store', signal: abort.signal });
         if (!response.ok) throw new Error('AI import is unavailable on this deployment. Use manual import, or check the Worker configuration.');
         const result = await response.json() as AiConfig;
         if (!result.configured) throw new Error('AI import needs a model and NVIDIA Worker secret. Manual PDF import remains available.');
@@ -86,8 +86,6 @@ export function AiImport({ onBack, onReady }: { onBack: () => void; onReady: (so
     try {
       const questionPages = selectedPages(pages,qp.doc.numPages,20);
       const schemePages = ms ? selectedPages(msPages,ms.doc.numPages,Math.min(3,config.maxPagesPerBatch-1)) : [];
-      const token = await backend.accessToken(); check();
-      if (!token) throw new Error('Sign in again before using AI import.');
       const workspace = await db(); check();
       const recoveryKey = `ai-import:v${AI_PROTOCOL_VERSION}:${config.model}:${qp.hash}:${ms?.hash ?? ''}:${questionPages.join(',')}:${schemePages.join(',')}:${images}`;
       const saved = await workspace.get('meta',recoveryKey) as Recovery | undefined;
@@ -105,12 +103,12 @@ export function AiImport({ onBack, onReady }: { onBack: () => void; onReady: (so
         const prepared = await preparePage(qp.doc,page,'question',images,config); check();
         const batch = [prepared,...scheme];
         if (new TextEncoder().encode(JSON.stringify({pages:batch,hasMarkScheme:!!ms})).length > config.maxPayloadBytes) throw new Error(`Page ${page} and the selected mark scheme exceed the request limit. Select fewer mark-scheme pages or turn off page images for text PDFs.`);
-        const result = await extractBatch(batch,!!ms,token,abort.signal); check();
+        const result = await extractBatch(backend,batch,!!ms,abort.signal,(position)=>setStatus(position ? `Page ${page}: waiting for the shared AI limit, position ${position} in the queue` : `Processing page ${page} · ${i+1} of ${questionPages.length}`)); check();
         recovery.batches[page] = result;
         await workspace.put('meta',recovery,recoveryKey); check();
       }
       setStatus('Preparing source crops and review…');
-      const result = await makePack(questionPages.map(p=>recovery.batches[p]!),qp.doc,title.trim() || 'Imported paper',!!ms); check();
+      const result = await makePack(questionPages.map(p=>recovery.batches[p]!),qp.doc,title.trim() || 'Imported paper',!!ms,{qp:qp.file.name,...(ms?{ms:ms.file.name}:{})}); check();
       setDraft(result); setStatus('Completed pages saved locally. Review before importing.');
     } catch (e) {
       if (live.current && authStore.get().account?.id === capturedAccount) {
@@ -126,10 +124,10 @@ export function AiImport({ onBack, onReady }: { onBack: () => void; onReady: (so
     onReady({name:qp.file.name,text:draft.text,files:draft.files,pdfs,skipped:[]});
   };
 
-  return <Modal title="Import PDF with AI" size="wide" onClose={() => { controller.current?.abort(); onBack(); }}>
+  return <Modal title="Import PDF with AI" size="wide" onClose={() => { controller.current?.abort(); onClose(); }}>
     <div class="stack">
       <p class="muted">Extract a draft from selected PDF pages, then check it against the original. Your PDFs stay on this device. Selected page text and images are sent to NVIDIA only when you start.</p>
-      {!account && <div class="notice notice--warn" role="status">Sign in with email to use AI import. You can import PDFs manually without an account.</div>}
+      {!account && <div class="notice notice--warn" role="status">Sign in to use AI import. You can import PDFs manually without an account.</div>}
       {error && <div class="notice notice--bad" role="alert">{error}</div>}
       <div class="grid-even">
         <Field label="Question paper PDF"><input class="input" type="file" accept=".pdf,application/pdf" disabled={busy || loading} onChange={e=>void choose(e.currentTarget.files?.[0],'question')} /></Field>

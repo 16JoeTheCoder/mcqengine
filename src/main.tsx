@@ -7,6 +7,26 @@ import { routeStore } from './lib/app-state';
 render(<App />, document.getElementById('app')!);
 
 /**
+ * The app reports its own errors to the Worker (Workers Observability keeps them). At most five
+ * per page load; only the message, stack, route name and version: no URLs, ids or content.
+ */
+if (import.meta.env.PROD && (import.meta.env.VITE_BACKEND ?? 'cloudflare') === 'cloudflare') {
+  let sent = 0;
+  const report = (kind: string, e: unknown) => {
+    if (sent++ >= 5) return;
+    const err = e instanceof Error ? e : new Error(String(e));
+    void fetch('./api/client-error', {
+      method: 'POST',
+      keepalive: true,
+      headers: { 'Content-Type': 'application/json', 'X-DMC': '1' },
+      body: JSON.stringify({ kind, message: err.message.slice(0, 500), stack: (err.stack ?? '').slice(0, 2000), route: routeStore.get().name, version: __APP_VERSION__ }),
+    }).catch(() => {});
+  };
+  addEventListener('error', (e) => report('error', e.error ?? e.message));
+  addEventListener('unhandledrejection', (e) => report('unhandledrejection', e.reason));
+}
+
+/**
  * Service worker: precaches the build for full offline use. A new version waits until the user
  * chooses to update, and the prompt is never shown during a session, so a running session's code
  * is never swapped underneath it.

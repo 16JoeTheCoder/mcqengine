@@ -54,7 +54,8 @@ export interface Rect {
 }
 
 /** Renders a normalised rectangle (0-1 of the page) of a page to a PNG blob. */
-export async function cropPage(doc: PDFDocumentProxy, pageNo: number, r: Rect, cssWidth = 900): Promise<Blob> {
+/** Renders a rectangle of a page at `cssWidth` pixels wide (pass twice the display width for sharp HiDPI figures). */
+export async function cropPage(doc: PDFDocumentProxy, pageNo: number, r: Rect, cssWidth = 900, type: 'image/png' | 'image/webp' = 'image/png', quality?: number): Promise<Blob> {
   const page = await doc.getPage(pageNo);
   const base = page.getViewport({ scale: 1 });
   const scale = cssWidth / (base.width * Math.max(0.05, r.w));
@@ -67,5 +68,6 @@ export async function cropPage(doc: PDFDocumentProxy, pageNo: number, r: Rect, c
   out.width = Math.max(1, Math.round(r.w * full.width));
   out.height = Math.max(1, Math.round(r.h * full.height));
   out.getContext('2d')!.drawImage(full, r.x * full.width, r.y * full.height, out.width, out.height, 0, 0, out.width, out.height);
-  return new Promise((res, rej) => out.toBlob((b) => (b ? res(b) : rej(new Error('Could not crop'))), 'image/png'));
+  // Browsers without WebP encoding return PNG; the importer stores whatever type arrives.
+  return new Promise((res, rej) => out.toBlob((b) => (b ? res(b) : rej(new Error('Could not crop'))), type, quality));
 }

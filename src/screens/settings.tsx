@@ -6,7 +6,8 @@ import { Button, Field, Modal, Seg, Toggle } from '../ui/kit';
 import { Icon } from '../ui/icons';
 import { focusMainIfLost } from '../ui/kit';
 import { Signature, DmcMark } from '../ui/brand';
-import { authStore } from '../lib/backend';
+import { authStore, backend } from '../lib/backend';
+import { setSyncEnabled, syncEnabled, syncNow } from '../lib/sync/sync';
 import { adoptLegacy } from '../lib/data/workspace';
 import { BackupPanel } from './data';
 
@@ -33,6 +34,7 @@ export function SettingsScreen({ onImport, onAbout }: { onImport: () => void; on
         <h1 class="display"><span class="light">Your</span> settings</h1>
       </div>
       <div class="stack" style={{ gap: 'var(--space-6)', maxWidth: '880px' }}>
+        <SyncSetting />
         <section class="jy-panel stack" aria-labelledby="s-exam">
           <h2 id="s-exam">Exam</h2>
           <Field label="Exam date" hint="Shows a countdown on each pack. Optional.">
@@ -62,7 +64,7 @@ export function SettingsScreen({ onImport, onAbout }: { onImport: () => void; on
 
         <section class="jy-panel stack" aria-labelledby="s-data">
           <h2 id="s-data">Data</h2>
-          <p class="small muted prose">Packs and PDFs are stored in this workspace. Signed-in progress syncs; full backups preserve your files. Clearing site data erases local files, so back up regularly.</p>
+          <p class="small muted prose">Paper sets and PDFs are stored in this workspace. Signed-in progress syncs; full backups preserve your files. Clearing site data erases local files, so back up regularly.</p>
           <Toggle label="Backup reminder" hint={`Offer a full backup every ${s.backupEvery} completed sessions.`} checked={s.backupReminder} onChange={(v) => set({ backupReminder: v })} />
           {s.backupReminder && (
             <Field label="Remind every (sessions)">
@@ -76,7 +78,7 @@ export function SettingsScreen({ onImport, onAbout }: { onImport: () => void; on
             try { const count = await adoptLegacy(authStore.get().account?.id ?? null); bump(); toast(`Recovered ${count} legacy records.`); } catch(e) { toast((e as Error).message); }
           }}>Recover previous-version data</Button></div>
           <div class="row">
-            <Button onClick={onImport}><Icon name="upload" size={18} /> Import pack or backup</Button>
+            <Button onClick={onImport}><Icon name="upload" size={18} /> Import paper set or backup</Button>
             <span class="spacer" />
             <Button variant="danger" onClick={() => setWipe(true)}><Icon name="trash" size={18} /> Erase all data</Button>
           </div>
@@ -111,6 +113,26 @@ export function SettingsScreen({ onImport, onAbout }: { onImport: () => void; on
   );
 }
 
+/** Per device and per account: on by default for school accounts, off for personal ones. */
+function SyncSetting() {
+  const auth = useStore(authStore);
+  const a = auth.account;
+  const [on, setOn] = useState(() => (a ? syncEnabled(a.id, auth.syncDefault) : false));
+  useEffect(() => { if (a) setOn(syncEnabled(a.id, auth.syncDefault)); }, [a?.id, auth.syncDefault]);
+  if (!a || !backend) return null;
+  return (
+    <section class="jy-panel stack" aria-labelledby="s-sync">
+      <h2 id="s-sync">Sync</h2>
+      <Toggle
+        label="Sync my progress with my account"
+        hint={`Sessions, mistakes, fixes and settings, for ${a.email}. Paper sets and PDFs stay on each device. ${auth.syncDefault ? 'On by default for school accounts.' : 'Off by default for personal accounts.'}`}
+        checked={on}
+        onChange={(v) => { setSyncEnabled(a.id, v); setOn(v); if (v) void syncNow(backend, a.id); }}
+      />
+    </section>
+  );
+}
+
 export function AboutDialog({ onClose }: { onClose: () => void }) {
   return (
     <Modal title="About DMC" size="wide" onClose={onClose}>
@@ -130,7 +152,7 @@ export function AboutDialog({ onClose }: { onClose: () => void }) {
           </div>
           <div class="stack-s">
             <div class="label">Your data</div>
-            <span>Packs and progress stay on this device. Accounts sync practice progress through Supabase. PDF import sends only selected pages to NVIDIA after your confirmation. Cloud backups are optional.</span>
+            <span>Paper sets and progress stay on this device. Signed in, your practice progress can sync through DMC's own server on Cloudflare. PDF import sends only selected pages to NVIDIA after your confirmation. Cloud backups are optional.</span>
           </div>
         </div>
         <div class="small muted stack-s">

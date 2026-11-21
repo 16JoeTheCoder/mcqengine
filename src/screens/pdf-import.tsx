@@ -121,7 +121,7 @@ export function PdfImport({ files, pack, onClose }: { files: File[]; pack?: Pack
           <>
             {!pack && (
               <div class="grid-even">
-                <Field label="Pack name"><input class="input" value={packTitle} onInput={(e) => setPackTitle((e.target as HTMLInputElement).value)} /></Field>
+                <Field label="Paper set name"><input class="input" value={packTitle} onInput={(e) => setPackTitle((e.target as HTMLInputElement).value)} /></Field>
                 <Field label="Subject"><input class="input" value={subject} onInput={(e) => setSubject((e.target as HTMLInputElement).value)} /></Field>
               </div>
             )}

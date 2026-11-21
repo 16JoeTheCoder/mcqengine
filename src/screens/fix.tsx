@@ -172,7 +172,7 @@ export function FixQuestion({ packId, question, onClose, onSaved, allowAnswer = 
           </div>
         </div>
         <label class="check">
-          <input type="checkbox" checked={reported} onChange={(e) => setReported((e.target as HTMLInputElement).checked)} /> Report an error in this question (listed in the pack's Data section)
+          <input type="checkbox" checked={reported} onChange={(e) => setReported((e.target as HTMLInputElement).checked)} /> Report an error in this question (listed in the paper set's Data section)
         </label>
         {reported && (
           <Field label="What is wrong?">

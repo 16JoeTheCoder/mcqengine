@@ -39,7 +39,7 @@ export function CommandPalette({ onClose, actions }: { onClose: () => void; acti
       ...actions,
       ...packs.map((p) => ({ id: `pack:${p.id}`, label: `Open ${p.title}`, hint: p.subject, run: () => navigate(href.pack(p.id)) })),
       ...packs.map((p) => ({ id: `ins:${p.id}`, label: `Insights for ${p.title}`, run: () => navigate(href.pack(p.id, 'insights')) })),
-      { id: 'home', label: 'Go home', hint: 'your packs', run: () => navigate(href.library()) },
+      { id: 'home', label: 'Go home', hint: 'your paper sets', run: () => navigate(href.library()) },
       { id: 'school', label: 'School Library', hint: 'shared paper sets', run: () => navigate(href.school()) },
       { id: 'settings', label: 'Settings', run: () => navigate(href.settings()) },
       { id: 'backup', label: 'Export everything', hint: 'backup', run: () => void doBackup('everything') },
@@ -62,8 +62,8 @@ export function CommandPalette({ onClose, actions }: { onClose: () => void; acti
         aria-expanded="true"
         aria-controls={listId}
         aria-activedescendant={shown[i] ? `${listId}-${i}` : undefined}
-        aria-label="Search commands and packs"
-        placeholder="Type a pack or an action"
+        aria-label="Search commands and paper sets"
+        placeholder="Type a paper set or an action"
         value={q}
         autoFocus
         onInput={(e) => {

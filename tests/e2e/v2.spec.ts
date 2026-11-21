@@ -31,7 +31,7 @@ test('submit without a key, then attach one: the session is regraded', async ({ 
 
 test('PDF papers: mark scheme read into a grid, practised from the PDF, snipped', async ({ page }) => {
   await page.goto('./');
-  await page.getByRole('button', { name: /Import a pack file/ }).click();
+  await page.getByRole('button', { name: /Import a paper-set file/ }).click();
   await page.getByRole('dialog').locator('input[type=file][accept*=pdf]').setInputFiles([
     { name: '9702_s23_qp_12.pdf', mimeType: 'application/pdf', buffer: Buffer.from(questionPaperPdf(4, 2)) },
     { name: '9702_s23_ms_12.pdf', mimeType: 'application/pdf', buffer: Buffer.from(markSchemePdf('BCDA')) },
@@ -43,7 +43,7 @@ test('PDF papers: mark scheme read into a grid, practised from the PDF, snipped'
   await expect(dlg.getByText('Read, not confirmed')).toBeVisible();
   await dlg.getByRole('button', { name: 'Check key' }).click();
   const key = page.getByRole('dialog', { name: /Key for/ });
-  await expect(key.getByRole('radiogroup', { name: 'Question 1' }).getByRole('radio', { name: 'B' })).toHaveAttribute('aria-checked', 'true');
+  await expect(key.getByRole('radiogroup', { name: 'Question 1', exact: true }).getByRole('radio', { name: 'B' })).toHaveAttribute('aria-checked', 'true');
   await key.getByRole('button', { name: 'Confirm key' }).click();
   await expect(dlg.getByText('Key confirmed')).toBeVisible();
   await dlg.getByRole('button', { name: /Add 1 paper/ }).click();
@@ -55,8 +55,9 @@ test('PDF papers: mark scheme read into a grid, practised from the PDF, snipped'
   const canvas = page.locator('.pdf-pane canvas');
   await expect(canvas).toBeVisible();
   await expect.poll(async () => (await canvas.boundingBox())?.height ?? 0).toBeGreaterThan(200);
-  await page.keyboard.press('b');
-  await expect(page.getByText('Correct', { exact: true }).first()).toBeVisible();
+  // A paper without typed questions opens in PDF mode: the printed paper beside an answer sheet.
+  await page.getByRole('radiogroup', { name: 'Question 1', exact: true }).getByRole('radio', { name: /^B/ }).click();
+  await expect(page.locator('.sheet-row').first().getByText('Right')).toBeVisible();
   await page.getByRole('button', { name: 'End session' }).click();
   await page.getByRole('dialog').getByRole('button', { name: /Save for later/ }).click();
 
@@ -85,7 +86,7 @@ test('third attempt with a new best: personal best moment and a result card PNG'
     await page.getByRole('button', { name: 'Finish' }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Submit', exact: true }).click();
     await expect(page.getByText(`${right}/4`)).toBeVisible();
-    if (right < 4) await page.getByRole('button', { name: /Back to pack/ }).click();
+    if (right < 4) await page.getByRole('button', { name: /Back to paper set/ }).click();
   }
   await expect(page.getByText('Personal best', { exact: true })).toBeVisible();
   await expect(page.getByText('up from 75%', { exact: false })).toBeVisible();

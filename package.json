@@ -14,12 +14,11 @@
     "e2e": "playwright test",
     "check": "npm run typecheck && npm run worker:typecheck && npm run lint && npm test && npm run build",
     "worker:typecheck": "tsc --noEmit -p worker/tsconfig.json",
-    "worker:dev": "wrangler dev --env development",
-    "worker:deploy": "wrangler deploy",
-    "pages:deploy": "wrangler pages deploy --config wrangler.pages.toml"
+    "worker:local": "vite build --outDir dist-worker && wrangler d1 migrations apply dmc-local --local --env local && wrangler dev --env local --port 8787",
+    "deploy:staging": "npm run build && wrangler deploy --env staging",
+    "deploy:production": "npm run build && wrangler deploy"
   },
   "dependencies": {
-    "@supabase/supabase-js": "2.117.3",
     "fflate": "^0.8.3",
     "idb": "^8.0.4",
     "pdfjs-dist": "6.4.299",
@@ -27,7 +26,6 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.14.0",
-    "@electric-sql/pglite": "0.5.9",
     "@eslint/js": "^9.39.5",
     "@playwright/test": "1.63.0",
     "ajv": "^8.20.0",

@@ -52,8 +52,8 @@ export function BackupPanel() {
         {(
           [
             ['progress', 'Progress only', 'Sessions, stats, fixes and settings, as JSON. Small.'],
-            ['packs', 'Packs only', 'Every pack, paper and image, as a zip.'],
-            ['everything', 'Everything', 'Packs, images, progress and settings in one zip. Use this to move devices.'],
+            ['packs', 'Paper sets only', 'Every paper set, paper and image, as a zip.'],
+            ['everything', 'Everything', 'Paper sets, images, progress and settings in one zip. Use this to move devices.'],
           ] as [Tier, string, string][]
         ).map(([t, title, text]) => (
           <div class="jy-panel backup-card stack-s" key={t}>
@@ -80,31 +80,30 @@ function CloudBackup() {
   const [pct, setPct] = useState<number | null>(null);
   const [restore, setRestore] = useState<{ manifest: string; data: string; images: Map<string, Blob>; pdfs: Map<string, Blob> } | null>(null);
   if (!backend || !auth.account) return null;
-  const path = `${auth.account.id}/packs.zip`;
   const up = async () => {
     setPct(0);
     try {
       const { blob } = await createBackup('packs', Date.now(), { excludeLibrary: true });
-      if (blob.size > 200 * 1024 * 1024) throw new Error('Your packs are over 200 MB; export them to a file instead.');
-      await backend!.upload('backups', { path, blob, contentType: 'application/zip' }, (n) => setPct(Math.round((n / blob.size) * 100)), new AbortController().signal, true);
-      toast('Your packs are backed up to your account.');
+      if (blob.size > 200 * 1024 * 1024) throw new Error('Your paper sets are over 200 MB; export them to a file instead.');
+      await backend!.putBackup(blob, (n) => setPct(Math.round((n / blob.size) * 100)));
+      toast('Your paper sets are backed up to your account.');
     } catch (e) {
       toast((e as Error).message || 'Backup failed.');
     }
     setPct(null);
   };
   const down = async () => {
-    const blob = await backend!.download('backups', path).catch(() => null);
-    if (!blob) return toast('No pack backup in your account yet.');
+    const blob = await backend!.getBackup().catch(() => null);
+    if (!blob) return toast('No paper-set backup in your account yet.');
     const src = await readZip(blob, 'packs.zip');
     if (src.backup) setRestore(src.backup);
   };
   return (
     <div class="jy-panel stack-s">
-      <h3>Packs in your account</h3>
-      <p class="small muted">Optional. Keeps a private copy of your own packs (with their PDFs) in your account, for a new device. Library packs are left out; download them again from the Library.</p>
+      <h3>Paper sets in your account</h3>
+      <p class="small muted">Optional. Keeps a private copy of your own paper sets (with their PDFs) in your account, for a new device. Library sets are left out; download them again from the Library.</p>
       <div class="row">
-        <Button onClick={() => void up()} disabled={pct !== null}><Icon name="upload" size={18} /> {pct === null ? 'Back up my packs' : `Uploading ${pct}%`}</Button>
+        <Button onClick={() => void up()} disabled={pct !== null}><Icon name="upload" size={18} /> {pct === null ? 'Back up my paper sets' : `Uploading ${pct}%`}</Button>
         <Button variant="ghost" onClick={() => void down()}>Restore from my account</Button>
       </div>
       {restore && <RestoreDialog source={restore} onClose={() => setRestore(null)} />}
@@ -160,13 +159,13 @@ export function RestoreDialog({ source, onClose }: { source: { manifest: string;
       {plan && (
         <div class="stack">
           <p class="small muted">
-            {plan.manifest.tier === 'everything' ? 'Full backup' : plan.manifest.tier === 'packs' ? 'Packs backup' : 'Progress backup'} from {fmtDate(plan.manifest.createdAt)}. <Badge status="ok">Checksum verified</Badge>
+            {plan.manifest.tier === 'everything' ? 'Full backup' : plan.manifest.tier === 'packs' ? 'Paper sets backup' : 'Progress backup'} from {fmtDate(plan.manifest.createdAt)}. <Badge status="ok">Checksum verified</Badge>
           </p>
           <p>{adds ? `Adds ${adds}.` : 'Adds nothing new.'}</p>
           {merges && <p>Updates {merges} where the backup is newer.</p>}
           {plan.orphans > 0 && (
             <div class="notice notice--warn">
-              <Badge status="warn">Packs missing</Badge>
+              <Badge status="warn">Paper sets missing</Badge>
               <div class="small">{plan.orphans} progress records belong to packs that are not on this device and are not in this backup, so they are skipped. Import the packs (or a full backup) first to keep that progress.</div>
             </div>
           )}

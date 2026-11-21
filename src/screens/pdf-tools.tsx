@@ -61,7 +61,8 @@ export function PdfPage({ doc, page, onSize }: { doc: PDFDocumentProxy; page: nu
     void renderPage(doc, page, ref.current, w).then((s) => onSize?.(s)).catch(() => {});
   }, [doc, page, w]);
   return (
-    <div ref={box} class="pdf-page paper">
+    // Focusable so keyboard users can scroll a tall page (axe: scrollable-region-focusable).
+    <div ref={box} class="pdf-page paper" tabIndex={0} role="region" aria-label={`PDF page ${page}`}>
       <canvas ref={ref} role="img" aria-label={`Page ${page} of the PDF`} />
     </div>
   );

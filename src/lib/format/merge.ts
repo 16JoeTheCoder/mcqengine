@@ -103,6 +103,11 @@ export interface MergeResult {
   plan: PaperPlan[];
   answersApplied: number;
   conflicts: Issue[];
+  /** Questions whose content differs from the stored copy (same key, different hash). */
+  changed: { paperId: string; n: number }[];
+  /** Set by the importer: the local pack this document's set ID links to, and the set ID itself. */
+  linkedPackId?: string;
+  setId?: string;
   /** PDFs and snips that arrive with a zip (set by the importer). */
   pdfs?: PdfRecord[];
   snips?: Snip[];
@@ -125,6 +130,7 @@ export function metaOf(p: Paper): PaperMeta {
     ...(p.boundaries ? { boundaries: p.boundaries } : {}),
     ...(p.pdf ? { pdf: p.pdf } : {}),
     ...(p.bare ? { bare: true } : {}),
+    ...(p.paperKey ? { paperKey: p.paperKey } : {}),
   };
 }
 
@@ -165,8 +171,11 @@ export function mergeDoc(
   overrides: Record<string, PaperOverrides> = {},
   questionOverrides: ReadonlyMap<string, QuestionOverride> = new Map(),
   now = Date.now(),
+  /** For edited questions: keep the stored copy, or take the incoming one. Unset = conflict. */
+  prefer?: 'mine' | 'theirs',
 ): MergeResult {
   const conflicts: Issue[] = [];
+  const changed: MergeResult['changed'] = [];
   const out = new Map<string, Paper>();
   const plan: PaperPlan[] = [];
   let answersApplied = 0;
@@ -193,6 +202,7 @@ export function mergeDoc(
           addedAt: now,
           questions: [],
         };
+    if (np.key && !base.paperKey) base.paperKey = np.key;
     if (np.boundaries) base.boundaries = np.boundaries;
     if (ov.title) base.title = ov.title;
     if (ov.group) base.group = ov.group;
@@ -220,6 +230,13 @@ export function mergeDoc(
       const ovr = questionOverrides.get(`${packId}::${have.id}`);
       const sameContent = have.hash === q.hash || questionHash(applyOverride(have, ovr)) === q.hash;
       if (!sameContent) {
+        changed.push({ paperId: np.id, n: q.n });
+        if (prefer === 'mine') { unchanged++; return; }
+        if (prefer === 'theirs') {
+          byN.set(q.n, { ...q, id: have.id, answer: q.answer ?? have.answer });
+          added++;
+          return;
+        }
         conflicts.push({
           path: `papers[${pi}].questions[${qi}]`,
           message: `Question ${q.n} of "${np.id}" already exists with different content. Fix it in the app instead, or remove it from this import.`,
@@ -230,7 +247,10 @@ export function mergeDoc(
       if (q.answer !== null && have.answer === null) {
         byN.set(q.n, { ...have, answer: q.answer });
         keyed++;
-      } else if (q.answer !== null && have.answer !== q.answer && ovr?.answer === undefined)
+      } else if (q.answer !== null && have.answer !== q.answer && ovr?.answer === undefined && prefer === 'theirs') {
+        byN.set(q.n, { ...have, answer: q.answer });
+        keyed++;
+      } else if (q.answer !== null && have.answer !== q.answer && ovr?.answer === undefined && prefer !== 'mine')
         conflicts.push({
           path: `papers[${pi}].questions[${qi}].answer`,
           message: `Question ${q.n} of "${np.id}" is keyed ${LETTERS[have.answer ?? 0]} already; this import says ${LETTERS[q.answer]}`,
@@ -282,7 +302,7 @@ export function mergeDoc(
     } else plan.push({ id: p.id, title: p.title, status: applied ? 'merge' : 'identical', added: 0, unchanged: 0, keyed: applied });
   });
 
-  return { papers: [...out.values()], plan, answersApplied, conflicts };
+  return { papers: [...out.values()], plan, answersApplied, conflicts, changed };
 }
 
 /** Grade reached with `marks`, and how many marks the next grade up needs. */

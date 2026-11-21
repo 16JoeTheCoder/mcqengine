@@ -461,12 +461,14 @@ const EXT: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', '
 export class ShareError extends Error {}
 
 /**
- * "Pack for friends": a zip in the documented import format with papers, keys, typed content,
+ * "Share with friends": a zip in the documented import format with papers, keys, typed content,
  * PDFs and snips, and the user's fixes applied. Never personal sessions or stats. Packs that came
  * from the school Library are refused: they are shared through the Library only.
  */
-export async function exportPackZip(pack: Pack, papers: Paper[], overrides: QuestionOverride[], snips: Snip[] = []): Promise<{ blob: Blob; name: string }> {
-  if (pack.origin?.kind === 'library') throw new ShareError('This pack came from the school Library. Share it from the Library, not as a file.');
+export async function exportPackZip(pack0: Pack, papers: Paper[], overrides: QuestionOverride[], snips: Snip[] = [], opts: { library?: boolean } = {}): Promise<{ blob: Blob; name: string; doc: unknown }> {
+  if (pack0.origin?.kind === 'library' && !opts.library) throw new ShareError('This pack came from the school Library. Share it from the Library, not as a file.');
+  // The export carries the permanent set ID, so importing the file again updates this same pack.
+  const pack = pack0.setId ? pack0 : await store.ensureSetId(pack0.id).catch(() => ({ ...pack0, setId: pack0.origin?.setId ?? crypto.randomUUID() }));
   const ov = new Map(overrides.map((o) => [o.qid, o] as const));
   const sn = new Map(snips.map((x) => [x.qid, x] as const));
   const pdfFiles: Record<string, Uint8Array> = {};
@@ -505,9 +507,10 @@ export async function exportPackZip(pack: Pack, papers: Paper[], overrides: Ques
   }
   const doc = {
     format: FORMAT_ID,
-    pack: { title: pack.title, subject: pack.subject },
+    pack: { title: pack.title, subject: pack.subject, setId: pack.setId, ...(pack.libraryVersion ? { version: pack.libraryVersion } : {}) },
     papers: sorted.map((p) => ({
         id: p.id,
+        ...(p.paperKey ? { key: p.paperKey } : {}),
         title: p.title,
         group: p.group,
         questionCount: p.questionCount,
@@ -548,7 +551,7 @@ export async function exportPackZip(pack: Pack, papers: Paper[], overrides: Ques
   const { strToU8 } = await import('fflate');
   checkDataLimit(json);
   const zip = await archive({ 'pack.json': strToU8(json), ...files }, pdfFiles);
-  return { blob: new Blob([zip as BlobPart], { type: 'application/zip' }), name: `${pack.id}.dmc.zip` };
+  return { blob: new Blob([zip as BlobPart], { type: "application/zip" }), name: `${pack.id}.dmc.zip`, doc };
 }
 
 export type { Settings };

@@ -1,7 +1,7 @@
 import { trackSession } from '../sync/change-tracking';
 import * as store from '../data/db';
 import { applyOverride, paperComplete, paperKeyed } from '../format/merge';
-import type { AnswerRecord, Pack, Paper, Question, QuestionOverride, Snip, SessionDetail, SessionMode, SessionSummary, SessionType, TimerConfig } from '../types';
+import type { AnswerRecord, Pack, Paper, PaperMeta, SessionView, Question, QuestionOverride, Snip, SessionDetail, SessionMode, SessionSummary, SessionType, TimerConfig } from '../types';
 import { gradeSession, type GradeResult } from './grade';
 import { applyAnswer, drillBudgetMs, emptyStat, selectDrill, statKey } from './mistakes';
 import { drawRandom, standardLength, type PoolItem } from './random';
@@ -68,6 +68,15 @@ export interface StartOptions {
   timer?: { kind: TimerConfig['kind']; minutes?: number; perQSec?: number; strict?: boolean };
   shuffle?: boolean;
   smart?: boolean;
+  /** Paper sessions only: typed questions (DMC mode) or the real PDF with an answer sheet. */
+  view?: SessionView;
+}
+
+/** Which practice modes a paper offers. Papers without typed questions offer PDF mode only. */
+export function paperViews(paper: Pick<PaperMeta, 'bare' | 'pdf'>, viewable: boolean): SessionView[] {
+  const pdf = !!paper.pdf?.qp;
+  if (paper.bare || !viewable) return pdf ? ['pdf'] : [];
+  return pdf ? ['dmc', 'pdf'] : ['dmc'];
 }
 
 /** Typed content, a whole-question image or a snip: the question can be shown on its own. */
@@ -94,13 +103,14 @@ export async function createSession(o: StartOptions, now = Date.now()): Promise<
   if ((o.type as string) === 'daily') throw new Error('Daily sessions are no longer available');
   // One open (active or saved) session per pack, enforced in the engine, not only the UI.
   if ((await store.getOpenSessions()).some((s) => s.packId === o.pack.id))
-    throw new OpenSessionError('This pack has a saved session. Resume, submit or discard it first.');
+    throw new OpenSessionError('This paper set has a saved session. Resume, submit or discard it first.');
   const { papers } = await loadPackContent(o.pack.id);
   const byQ = new Map<string, Paper>();
   for (const p of papers) for (const q of p.questions) byQ.set(q.id, p);
   let ids: string[] = [];
   let title = '';
   let capMin: number;
+  let view: SessionView = 'dmc';
 
   if (o.type === 'paper') {
     const paper = papers.find((p) => p.id === o.paperId);
@@ -109,7 +119,11 @@ export async function createSession(o: StartOptions, now = Date.now()): Promise<
     if (meta && !paperComplete(meta)) throw new Error('This paper is not complete yet');
     if (meta && o.mode === 'practice' && !paperKeyed(meta)) throw new Error('Practice mode needs the answer key. Use Exam mode, or add the key first.');
     ids = paper.questions.map((q) => q.id);
-    if (o.shuffle) ids = shuffle(ids, cryptoRng);
+    const views = paperViews(paper, paper.questions.every(isViewable));
+    if (o.view && !views.includes(o.view)) throw new Error(o.view === 'pdf' ? 'PDF mode needs the question paper PDF on this device' : 'This paper has no typed questions yet; use PDF mode');
+    view = o.view ?? views[0] ?? 'dmc';
+    // The printed paper has a fixed order, so PDF mode never shuffles.
+    if (o.shuffle && view === 'dmc') ids = shuffle(ids, cryptoRng);
     title = paper.title;
     capMin = paper.timeLimitMin;
   } else {
@@ -162,12 +176,13 @@ export async function createSession(o: StartOptions, now = Date.now()): Promise<
     sources,
     answers,
     current: 0,
-    shuffled: !!o.shuffle || o.type !== 'paper',
+    shuffled: (!!o.shuffle && view === 'dmc') || o.type !== 'paper',
+    ...(view === 'pdf' ? { view } : {}),
     ...(timer ? { timer: { config: timer, remainingMs: timer.totalMs } } : {}),
   };
   detail.snapshots = [...(await loadSessionQuestions(detail)).values()].filter((q) => ids.includes(q.id)).map((q) => structuredClone(q));
   if (!(await store.createOpenSession(summary, detail)))
-    throw new OpenSessionError('This pack has a saved session. Resume, submit or discard it first.');
+    throw new OpenSessionError('This paper set has a saved session. Resume, submit or discard it first.');
   return { summary, detail };
 }
 

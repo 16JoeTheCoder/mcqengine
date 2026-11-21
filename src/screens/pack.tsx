@@ -25,8 +25,10 @@ const SECTIONS = [
   ['start', 'Start'],
   ['papers', 'Papers'],
   ['insights', 'Insights'],
-  ['data', 'Data'],
+  ['data', 'Share'],
 ] as const;
+/** Before the first finished session there is nothing to analyse: lead with Start, Papers, Share. */
+const FRESH = new Set<string>(['start', 'papers', 'data']);
 
 interface PackData {
   pack: Pack;
@@ -93,7 +95,7 @@ export function PackScreen({ id, section, onImport, onPrompt }: { id: string; se
   if (data === 'missing')
     return (
       <main class="page" style={{ paddingTop: '96px' }}>
-        <h1>Pack not found</h1>
+        <h1>Paper set not found</h1>
         <p class="muted" style={{ margin: '12px 0 24px' }}>It may have been deleted on this device.</p>
         <Button variant="primary" onClick={() => navigate(href.library())}>Go to library</Button>
       </main>
@@ -152,13 +154,14 @@ export function PackScreen({ id, section, onImport, onPrompt }: { id: string; se
   const t = qCount >= 3 ? trend(a.q, metric) : null;
   const fmt = metric === 'pace' ? (x: number) => `${Math.round(x)}` : (x: number) => `${Math.round(x * 100)}`;
   const verdict = a.verdict;
+  const fresh = !sessions.some((x) => x.status === 'submitted' || x.status === 'auto-submitted');
 
   return (
     <>
-      <nav class="secnav" aria-label="Pack sections">
+      <nav class="secnav" aria-label="Paper set sections">
         <div class="page">
           <ul>
-            {SECTIONS.map(([s, l]) => (
+            {SECTIONS.filter(([s]) => !fresh || FRESH.has(s)).map(([s, l]) => (
               <li key={s}>
                 <a href={`#${s}`} aria-current={active === s ? 'true' : undefined} onClick={(e) => { e.preventDefault(); goSection(s); }}>
                   {l}
@@ -172,7 +175,7 @@ export function PackScreen({ id, section, onImport, onPrompt }: { id: string; se
         <section id="overview" aria-label="Overview">
           <div class="pack-hero">
             <div class="stack-s">
-              <span class="label">{pack.subject || 'Pack'}</span>
+              <span class="label">{pack.subject || 'Paper set'}</span>
               <h1 class="display" style={{ overflowWrap: 'anywhere' }}>{pack.title}</h1>
               <div class="facts">
                 <span><b class="num">{fmtInt(pack.papers.length)}</b> paper{pack.papers.length === 1 ? '' : 's'}</span>
@@ -199,10 +202,10 @@ export function PackScreen({ id, section, onImport, onPrompt }: { id: string; se
               <Icon name="alert" />
               <div class="row" style={{ justifyContent: 'space-between' }}>
                 <span class="small">
-                  {missing === pack.papers.length ? 'This pack' : `${missing} of its papers`} came from your other device: results synced, but questions and PDFs never upload.{' '}
-                  {pack.origin?.kind === 'library' ? 'Download it again from the Library to practise here.' : 'Import the pack file here to practise.'}
+                  {missing === pack.papers.length ? 'This paper set' : `${missing} of its papers`} came from your other device: results synced, but questions and PDFs never upload.{' '}
+                  {pack.origin?.kind === 'library' ? 'Download it again from the Library to practise here.' : 'Import the paper-set file here to practise.'}
                 </span>
-                {pack.origin?.kind === 'library' ? <Button onClick={() => navigate(href.school())}>Open Library</Button> : <Button onClick={() => onImport(pack)}>Import pack file</Button>}
+                {pack.origin?.kind === 'library' ? <Button onClick={() => navigate(href.school())}>Open Library</Button> : <Button onClick={() => onImport(pack)}>Import paper-set file</Button>}
               </div>
             </div>
           )}
@@ -226,6 +229,9 @@ export function PackScreen({ id, section, onImport, onPrompt }: { id: string; se
             </div>
           )}
 
+          {fresh ? (
+            <p class="lead muted" style={{ maxWidth: '62ch' }}>No sessions yet. Start a paper below; your scores, pace and mistakes appear here once you finish one.</p>
+          ) : (<>
           <div class="kpis">
             <KpiTile label="Sessions done" k={a.kpis.sessions} format={(x) => `${Math.round(x)}`} deltaFmt={(d) => `${Math.abs(d)} vs previous 30 days`} />
             <KpiTile label="Paper score" k={a.kpis.score} format={(x) => (x * 100).toFixed(0)} unit="%" deltaFmt={(d) => `${Math.abs(d * 100).toFixed(1)} pts vs prior window`} />
@@ -369,6 +375,7 @@ export function PackScreen({ id, section, onImport, onPrompt }: { id: string; se
               <p class="chart-sentence">{a.coverage.papersDone < a.coverage.papers ? 'Finishing every paper once gives the fairest picture of where you stand.' : 'Every paper done at least once. Random and drills keep it fresh.'}</p>
             </div>
           </div>
+          </>)}
         </section>
 
         <section id="start" class="section" aria-labelledby="start-h">
@@ -421,13 +428,15 @@ export function PackScreen({ id, section, onImport, onPrompt }: { id: string; se
           )}
         </section>
 
-        <section id="insights" class="section" aria-labelledby="insights-h">
-          <h2 id="insights-h">Insights</h2>
-          <Insights pack={pack} a={a} sessions={sessions} stats={stats} calibration={settings.calibration} />
-        </section>
+        {!fresh && (
+          <section id="insights" class="section" aria-labelledby="insights-h">
+            <h2 id="insights-h">Insights</h2>
+            <Insights pack={pack} a={a} sessions={sessions} stats={stats} calibration={settings.calibration} />
+          </section>
+        )}
 
         <section id="data" class="section" aria-labelledby="data-h">
-          <h2 id="data-h">Data</h2>
+          <h2 id="data-h">Share and back up</h2>
           <DataSection data={data} />
         </section>
       </main>
@@ -522,7 +531,7 @@ function DataSection({ data }: { data: PackData }) {
   };
   const del = async () => {
     if (await sessionLockHeld()) {
-      toast('A session is running in another tab. Finish it before deleting the pack.');
+      toast('A session is running in another tab. Finish it before deleting the paper set.');
       return;
     }
     await store.deletePack(pack.id);
@@ -542,13 +551,13 @@ function DataSection({ data }: { data: PackData }) {
       </div>
       <div class="grid-even">
         <div class="jy-panel stack-s">
-          <h3>Pack for friends</h3>
+          <h3>Share with friends</h3>
           {pack.origin?.kind === 'library' ? (
-            <p class="small muted">This pack came from the school Library, so it is shared through the Library only. Friends at school can download it there.</p>
+            <p class="small muted">This paper set came from the school Library, so it is shared through the Library only. Friends at school can download it there.</p>
           ) : (
             <>
               <p class="small muted">A zip with papers, keys, typed questions, PDFs and snips, with your fixes applied. Never your sessions or progress.</p>
-              <div><Button onClick={exportPack}><Icon name="download" size={18} /> Export pack</Button></div>
+              <div><Button onClick={exportPack}><Icon name="download" size={18} /> Export paper set</Button></div>
             </>
           )}
         </div>

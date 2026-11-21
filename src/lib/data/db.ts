@@ -125,6 +125,26 @@ export const getPack = async (id: string) => (await db()).get('packs', id);
 export const getPaper = async (key: string) => (await db()).get('papers', key);
 export const getPapers = async (packId: string) => (await db()).getAllFromIndex('papers', 'packId', packId);
 export const getImage = async (id: string) => (await db()).get('images', id);
+/** The local pack that is this set (also legacy `lib-<set id>` downloads). Never matched by title. */
+export async function findPackBySetId(setId: string): Promise<Pack | undefined> {
+  const all = await getPacks();
+  return all.find((p) => p.setId === setId) ?? all.find((p) => p.origin?.setId === setId);
+}
+/** Gives a legacy pack its permanent set ID, once. Returns the pack as stored. */
+export async function ensureSetId(packId: string): Promise<Pack> {
+  return write(async () => {
+    const tx = (await db()).transaction('packs', 'readwrite');
+    const p = await tx.store.get(packId);
+    if (!p) throw new Error('No such pack');
+    if (!p.setId) {
+      p.setId = p.origin?.setId ?? crypto.randomUUID();
+      p.updatedAt = Math.max(Date.now(), p.updatedAt + 1);
+      await tx.store.put(p);
+    }
+    await tx.done;
+    return p;
+  });
+}
 
 export async function savePackAndPapers(pack: Pack, papers: Paper[], images: ImageRecord[] = []) {
   await write(async () => {

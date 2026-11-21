@@ -6,10 +6,10 @@ test('board mode leaves a blank half and reveals only on request', async ({ page
   const data = doc as typeof doc & { papers: { questions: { explanation?: string }[] }[] };
   data.papers[0]!.questions[0]!.explanation = 'A synthetic explanation for classroom review.';
   await page.goto('./');
-  await expect(page.getByRole('button', { name: /Continue without an account|Import a pack file/ }).first()).toBeVisible();
+  await expect(page.getByRole('button', { name: /Continue without an account|Import a paper-set file/ }).first()).toBeVisible();
   const guest = page.getByRole('button', { name: 'Continue without an account', exact: true });
   if (await guest.isVisible()) await guest.click();
-  await page.getByRole('button', { name: 'Import a pack file', exact: true }).click();
+  await page.getByRole('button', { name: 'Import a paper-set file', exact: true }).click();
   await page.getByRole('dialog').locator('textarea').fill(JSON.stringify(data));
   await expect(page.getByText('Valid', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: /Review import/ }).click();

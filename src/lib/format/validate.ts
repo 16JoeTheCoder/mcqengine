@@ -1,5 +1,8 @@
 import { LETTERS, type GradeBoundary } from '../types';
 import { sanitizeSvg } from './svg';
+import { isPaperKey } from '../../../shared/paper-key';
+
+export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export const FORMAT_ID = 'dmc-pack/1';
 
@@ -57,10 +60,15 @@ export interface NPaper {
   pdf?: { questionPaper?: string; markScheme?: string };
   /** No typed content: practised from the PDF, snipped question by question. */
   bare?: boolean;
+  /** File names the paper was transcribed from (`source.questionPaper`), used to work out its key. */
+  source?: { questionPaper?: string; markScheme?: string };
+  /** Canonical Cambridge key (`9702_s24_qp_12`); trusted only from DMC's own exports. */
+  key?: string;
 }
 
 export interface NDoc {
-  pack?: { title?: string; subject?: string };
+  /** `setId` is the set's permanent UUID, carried by DMC exports and Library downloads. */
+  pack?: { title?: string; subject?: string; setId?: string; version?: number };
   papers: NPaper[];
   answers: { paper: string; key: (number | null)[]; path: string }[];
 }
@@ -267,7 +275,7 @@ export function validateDoc(input: unknown, files: ReadonlySet<string> = new Set
   const checkName = (file: string, paperId: string, n: number, path: string) => {
     const m = /^images\/([^/]+)\/q(\d+)(?:-[A-E])?\.[a-z]+$/i.exec(file);
     if (!m) return;
-    if (slugify(m[1] as string) !== paperId || Number(m[2]) !== n)
+    if (slugify(m[1] as string) !== slugify(paperId) || Number(m[2]) !== n)
       err(path, `Image "${file}" is named for paper "${m[1]}" question ${Number(m[2])}, but it is attached to paper "${paperId}" question ${n}. The diagram is probably on the wrong question.`);
   };
 
@@ -304,6 +312,9 @@ export function validateDoc(input: unknown, files: ReadonlySet<string> = new Set
     doc.pack = {};
     if (typeof pk.title === 'string' && pk.title.trim()) doc.pack.title = pk.title.trim().slice(0, LIMITS.title);
     if (typeof pk.subject === 'string' && pk.subject.trim()) doc.pack.subject = pk.subject.trim().slice(0, 80);
+    if (typeof pk.setId === 'string' && UUID_RE.test(pk.setId)) doc.pack.setId = pk.setId.toLowerCase();
+    else if (pk.setId !== undefined) warn('pack.setId', 'Ignored an invalid set ID; the import makes a new set');
+    if (Number.isInteger(pk.version) && Number(pk.version) >= 1) doc.pack.version = Number(pk.version);
   }
   const papers = r.papers === undefined ? [] : r.papers;
   if (!Array.isArray(papers)) err('papers', 'Expected an array of papers');
@@ -318,7 +329,8 @@ export function validateDoc(input: unknown, files: ReadonlySet<string> = new Set
       const title = typeof p.title === 'string' ? normaliseText(p.title.trim(), notes).slice(0, LIMITS.title) : '';
       if (!title) err(`${pp}.title`, 'Missing paper title');
       let id = typeof p.id === 'string' || typeof p.id === 'number' ? String(p.id) : '';
-      const slug = slugify(id || title);
+      // A canonical Cambridge key is already a stable id; keep its underscores.
+      const slug = isPaperKey(id) ? id : slugify(id || title);
       if (!id) notes.add('Generated missing paper ids from titles');
       else if (slug !== id) notes.add(`Normalised paper id "${id}" to "${slug}"`);
       id = slug;
@@ -381,6 +393,13 @@ export function validateDoc(input: unknown, files: ReadonlySet<string> = new Set
       }
 
       const paper: NPaper = { id, title, group, questionCount, timeLimitMin, optionCount, questions: [], ...(bare ? { bare } : {}) };
+      if (isObj(p.source)) {
+        const src = canon(p.source, notes, 'other');
+        const source: NonNullable<NPaper['source']> = {};
+        for (const k of ['questionPaper', 'markScheme'] as const) if (typeof src[k] === 'string') source[k] = (src[k] as string).slice(0, 200);
+        if (source.questionPaper || source.markScheme) paper.source = source;
+      }
+      if (isPaperKey(p.key)) paper.key = p.key;
       if (p.pdf !== undefined) {
         const pd = isObj(p.pdf) ? canon(p.pdf, notes, 'other') : null;
         if (!pd) err(`${pp}.pdf`, 'Expected { "questionPaper": "pdfs/….pdf", "markScheme": "pdfs/….pdf" }');
@@ -607,7 +626,8 @@ export function validateDoc(input: unknown, files: ReadonlySet<string> = new Set
         const ap = `answers[${ai}]`;
         if (!isObj(raw)) return err(ap, 'Expected { "paper": "id", "key": "ABCD…" }');
         const a = canon(raw, notes, 'paper');
-        const pid = typeof a.paper === 'string' ? slugify(a.paper) : typeof a.id === 'string' ? slugify(a.id) : '';
+        const named = typeof a.paper === 'string' ? a.paper : typeof a.id === 'string' ? a.id : '';
+        const pid = isPaperKey(named) ? named : slugify(named);
         if (!pid) return err(`${ap}.paper`, 'Missing paper id');
         const key = parseKey(a.key ?? a.answers, notes);
         if (!key) return err(`${ap}.key`, 'Expected a string of letters like "ACDBA…" (use ? for unknown)');

@@ -1,19 +1,23 @@
 import { expect, test } from './fixtures';
 import { makePdf } from '../fixtures/pdf';
 
+const ndjson=(...lines:unknown[])=>lines.map(l=>JSON.stringify(l)).join('\n')+'\n';
+
 test('AI PDF import requires consent, preserves unkeyed answers, and reuses pack review',async({page})=>{
   await page.addInitScript(()=>localStorage.setItem('dmc-mock-account',JSON.stringify({id:'mock-ai-user',email:'ai@example.com',name:'AI test',emailVerified:true})));
   await page.route('**/api/ai/config',route=>route.fulfill({json:{configured:true,model:'mock-vision',maxPagesPerBatch:4,maxPayloadBytes:4_000_000,maxTextChars:60_000,maxImageBytes:1_000_000}}));
   let calls=0;
-  await page.route('**/api/ai/extract',async route=>{
+  await page.route('**/api/ai/run',async route=>{
     calls++;
-    expect(route.request().headers().authorization).toBe('Bearer mock-token');
-    expect(route.request().postDataJSON()).toMatchObject({hasMarkScheme:false,pages:[{page:1,role:'question'}]});
-    await route.fulfill({json:{questions:[{n:1,page:1,stem:'A synthetic AI question. Which option is correct?',options:['One','Two','Three','Four'],answer:'A'}],warnings:[]}});
+    // Only a task name and its inputs: the server owns the prompt.
+    expect(Object.keys(route.request().postDataJSON()).sort()).toEqual(['input','task']);
+    expect(route.request().postDataJSON()).toMatchObject({task:'extract',input:{hasMarkScheme:false,pages:[{page:1,role:'question'}]}});
+    expect(route.request().headers()['x-dmc']).toBe('1');
+    await route.fulfill({contentType:'application/x-ndjson',body:ndjson({type:'queued',position:1},{type:'result',data:{questions:[{n:1,page:1,stem:'A synthetic AI question. Which option is correct?',options:['One','Two','Three','Four'],answer:'A'}],warnings:[]}})});
   });
   await page.goto('./');
   await expect(page.getByRole('button',{name:'Account: ai@example.com'})).toBeVisible();
-  await page.getByRole('button',{name:/Import a pack file|Add pack/}).first().click();
+  await page.getByRole('button',{name:/Import a paper-set file|Upload papers/}).first().click();
   await page.getByRole('button',{name:'Import PDF with AI',exact:true}).click();
   const dialog=page.getByRole('dialog',{name:'Import PDF with AI'});
   const file=Buffer.from(makePdf([['Synthetic question paper','1 Which value is correct? A One B Two C Three D Four','This document contains only synthetic educational material.']]));
@@ -40,7 +44,7 @@ test('AI import configuration errors preserve the manual import path',async({pag
   await page.addInitScript(()=>localStorage.setItem('dmc-mock-account',JSON.stringify({id:'mock-ai-user',email:'ai@example.com',name:'AI test',emailVerified:true})));
   await page.route('**/api/ai/config',route=>route.fulfill({json:{configured:false}}));
   await page.goto('./');
-  await page.getByRole('button',{name:/Import a pack file|Add pack/}).first().click();
+  await page.getByRole('button',{name:/Import a paper-set file|Upload papers/}).first().click();
   await page.getByRole('button',{name:'Import PDF with AI',exact:true}).click();
   await expect(page.getByText(/needs a model and NVIDIA Worker secret/)).toBeVisible();
   await page.getByRole('button',{name:'Manual import',exact:true}).click();
@@ -52,13 +56,13 @@ test('retry resumes completed pages from the account workspace without duplicate
   await page.route('**/api/ai/config',route=>route.fulfill({json:{configured:true,model:'mock-vision',maxPagesPerBatch:4,maxPayloadBytes:4_000_000,maxTextChars:60_000,maxImageBytes:1_000_000}}));
   const calls:number[]=[];
   let failed=false;
-  await page.route('**/api/ai/extract',async route=>{
-    const n=route.request().postDataJSON().pages[0].page as number; calls.push(n);
-    if(n===2 && !failed){failed=true;return route.fulfill({status:400,json:{error:'Synthetic failed batch. Resume to retry.'}});}
-    return route.fulfill({json:{questions:[{n,page:n,stem:`Synthetic question ${n}`,options:['One','Two','Three','Four'],answer:null}],warnings:[]}});
+  await page.route('**/api/ai/run',async route=>{
+    const n=route.request().postDataJSON().input.pages[0].page as number; calls.push(n);
+    if(n===2 && !failed){failed=true;return route.fulfill({contentType:'application/x-ndjson',body:ndjson({type:'error',status:422,error:'Synthetic failed batch. Resume to retry.'})});}
+    return route.fulfill({contentType:'application/x-ndjson',body:ndjson({type:'result',data:{questions:[{n,page:n,stem:`Synthetic question ${n}`,options:['One','Two','Three','Four'],answer:null}],warnings:[]}})});
   });
   await page.goto('./');
-  await page.getByRole('button',{name:/Import a pack file|Add pack/}).first().click();
+  await page.getByRole('button',{name:/Import a paper-set file|Upload papers/}).first().click();
   await page.getByRole('button',{name:'Import PDF with AI',exact:true}).click();
   const dialog=page.getByRole('dialog',{name:'Import PDF with AI'});
   const file={name:'recovery.pdf',mimeType:'application/pdf',buffer:Buffer.from(makePdf([['Synthetic page one'],['Synthetic page two']]))};

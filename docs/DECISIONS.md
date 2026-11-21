@@ -210,3 +210,12 @@ One line each: what was decided and why. Grouped by area.
 - Wrangler is a development/deployment dependency because Worker/Pages builds and deploy commands need an explicit reproducible CLI. No new frontend runtime dependency.
 - Extend the incumbent builtbyjosef tokens/components for board and import controls; preserve docs/design/DESIGN.md and existing theme authority. The blank board half is layout only.
 - Signed-out visitors get a sign-in welcome dialog once per tab session (sessionStorage), never mid-session or over the resume prompt; automated browsers skip it unless `dmc-force-welcome` is set. With no Supabase build values the top bar says "Sign-in unavailable" instead of hiding the control.
+
+
+## Phase 2: Cloudflare (full list in decision.md)
+
+- Packs and Library sets came apart for three reasons: no permanent pack identity in exports, posting never linked the local pack, and papers matched by AI-written ids. Fixed with a permanent `setId`, set versions, canonical Cambridge paper keys (`9702_s24_qp_12`) from file names or cover text, and question matching by key + number + content hash (`src/lib/format/identity.ts`).
+- One Cloudflare Worker serves the app and `/api/*`; D1 holds data, R2 holds files once by SHA-256, a Durable Object queues AI calls, a cron backs up D1 nightly and collects unreferenced files. Supabase, supabase-js and PGlite are removed; the RLS cases are Worker route tests run in workerd.
+- Google sign-in only (OAuth code + PKCE in the Worker, JWKS-verified ID token); sessions are hashed, rolling, HttpOnly cookies. Library membership needs the school domain and Google's `hd` claim, or the allowlist, or admin.
+- Practice per paper in DMC mode (typed) or PDF mode (printed paper and answer sheet), same grading and stats.
+- Visible copy says "paper set"; code and storage keep `pack`.

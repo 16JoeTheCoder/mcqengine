@@ -67,7 +67,10 @@ main:focus { outline: none; }
 .brand { display: inline-flex; align-items: center; gap: var(--space-2); text-decoration: none; font-weight: 700; letter-spacing: -0.02em; font-size: 18px; min-height: var(--hit-min); }
 .brand svg { height: 28px; width: auto; display: block; }
 .crumbs { display: flex; align-items: center; gap: var(--space-2); min-width: 0; color: var(--ink-muted); font-size: 14px; }
-.crumbs a { text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40vw; padding: 10px 0; }
+.crumbs a, .crumbs [aria-current] { text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40vw; padding: 10px 0; flex: 0 1 auto; min-width: 8ch; }
+/* The home crumb never shrinks; long set titles do, but keep a readable minimum. */
+.crumbs > a:first-of-type, .crumbs > span[aria-hidden] { flex: none; min-width: auto; }
+@media (max-width: 1100px) { .account-email, .sync-label { display: none; } }
 .crumbs a:hover { color: var(--ink); text-decoration: underline; }
 .crumbs [aria-current] { color: var(--ink); }
 .signature { display: inline-flex; align-items: center; min-height: var(--hit-min); min-width: var(--hit-min); justify-content: center; border-radius: var(--radius-md); background: none; border: 0; padding: 0 var(--space-1); }
@@ -561,3 +564,58 @@ main.page { padding-bottom: var(--space-8); }
   .jy-badge { color: #000 !important; }
   .nb-sign { position: fixed; bottom: 0; left: 0; right: 0; gap: 12pt; align-items: center; }
 }
+
+/* ---------- Phase 2: menu, stepped progress, paper matching table ---------- */
+.menu-wrap { position: relative; display: inline-block; }
+.menu { position: absolute; right: 0; top: calc(100% + var(--space-1)); z-index: 30; min-width: 180px; display: grid; padding: var(--space-1); background: var(--surface-raised); border: 1px solid var(--line-strong); border-radius: var(--radius-md); box-shadow: 0 8px 24px color-mix(in oklch, var(--ink) 18%, transparent); }
+.menu-item { min-height: var(--hit-min); padding: 0 var(--space-3); text-align: left; background: none; border: 0; border-radius: var(--radius-sm); color: var(--ink); font: inherit; font-size: 14px; cursor: pointer; }
+.menu-item:hover, .menu-item:focus-visible { background: var(--surface-sunken); }
+.menu-item--danger { color: var(--status-bad); }
+.stepper { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); }
+.stepper li { display: grid; gap: var(--space-2); font-size: 13px; line-height: 20px; color: var(--ink-subtle); }
+.stepper li::before { content: ""; height: 4px; border-radius: 2px; background: var(--line); transition: background var(--dur-base) var(--ease-out); }
+.stepper li[data-state="done"] { color: var(--ink-muted); }
+.stepper li[data-state="done"]::before { background: var(--ink); }
+.stepper li[data-state="now"] { color: var(--ink); font-weight: 500; }
+.stepper li[data-state="now"]::before { background: var(--accent); }
+.key-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.key-table th { text-align: left; font-size: 12px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-muted); padding: var(--space-2) var(--space-2) var(--space-2) 0; border-bottom: 1px solid var(--line); }
+.key-table td { padding: var(--space-2) var(--space-2) var(--space-2) 0; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.key-table .input { min-height: 36px; font-family: var(--font-mono); font-size: 13px; }
+.key-table code { font-family: var(--font-mono); font-size: 13px; }
+.set-status { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }
+.advanced > summary { cursor: pointer; min-height: var(--hit-min); display: flex; align-items: center; font-weight: 500; }
+.advanced > summary::marker { color: var(--ink-muted); }
+@media (max-width: 560px) {
+  .stepper { grid-template-columns: 1fr; }
+  /* On phones the cover is a thumbnail beside its button, so the papers table stays in view. */
+  .post-grid .post-cover { max-width: 96px; }
+  .key-table th, .key-table td { padding-right: var(--space-1); }
+  .key-table td { overflow-wrap: anywhere; }
+}
+@media (prefers-reduced-motion: reduce) { .stepper li::before { transition: none; } }
+
+/* ---------- PDF mode: the printed paper beside an answer sheet ---------- */
+.pdf-mode { grid-template-columns: minmax(0, 1fr); }
+.pdf-split { display: grid; gap: var(--space-4); grid-template-columns: minmax(0, 1fr); min-height: 0; }
+.pdf-split-sheet { align-self: start; display: grid; gap: var(--space-3); padding: var(--space-4); }
+.sheet { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-1); }
+.sheet-row { display: grid; grid-template-columns: 32px auto 1fr; align-items: center; gap: var(--space-2); padding: 2px var(--space-1); border-radius: var(--radius-sm); }
+.sheet-row.is-current { background: var(--surface-sunken); }
+.sheet-n { font-family: var(--font-mono); font-size: 13px; color: var(--ink-muted); text-align: right; }
+.sheet-opts { display: flex; gap: var(--space-1); }
+.sheet-opt { width: var(--hit-min); height: var(--hit-min); border-radius: 50%; border: 1px solid var(--line-strong); background: var(--surface-raised); color: var(--ink); font: inherit; font-weight: 500; font-size: 14px; cursor: pointer; transition: background var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out); }
+.sheet-opt:hover:not(:disabled) { border-color: var(--ink); }
+.sheet-opt.is-chosen { background: var(--inverse); color: var(--on-inverse); border-color: var(--inverse); }
+.sheet-opt.is-correct { border-color: var(--status-ok); box-shadow: inset 0 0 0 2px var(--status-ok); }
+.sheet-opt.is-wrong { border-color: var(--status-bad); box-shadow: inset 0 0 0 2px var(--status-bad); }
+.sheet-opt:disabled { cursor: default; opacity: 0.7; }
+.pdf-switch { margin-bottom: var(--space-2); }
+@media (min-width: 1000px) {
+  .pdf-split { grid-template-columns: minmax(0, 1fr) minmax(300px, 380px); align-items: start; }
+  .pdf-split-sheet { position: sticky; top: var(--space-4); max-height: calc(100vh - 160px); overflow: auto; }
+}
+@media (max-width: 999px) {
+  .pdf-split[data-show="paper"] .pdf-split-sheet, .pdf-split[data-show="sheet"] .pdf-split-paper { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { .sheet-opt { transition: none; } }

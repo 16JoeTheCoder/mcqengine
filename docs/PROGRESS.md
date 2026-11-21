@@ -59,8 +59,10 @@ Already correct and kept as is: absolute-timestamp countdown with monotonic back
 - [x] 5. Sync (versions map, pull-push-pull, tombstones, two-device and interruption tests) and opt-in cloud pack backup
 - [x] 6. Mistakes notebook, PDF attach for any paper, approximate-timing labels, e2e (Daily 10, Library, key later, PDFs, card), axe both themes, fresh-eyes review (docs/reviews/v2-review.md), README, CLAUDE.md
 
+- [x] 7. Phase 2 (branch `phase-2`, details in log.md and decision.md): unlinking bug fixed (permanent set IDs, canonical paper keys); one Cloudflare Worker with D1 and R2 replaces Supabase; Google sign-in; content-addressed files; set versions and paper registry; CAS sync on D1; AI prompt registry with queue and repair; nightly backups and file collection; admin panel; PDF practice mode; plainer wording; e2e against the real Worker.
+
 ## Next
 
-1. Create the Supabase project (docs/SUPABASE_SETUP.md) and test sign-in, posting and download live.
-2. Pilot with a real pack in `pilot/` (ignored) and the CLI validator.
-3. Merge this branch to `main` through a pull request once the live checks pass.
+1. Run setup.md on the council Cloudflare account: create the Google OAuth clients (section B), deploy staging, check every flow live (step 8).
+2. Copy the pilot from Supabase (setup.md step 9), record the real file sizes in log.md, then deploy production.
+3. Merge `phase-2` to `main` once the live checks pass. Phase 3 (teacher roles, classes, assignments) builds on the open `role` column.

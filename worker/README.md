@@ -1,9 +1,5 @@
-# API boundary
+# The DMC Worker
 
-`index.ts` is deployed as the separately routed Cloudflare Worker from root `wrangler.toml`. It has no frontend imports and no third-party runtime dependencies. One named `AiBudget` Durable Object per environment coordinates all provider calls; its storage transactions enforce rolling RPM, per-account UTC-day usage and expiring concurrency leases. Document contents stay in request memory only.
+One Cloudflare Worker serves the built app (static assets) and every `/api/*` route. Each route checks auth and membership itself; the app never decides access. Modules: `auth.ts` (Google OAuth + PKCE, sessions, membership), `library.ts` (sets, versions, paper registry, stars, reports), `blobs.ts` (content-addressed files in R2), `sync.ts` (compare-and-set sync), `ai.ts` (prompt registry, the `AiBudget` Durable Object queue), `admin.ts`, `backup.ts` (nightly D1 dump and file collection, run by the cron), `index.ts` (router, health, client errors, personal backups).
 
-- `GET /api/ai/config`: verified Supabase bearer required. Returns public model/limits and configured status.
-- `POST /api/ai/extract`: same auth. Accepts `{pages:[{page,role:'question'|'markscheme',text?,image?}],hasMarkScheme}` and returns `{questions,warnings}` after strict validation. `image` must be an inline PNG/JPEG data URL, never a PDF or remote URL. A legacy `kind` page-role alias is accepted.
-- Every response is JSON with `Cache-Control: no-store, private`; errors contain safe messages only.
-
-Run `npm run worker:typecheck` and `npx vitest run tests/unit/worker.test.ts` from the repository root terminal. See [deployment and operating guide](../docs/CLOUDFLARE_SETUP.md) for exact configuration, secrets and limits. Routine tests mock NVIDIA and consume no API quota. Live Cloudflare/NVIDIA smoke testing remains an explicit staging setup step.
+Tests run this Worker in workerd through Miniflare: `npx vitest run tests/unit/worker-` from the repository root, in the VS Code terminal. Deploying: [setup.md](../setup.md).

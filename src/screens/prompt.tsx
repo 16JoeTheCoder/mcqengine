@@ -21,9 +21,19 @@ function useDraft<T>(key: string, init: T): [T, (v: T) => void] {
   ];
 }
 
+function AnswerKeyField({ value, onChange }: { value: PromptOptions['answerKey']; onChange: (v: PromptOptions['answerKey']) => void }) {
+  return (
+    <div class="jy-field">
+      <span>Mark schemes</span>
+      <Seg label="Mark schemes" value={value} onChange={onChange} options={[{ value: 'attached', label: 'Attaching them' }, { value: 'separate', label: 'Add them later' }, { value: 'none', label: 'No key' }]} />
+      <small>{value === 'attached' ? 'The answers are read from the mark scheme you attach, never solved by the AI.' : value === 'separate' ? 'Papers import unkeyed; a second prompt reads the mark scheme later.' : 'Exam mode only, graded when a key is added.'}</small>
+    </div>
+  );
+}
+
 const splitGroup = (s: string) => s.split('>').map((x) => x.trim()).filter(Boolean);
 
-/** "Make a pack with AI" / "Add papers": builds a complete, tailored prompt for any AI chat. */
+/** "Make a paper set with AI" / "Add papers": builds a complete, tailored prompt for any AI chat. */
 export function PromptDialog({ pack, onClose, onImport }: { pack?: Pack; onClose: () => void; onImport: () => void }) {
   // Drafts are kept per pack, so details typed for one pack never reappear in another.
   draftScope = pack?.id ?? 'new';
@@ -83,7 +93,7 @@ export function PromptDialog({ pack, onClose, onImport }: { pack?: Pack; onClose
   };
 
   return (
-    <Modal title={pack ? `Add papers to ${pack.title}` : 'Make a pack with AI'} size="full" onClose={onClose}>
+    <Modal title={pack ? `Add papers to ${pack.title}` : 'Make a paper set with AI'} size="full" onClose={onClose}>
       <div class="stack">
         <ol class="steps">
           <li><span>Fill in the details below and copy the prompt.</span></li>
@@ -107,7 +117,7 @@ export function PromptDialog({ pack, onClose, onImport }: { pack?: Pack; onClose
             <div class="stack">
               {!pack && (
                 <div class="grid-even">
-                  <Field label="Pack name" hint="e.g. AS Physics 9702 Paper 1">
+                  <Field label="Paper set name" hint="e.g. AS Physics 9702 Paper 1">
                     <input class="input" value={packTitle} onInput={(e) => setPackTitle((e.target as HTMLInputElement).value)} autoFocus />
                   </Field>
                   <Field label="Subject">
@@ -121,14 +131,18 @@ export function PromptDialog({ pack, onClose, onImport }: { pack?: Pack; onClose
                 <small>{multi ? 'The AI reads each title, id, question count and time limit from the covers, and pairs mark schemes by paper code.' : 'Give the details of one paper below.'}</small>
               </div>
               {!multi && (<>
-              <div class="grid-even">
-                <Field label="Paper title" hint="As you want it listed">
-                  <input class="input" value={paperTitle} onInput={(e) => setPaperTitle((e.target as HTMLInputElement).value)} placeholder="May/June 2025 Paper 12" />
-                </Field>
-                <Field label="Group path" hint="Use > between levels, e.g. 2025 > May/June">
-                  <input class="input" value={group} onInput={(e) => setGroup((e.target as HTMLInputElement).value)} placeholder="2025 > May/June" />
-                </Field>
-              </div>
+              <Field label="Paper title" hint="As you want it listed">
+                <input class="input" value={paperTitle} onInput={(e) => setPaperTitle((e.target as HTMLInputElement).value)} placeholder="May/June 2025 Paper 12" />
+              </Field>
+              </>)}
+              <AnswerKeyField value={answerKey} onChange={setAnswerKey} />
+              <details class="advanced">
+                <summary>Advanced</summary>
+                <div class="stack" style={{ paddingTop: 'var(--space-3)' }}>
+              {!multi && (<>
+              <Field label="Folder in the papers list" hint="Use > between levels, e.g. 2025 > May/June">
+                <input class="input" value={group} onInput={(e) => setGroup((e.target as HTMLInputElement).value)} placeholder="2025 > May/June" />
+              </Field>
               <div class="grid-even">
                 <Field label="Number of questions" hint="Leave blank to read it from the paper">
                   <input class="input num" inputMode="numeric" value={count} onInput={(e) => setCount((e.target as HTMLInputElement).value)} placeholder="40" />
@@ -137,7 +151,7 @@ export function PromptDialog({ pack, onClose, onImport }: { pack?: Pack; onClose
                   <input class="input num" inputMode="numeric" value={minutes} onInput={(e) => setMinutes((e.target as HTMLInputElement).value)} placeholder="75" />
                 </Field>
               </div>
-              <Field label="Paper id" hint="Stable id so re-imports merge. Auto from the title.">
+              <Field label="Paper id" hint="Only if DMC cannot read the Cambridge file name. Auto from the title.">
                 <input class="input num" value={paperId} onInput={(e) => setPaperId((e.target as HTMLInputElement).value)} placeholder={slugify(paperTitle) || 'may-june-2025-paper-12'} />
               </Field>
               </>)}
@@ -183,19 +197,6 @@ export function PromptDialog({ pack, onClose, onImport }: { pack?: Pack; onClose
                   <small>{zipCrop === 'question' ? 'Diagram questions are shown as an exact picture of the printed question. Cutting between question numbers is the crop least likely to go wrong.' : 'Question text is typed and only the diagram is cropped. Nicer to read, but crops can miss labels; check the preview.'}</small>
                 </div>
               )}
-              <div class="jy-field">
-                <span>Answer key</span>
-                <Seg
-                  label="Answer key"
-                  value={answerKey}
-                  onChange={setAnswerKey}
-                  options={[
-                    { value: 'attached', label: 'Attaching mark scheme' },
-                    { value: 'separate', label: 'Add it later' },
-                    { value: 'none', label: 'No key' },
-                  ]}
-                />
-              </div>
               {!multi && <Toggle label="Split a long paper" hint="Ask for a range of questions; import each part into the same paper." checked={chunk} onChange={setChunk} />}
               {!multi && chunk && (
                 <div class="grid-even">
@@ -208,6 +209,8 @@ export function PromptDialog({ pack, onClose, onImport }: { pack?: Pack; onClose
                 </div>
               )}
               <Toggle label="Ask for short explanations" hint="Only from the mark scheme or examiner report, never invented." checked={explanations} onChange={setExplanations} />
+                </div>
+              </details>
             </div>
           ) : (
             <div class="stack">
@@ -220,7 +223,7 @@ export function PromptDialog({ pack, onClose, onImport }: { pack?: Pack; onClose
                   ))}
                 </select>
               </Field>
-              <p class="small muted">Attach the mark scheme to your AI chat and paste this prompt. Import the reply like any pack file; it fills in the answers.</p>
+              <p class="small muted">Attach the mark scheme to your AI chat and paste this prompt. Import the reply like any paper-set file; it fills in the answers.</p>
             </div>
           )}
           <div class="stack sticky-col">
@@ -228,7 +231,7 @@ export function PromptDialog({ pack, onClose, onImport }: { pack?: Pack; onClose
               <div class="bar">
                 <Icon name="sparkles" size={14} /> {zip ? 'Paste into an AI chat that can run code' : 'Paste into any AI chat'}
               </div>
-              <pre tabIndex={0} aria-label="Generated prompt">{ready ? prompt : tab === 'paper' ? 'Enter a pack name and paper title to build the prompt.' : 'Choose a paper.'}</pre>
+              <pre tabIndex={0} aria-label="Generated prompt">{ready ? prompt : tab === 'paper' ? 'Enter a paper set name and paper title to build the prompt.' : 'Choose a paper.'}</pre>
             </div>
             <p class="small subtle">Nothing leaves your device from here. You choose which AI to use; DMC never reads PDFs itself.</p>
           </div>
