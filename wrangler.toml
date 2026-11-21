@@ -1,4 +1,4 @@
-# DMC Worker: the static app plus /api/*, on the student council Cloudflare account.
+﻿# DMC Worker: the static app plus /api/*, on the student council Cloudflare account.
 # Production is the top level; staging and local are [env.*] sections. Wrangler does not inherit
 # vars or bindings into environments, so each repeats them. IDs marked REPLACE are filled in by
 # setup.md step 3 (the output of `wrangler d1 create`). Secrets are never written here.
@@ -31,7 +31,7 @@ AI_QUEUE_MAX = "60"
 [[d1_databases]]
 binding = "DB"
 database_name = "dmc-prod"
-database_id = "REPLACE_WITH_PROD_D1_ID"
+database_id = "f6f5ebb3-0ffe-4745-9310-cc2f04f35e45"
 migrations_dir = "migrations"
 
 [[r2_buckets]]
@@ -78,7 +78,7 @@ AI_QUEUE_MAX = "10"
 [[previews.d1_databases]]
 binding = "DB"
 database_name = "dmc-staging"
-database_id = "REPLACE_WITH_STAGING_D1_ID"
+database_id = "50b8046c-dd1c-4f23-b052-16e9bc89fd6e"
 migrations_dir = "migrations"
 [[previews.r2_buckets]]
 binding = "FILES"
@@ -122,7 +122,7 @@ AI_QUEUE_MAX = "20"
 [[env.staging.d1_databases]]
 binding = "DB"
 database_name = "dmc-staging"
-database_id = "REPLACE_WITH_STAGING_D1_ID"
+database_id = "50b8046c-dd1c-4f23-b052-16e9bc89fd6e"
 migrations_dir = "migrations"
 [[env.staging.r2_buckets]]
 binding = "FILES"
