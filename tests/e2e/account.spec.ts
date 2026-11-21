@@ -1,6 +1,6 @@
 import { expect, test } from './fixtures';
 import type { Page } from '@playwright/test';
-import { importGuestProgress, signInDev, signOutAccount } from './auth-helpers';
+import { importGuestProgress, signInDev, signOutAccount, openDeviceData } from './auth-helpers';
 import { keyFor, startPaper, syntheticDoc } from './helpers';
 
 async function importNamedPack(page: Page, title: string) {
@@ -79,6 +79,7 @@ test('shared-device removal exports a backup and removes the signed-in cache bef
   await importNamedPack(page, 'Shared-device private paper');
   const id = await page.evaluate(() => JSON.parse(localStorage.getItem('dmc-mock-account')!).id as string);
   await page.getByRole('button', { name:`Account: ${email}`, exact:true }).click();
+  await openDeviceData(page);
   page.once('dialog', dialog => dialog.accept());
   const downloaded = page.waitForEvent('download');
   await page.getByRole('button', {name:'Back up, remove cache and sign out',exact:true}).click();

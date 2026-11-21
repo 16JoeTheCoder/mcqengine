@@ -1,3 +1,2 @@
 # Copy to .dev.vars in the repository root for `npm run worker:local`. Ignored by git.
-# Only needed to try AI import locally; never prefix secrets with VITE_.
-NVIDIA_API_KEY=replace-with-private-nvidia-api-key
+# Local development needs no secrets (development sign-in is used). Never prefix secrets with VITE_.

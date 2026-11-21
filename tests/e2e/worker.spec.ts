@@ -52,8 +52,8 @@ test('post, download, PDF mode, version 2, update in place, admin and backup', a
   const dlg = page.getByRole('dialog', { name: 'Post a set' });
   await expect(dlg.getByRole('button', { name: 'Post', exact: true })).toBeDisabled();
   await dlg.locator('input[type=file]').first().setInputFiles(pdfs);
-  await expect(dlg.getByText('9702_s24_qp_12', { exact: true })).toBeVisible();
-  await expect(dlg.getByText(/Found/)).toBeVisible();
+  await expect(dlg.getByRole('cell', { name: 'May/June 2024 Paper 12', exact: true })).toBeVisible();
+  await expect(dlg.getByText('(file name)')).toBeVisible();
   await dlg.getByLabel('Name').fill('Physics 9702 June 2024');
   await bothThemes(page, 'post dialog with the paper table');
   await dlg.getByRole('button', { name: 'Post', exact: true }).click();
@@ -102,16 +102,26 @@ test('post, download, PDF mode, version 2, update in place, admin and backup', a
   await expect(page.locator('.set-card')).toHaveCount(1);
   await expect(page.locator('.set-card').getByText(/version\s*2/)).toBeVisible();
 
-  // Admin panel: storage, access lists, AI status, and a backup on demand.
+  // Admin dashboard: overview, access lists, users, and a backup on demand (audited).
   await page.getByRole('button', { name: 'Admin' }).click();
-  await expect(page.getByRole('heading', { name: /Library\s*admin/, level: 1 })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Storage' })).toBeVisible();
-  await expect(page.getByText('stjbs.sch.id', { exact: true })).toBeVisible();
+  const admin = page.getByRole('dialog', { name: 'Library admin' });
+  await expect(admin.getByText('Accounts', { exact: true })).toBeVisible();
+  await bothThemes(page, 'admin overview');
+  await admin.getByRole('tab', { name: 'Access' }).click();
+  await expect(admin.getByText('stjbs.sch.id', { exact: true })).toBeVisible();
+  await admin.getByRole('tab', { name: 'Users' }).click();
+  await expect(admin.getByText(STUDENT)).toBeVisible();
+  await admin.getByRole('tab', { name: 'Operations' }).click();
+  await expect(admin.getByRole('heading', { name: 'Storage' })).toBeVisible();
   await page.getByRole('button', { name: 'Run backup now' }).click();
   await expect(page.getByText('Backup finished.')).toBeVisible({ timeout: 30_000 });
   const today = new Date(Date.now() + 7 * 3_600_000).toISOString().slice(0, 10);
   await expect(page.locator('section[aria-labelledby="a-backups"]').getByText(today)).toBeVisible();
-  await bothThemes(page, 'admin panel');
+  await bothThemes(page, 'admin operations');
+  await admin.getByRole('tab', { name: 'Audit log' }).click();
+  await expect(admin.getByText('backup.run')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(admin).toHaveCount(0);
   await signOutAccount(page, OWNER);
 
   // The student sees "Update available" and updates the same copy.

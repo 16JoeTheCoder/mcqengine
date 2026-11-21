@@ -4,7 +4,7 @@ DMC (Dynamic Multiple Choice): a local-first PWA for practising multiple-choice 
 
 ## Stack
 
-TypeScript (strict), Preact 10, Vite 6, IndexedDB via `idb`, fflate (zips), pdfjs-dist (lazy). Hand-written service worker (`src/sw-template.js`). One Cloudflare Worker (`worker/`) serves the static app and every `/api/*` route: D1 database (`migrations/`), R2 files, a Durable Object for the AI budget, cron for backups and file collection. No other backend. Tests: Vitest (happy-dom, fake-indexeddb; Worker route tests run the real Worker in workerd through Miniflare), Playwright (Chromium, axe). Deploy and operations: `setup.md`.
+TypeScript (strict), Preact 10, Vite 6, IndexedDB via `idb`, fflate (zips), pdfjs-dist (lazy). Hand-written service worker (`src/sw-template.js`). One Cloudflare Worker (`worker/`) serves the static app and every `/api/*` route: D1 database (`migrations/`), R2 files, cron for backups and file collection. No other backend. Tests: Vitest (happy-dom, fake-indexeddb; Worker route tests run the real Worker in workerd through Miniflare), Playwright (Chromium, axe). Deploy and operations: `setup.md`.
 
 ## Commands
 
@@ -28,7 +28,7 @@ Cloudflare setup, Google OAuth clients (by hand), migrations, secrets, deploy, m
 
 ## Architecture decisions (why, briefly; full list in docs/DECISIONS.md)
 
-* **Typed packs are the primary path.** An AI agent compiles PDFs into `dmc-pack/1` (docs/PACK_FORMAT.md, docs/PACK_BUILDER_GUIDE.md). Bare PDF plus key is the lighter path, built as a `bare: true` pack so it goes through the same pipeline.
+* **Typed packs are the primary path.** An AI agent compiles PDFs into `dmc-pack/1` (docs/PACK_FORMAT.md, docs/PACK_BUILDER_GUIDE.md). Students build packs with their own AI chat or agent; DMC has no AI import. Bare PDF plus key is the lighter path, built as a `bare: true` pack so it goes through the same pipeline.
 * **One hostile-input pipeline.** Every pack (files, PDFs, Library downloads, synced rows) goes through guarded unzip (path, count, real-byte limits), lenient read, strict validator, merge, one transaction. Text renders through text nodes only; SVG is allowlisted and shown via `<img>`. Never use `innerHTML` (lint rule).
 * **Local-first.** IndexedDB is the source of truth. The app works offline and signed out; sync and the Library never block it.
 * **Timers use an absolute end timestamp**, never interval counting; a monotonic check refuses backward clock jumps. Every timer is clamped to the paper's hard cap in the engine and the UI.
@@ -39,11 +39,15 @@ Cloudflare setup, Google OAuth clients (by hand), migrations, secrets, deploy, m
 * **Stats are a replay of sessions** (`src/lib/engine/regrade.ts`). A key attached or corrected regrades past sessions and rebuilds stats; sync also rebuilds after a pull.
 * **Two account tiers.** Anyone may sign in with Google for sync. The Library is for verified school Google accounts (email domain in `library_domains` *and* a matching `hd` claim) plus the admin-managed allowlist and admins. Decided only in the Worker (`worker/auth.ts` `accessOf`) for every request; the app only reads `/api/me`. Proven in `tests/unit/worker-access.test.ts` (the port of the old RLS tests).
 * **Sessions:** Google OAuth code + PKCE in the Worker, ID token verified against Google's JWKS (sig, iss, aud, exp, iat, nonce, email_verified). A random token in an `__Host-` HttpOnly, Secure, SameSite=Lax cookie; D1 stores only its SHA-256; rolling 30-day idle, 90-day absolute. Writes need `X-DMC: 1` and a same-site Origin.
-* **Identity:** a paper set has a permanent `setId` (UUID) carried by export, import, post, download and sync; never match by title. Papers match by canonical Cambridge key (`9702_s24_qp_12`, `shared/paper-key.ts`) from file names or cover text, never from an AI-written id; question ID = key + `#n`; content hash separates same from edited (keep mine / use the Library's). Rules in `src/lib/format/identity.ts`.
+* **Identity:** a paper set has a permanent `setId` (UUID) carried by export, import, post, download and sync; never match by title. Papers are recognised automatically and nobody types or confirms a key: SHA-256 of the question paper file, then a MinHash text fingerprint of its first pages (`shared/fingerprint.ts`, computed in the browser by `src/lib/pdf/identity.ts`), then the Cambridge code read from the file name or cover (`9702_s24_qp_12`, `shared/paper-key.ts`), used only when the stored paper has no fingerprint to disagree. Under 60 shingles (scans, answer sheets) there is no fingerprint: hash only. PDF metadata and AI-written ids are never used. Question ID = key + `#n`; content hash separates same from edited (keep mine / use the Library's). Rules in `src/lib/format/identity.ts`; the Worker only compares hex strings (`POST /api/papers/match`).
 * **Library files are content-addressed:** R2 `blobs/<sha256>`, uploaded once (client checks which hashes are missing), verified by R2's SHA-256 check and magic bytes, served only through the Worker after an access check. A set version is a small manifest (`shared/manifest.ts`); the two newest versions are kept; unreferenced files are deleted 7 days after orphaning by the cron.
 * **The Library is internal to the school** (agreed with the Head of Cambridge): `noindex`, private R2 with no public URL, Library sets marked `origin: library` and refused by Share with friends. A deterrent, not DRM (docs/LIBRARY_POLICY.md).
-* **No secret in the client, ever.** NVIDIA key, Google client secret and session secret are Worker secrets. Backend choice at build time: `VITE_BACKEND` = `cloudflare` (default in production builds), `mock` (default on the dev server) or `none`.
-* **AI:** the browser sends only a task name and inputs; the Worker attaches the versioned prompt (`shared/prompts.ts`), queues under a shared 38/min cap in one Durable Object (position streamed as NDJSON), checks replies with the task rules and the pack validator, and repairs once.
+* **No secret in the client, ever.** The Google client ID and secret and the session secret are the only Worker secrets. Backend choice at build time: `VITE_BACKEND` = `cloudflare` (default in production builds), `mock` (default on the dev server) or `none`.
+* **No AI in the product.** AI import, its Worker routes, prompt registry, NVIDIA key and the `AiBudget` Durable Object were removed in Phase 3 (the `v2-remove-ai` migration deletes the class on deploy). The copy-a-prompt dialog stays; it calls no server.
+* **Profiles are school-internal.** Members see `school` profiles of other members; `private` is owner and admins only; personal and suspended accounts have none. No messages and no follower feed (most users are minors). Stats are summary numbers the owner chooses to share, never answers or mistakes. Photos: 512 px WebP, at most 512 KB, in R2 `avatars/<id>/`, served through the Worker after the visibility check. `noindex`; reports go to the admin queue. `worker/profiles.ts`.
+* **Search is one dialog.** A local in-memory index (sets, papers, first 400 characters of each question) plus Library sets and people from D1 FTS5 (`sets_fts`, `users_fts`, kept by triggers) with the same access rules as their pages. Non-members get empty server results, never an error. `src/lib/search.ts`, `worker/search.ts`.
+* **Admin dashboard** is a drawer over the Library (overview, users, content, access, operations, audit log). Suspension deletes the account's sessions in the same batch and `caller()` ignores suspended accounts, so it is immediate. Every admin change writes `audit_log` in the same batch (the owner's own edits do not). Per-account quota override. `worker/admin.ts`, `src/screens/admin.tsx`.
+* **Answering rules.** Exam answers clear when the chosen option is picked again; practice answers lock at once. Submit lists unanswered questions with jump buttons; flags are markers and never warn. Follow (PDF answer sheet) scrolls only the sheet, per device, off by default. Practice right/wrong use `--practice-*` tokens (light green and red) always with icon and word; `--status-ok` stays blue. `src/lib/engine/answer.ts`.
 * **Sync uses compare-and-set writes** (one D1 batch per push; a stale base fails the whole batch), a monotonic revision counter and atomic session-pair staging. On by default for school accounts, off for personal ones (per device, Settings). Finished-session snapshots sync, PDF/image bytes do not.
 * **Backups:** nightly at 00:00 Asia/Jakarta, every D1 table as gzipped JSONL in R2 (7 daily, 4 weekly); restore with `scripts/restore-backup.mjs`. D1 Time Travel is the second net.
 * **Practice modes:** per paper session, DMC mode (typed questions) or PDF mode (the printed paper beside an answer sheet), same question IDs, grading and stats. Papers without typed questions are PDF only; Random and the drill use typed questions.
@@ -65,24 +69,25 @@ Cloudflare setup, Google OAuth clients (by hand), migrations, secrets, deploy, m
 src/app.tsx              shell, routes, top bar, sync triggers, palette
 src/lib/engine/          timer, random, mistakes + legacy session compatibility, grading, session lifecycle, regrade/replay
 src/lib/stats/           rolling 3, verdict, rushed, KPIs, dashboard
-src/lib/format/          lenient reader, validator, merge, markup, SVG, prompts, filename parser,
+src/lib/format/          lenient reader, validator, merge, markup, SVG, copy-a-prompt text, filename parser,
                          mark-scheme reader, PDF cross-check, check (shared with the CLI)
 src/lib/data/            IndexedDB (v2), import, keys, PDFs, bare PDF import, backups, files/zip guards
 src/lib/backend/         Backend interface, Cloudflare client, mock (same rules)
 src/lib/library/         post (key table, hashed upload, resume), download (update in place), default cover
 src/lib/sync/            CAS sync engine, transactional attempt change tracking, per-device sync switch
-worker/                 the Worker: auth, library, blobs, sync, ai (+ AiBudget DO), admin, backup, router
+worker/                 the Worker: auth, library, blobs, sync, profiles, search, admin (+ audit log), backup, router
 migrations/             D1 schema and seed (wrangler d1 migrations)
-shared/                 shared by app and Worker: AI protocol, prompt registry, paper keys, set manifest
+shared/                 shared by app and Worker: paper keys, fingerprint, set manifest
 src/lib/share/           result card, font embedding
-src/lib/pdf/             pdf.js wrapper
-src/screens/             pages and dialogs (session incl. PDF mode, results, pack, school-library, admin, account, notebook…)
+src/lib/pdf/             pdf.js wrapper; identity.ts (text fingerprint of a question paper)
+src/lib/search.ts        local search index (sets, papers, questions)
+src/screens/             pages and dialogs (session incl. PDF mode, results, pack, edit-set, profile, school-library, admin, palette/search, account, notebook…)
 src/ui/                  kit, charts, content renderer, brand
 tools/validate-pack.mjs  CLI validator
 scripts/                 demo packs, restore-backup, migrate-supabase
 tests/unit, tests/e2e    Vitest, Playwright
 docs/                    PACK_FORMAT, PACK_BUILDER_GUIDE, LIBRARY_POLICY, DECISIONS, PROGRESS, reviews
-setup.md, decision.md, log.md   deploy runbook; Phase 2 decisions; build log
+setup.md, decision.md, log.md   deploy runbook; Phase 2 and 3 decisions; build log
 ```
 
 ## Known limitations and unverified
@@ -91,5 +96,8 @@ setup.md, decision.md, log.md   deploy runbook; Phase 2 decisions; build log
 * Workers Rate Limiting bindings and the Cache API are not exercised by the local tests (absent in Miniflare's default config); their code paths are no-ops when the binding is missing.
 * Only Chromium is tested. Printing the notebook was not tested on paper.
 * The study-sheet logo `tab-outline` is not in `brand/`; the light lockup stands in until it is added.
+* Profiles of minors need the school's sign-off (data protection) before release; they are built but should not be switched on for students until then.
+* The text fingerprint has no effect on scanned PDFs (too little text): those match by file hash only.
+* Not yet verified live: migration 0003, FTS5 on D1 and avatar upload/serve (staging deploy needed).
 * Resume of a post is per file, not per byte.
 * Pack outlines and historical answered-content snapshots sync; full paper content and PDF/image assets do not. A second device needs an import or Library download to practise.

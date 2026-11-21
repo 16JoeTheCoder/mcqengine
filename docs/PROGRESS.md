@@ -9,10 +9,10 @@ Current source upgrade supersedes the historical implementation notes below.
 - Email OTP, isolated account/guest databases, legacy quarantine/recovery and shared-device backup/cache removal are implemented.
 - CAS sync, deterministic revision pagination, cascading tombstones, split session-pair staging, local conflict export and transactional attempt change tracking are implemented.
 - Board mode, persisted presentation size, fullscreen/theme controls, jump, reveal, elimination, revisit and source-page access are implemented. The writing half is an ordinary empty region.
-- Authenticated NVIDIA extraction, shared Durable Object budget, bounded local PDF processing, recovery/retry/cancellation and editable review are implemented.
+- AI extraction (NVIDIA, Durable Object budget) was built here and removed in Phase 3.
 - Reference-filtered bounded backups, worker compression, historical content snapshots and key-correction audit history are implemented.
-- Final verification: `npm run check` passed: frontend + Worker typecheck, lint, 301 unit tests in 22 files, production build. All 28 Chromium tests passed, including account A/guest/B/A, guest adoption, shared-device removal, board blank/theme/fullscreen/keyboard/mobile, mocked AI recovery, offline practice and accessibility.
-- Worker `wrangler deploy --dry-run` validates the bundle/config without publishing. No real SMTP, Supabase project, NVIDIA quota, deployed Durable Object, DNS or HTTPS smoke was run because credentials/configuration were not supplied.
+- Final verification: `npm run check` passed: frontend + Worker typecheck, lint, 301 unit tests in 22 files, production build. All 28 Chromium tests passed, including account A/guest/B/A, guest adoption, shared-device removal, board blank/theme/fullscreen/keyboard/mobile, offline practice and accessibility.
+- Worker `wrangler deploy --dry-run` validates the bundle/config without publishing. No real SMTP, Supabase project, DNS or HTTPS smoke was run because credentials/configuration were not supplied.
 - See `UPGRADE.md` for implemented behavior, compatibility, known limits, costs and manual setup. Live deployment, production authentication, DNS and data changes still require explicit authorization.
 
 ## Historical implementation record
@@ -59,10 +59,14 @@ Already correct and kept as is: absolute-timestamp countdown with monotonic back
 - [x] 5. Sync (versions map, pull-push-pull, tombstones, two-device and interruption tests) and opt-in cloud pack backup
 - [x] 6. Mistakes notebook, PDF attach for any paper, approximate-timing labels, e2e (Daily 10, Library, key later, PDFs, card), axe both themes, fresh-eyes review (docs/reviews/v2-review.md), README, CLAUDE.md
 
-- [x] 7. Phase 2 (branch `phase-2`, details in log.md and decision.md): unlinking bug fixed (permanent set IDs, canonical paper keys); one Cloudflare Worker with D1 and R2 replaces Supabase; Google sign-in; content-addressed files; set versions and paper registry; CAS sync on D1; AI prompt registry with queue and repair; nightly backups and file collection; admin panel; PDF practice mode; plainer wording; e2e against the real Worker.
+- [x] 7. Phase 2 (branch `phase-2`, details in log.md and decision.md): unlinking bug fixed (permanent set IDs, canonical paper keys); one Cloudflare Worker with D1 and R2 replaces Supabase; Google sign-in; content-addressed files; set versions and paper registry; CAS sync on D1; nightly backups and file collection; admin panel; PDF practice mode; plainer wording; e2e against the real Worker.
+
+- [x] 8. Phase 3 (branch `phase-3`, plan in docs/PHASE3_PLAN.md, decisions in decision.md): M1 AI import and its stack removed; M2 paper identity by file hash, text fingerprint and cover code (nobody types a key); M3 PDF answering (clear on re-pick, Follow, flags, unanswered warnings); M4 practice feedback colours and accuracy; M5 edit a set's name, subject, description; M6 search everything (local index plus D1 FTS5); M7 profiles (school only, private option, avatars, reports); M8 admin dashboard (overview, users, suspension, quota, audit log, duplicates, file collection dry run). Migration `0003_phase3.sql`.
+  Tests added: unit `answer`, `fingerprint`, `set-patch`, `identity` and `library` updates, Worker route tests `worker-papers`, `worker-profiles`, `worker-admin-search`; e2e Phase 3 specs for answering, search, profiles and admin. Removed: `ai-import`, `worker-ai` tests and the AI e2e spec.
+  Unverified live: staging deploy still needed for migration 0003, FTS5 on D1, avatar upload and serving, and the Durable Object deletion. Profiles need the school's sign-off before students get them.
 
 ## Next
 
 1. Run setup.md on the council Cloudflare account: create the Google OAuth clients (section B), deploy staging, check every flow live (step 8).
 2. Copy the pilot from Supabase (setup.md step 9), record the real file sizes in log.md, then deploy production.
-3. Merge `phase-2` to `main` once the live checks pass. Phase 3 (teacher roles, classes, assignments) builds on the open `role` column.
+3. Apply migration 0003 and deploy Phase 3 to staging (setup.md, "Upgrading an existing deployment to Phase 3"), check profiles, search and admin live, then merge to `main`. Teacher roles, classes and assignments (a later phase) build on the open `role` column.

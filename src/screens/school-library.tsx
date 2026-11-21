@@ -17,7 +17,7 @@ import { AccountDialog } from './account';
 const PAGE = 24;
 const mb = (b: number) => `${(b / 1048576).toFixed(b < 10 * 1048576 ? 1 : 0)} MB`;
 
-export function SchoolLibrary() {
+export function SchoolLibrary({ initialSearch = '' }: { initialSearch?: string }) {
   const auth = useStore(authStore);
   const [dialog, setDialog] = useState<'school' | null>(null);
   const domain = SCHOOL_DOMAINS[0]!;
@@ -55,7 +55,7 @@ export function SchoolLibrary() {
         {dialog && <AccountDialog mode="school" onClose={() => setDialog(null)} />}
       </main>
     );
-  return <Members admin={auth.status.admin} />;
+  return <Members admin={auth.status.admin} initialSearch={initialSearch} />;
 }
 
 function Hero() {
@@ -66,10 +66,10 @@ function Hero() {
   );
 }
 
-function Members({ admin }: { admin: boolean }) {
+function Members({ admin, initialSearch }: { admin: boolean; initialSearch: string }) {
   const [sets, setSets] = useState<LibrarySet[] | null>(null);
   const [more, setMore] = useState(false);
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(initialSearch);
   const [posting, setPosting] = useState(false);
   const [pending, setPending] = useState<PostPlan | null>(null);
   const [reporting, setReporting] = useState<LibrarySet | null>(null);

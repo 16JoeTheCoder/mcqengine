@@ -7,13 +7,16 @@ Practise multiple-choice exam papers the way the real exam feels: full timed pap
 * **Packs and papers.** A pack (for example "AS Physics Paper 1") holds many papers, browsable by year and series.
 * **Sessions.** Paper (always the full paper), Random (least-seen first) or Mistakes drill, in Exam mode (timed, results at the end) or Practice mode (instant feedback).
 * **Honest numbers.** Rolling averages, an observed-trend summary with sample sizes, pace analysis and a rushed-error alert.
-* **Typed packs (primary).** An AI agent or chat turns a PDF into validated typed questions ([PACK_BUILDER_GUIDE.md](docs/PACK_BUILDER_GUIDE.md)); DMC validates, cross-checks numbers against the PDF and writes the fix prompt if anything is wrong. `node tools/validate-pack.mjs <zip>` runs the same validator from a terminal.
+* **Typed packs (primary).** Your own AI agent or chat turns a PDF into validated typed questions ([PACK_BUILDER_GUIDE.md](docs/PACK_BUILDER_GUIDE.md)); DMC validates, cross-checks numbers against the PDF and writes the fix prompt if anything is wrong. `node tools/validate-pack.mjs <zip>` runs the same validator from a terminal.
 * **PDF papers (lighter path).** Drop question paper PDFs and mark schemes: practise from the PDF, confirm the key in a grid, snip questions for drills.
 * **Board mode.** A large question pane beside a completely blank writing half for external whiteboard tools; fullscreen, themes, reveal, jump, elimination and revisit.
-* **Import PDF with AI.** Selected-page NVIDIA vision extraction, explicit consent, retry/recovery and editable review through the existing importer.
+* **Paper identity is automatic.** DMC recognises a paper by its file, then by its text, then by the Cambridge code on it. Nobody types a key.
+* **Practice feedback.** In practice mode each question turns light green or red as you answer, with a running accuracy. In exam mode, picking an answer again clears it; submit lists unanswered questions. PDF mode can follow your answers down the sheet and flag questions.
+* **Edit a paper set.** Rename it and change its subject and description; the owner can push that to the Library listing.
+* **Search.** One search box (`/` or Ctrl+K) across your sets, papers and questions, plus Library sets and people.
 * **Two ways to practise a paper.** Typed questions (DMC mode) or the real PDF beside an A–D answer sheet (PDF mode), with the same grading and stats.
 * **Google accounts.** Sign in with Google; isolated account and guest workspaces; sync on by default for school accounts.
-* **School Library.** Paper sets shared inside the school, versioned, stored once by file hash, with an admin panel. Runs on Cloudflare: [setup.md](setup.md), [docs/LIBRARY_POLICY.md](docs/LIBRARY_POLICY.md).
+* **School Library.** Paper sets shared inside the school, versioned, stored once by file hash, with profiles (school only, no messages) and an admin dashboard. Runs on Cloudflare: [setup.md](setup.md), [docs/LIBRARY_POLICY.md](docs/LIBRARY_POLICY.md).
 
 ## Run it
 
@@ -47,7 +50,7 @@ When a new version is deployed, open copies of DMC show "A new version of DMC is
 
 ## Make a paper set
 
-1. In DMC, choose **Make a paper set with AI** (or **Add papers** on a paper set). Fill in the paper details and copy the prompt.
+1. In DMC, choose **Make a paper set with AI** (copies a prompt; DMC itself calls no AI) (or **Add papers** on a paper set). Fill in the paper details and copy the prompt.
 2. Open any AI chat, attach the question paper PDF (and the mark scheme if you have it), and paste the prompt.
 3. Copy the reply, then choose **Import** in DMC and paste it. DMC tidies common formatting slips, checks every question, and shows a preview to compare with the paper. If something is wrong, **Copy fix prompt** gives the AI the exact errors.
 
@@ -66,15 +69,15 @@ Implementation, compatibility, test coverage and limitations are described in [U
 ```
 src/lib/engine/   timer, random draw, mistakes bank, grading, session lifecycle
 src/lib/stats/    rolling averages, verdict, rushed-error alert, KPIs, dashboard
-src/lib/format/   lenient reader, validator, merge, markup, SVG sanitiser, prompts
+src/lib/format/   lenient reader, validator, merge, markup, SVG sanitiser, prompt text
 src/lib/data/     IndexedDB (versioned, with migrations), import, keys, PDFs, backups
 src/lib/backend/  Cloudflare client and in-browser mock behind one typed interface
 src/lib/library/  posting, downloading and covers for the school Library
 src/lib/sync/     local-first sync
 src/lib/pdf/      pdf.js wrapper (lazy)
-worker/           the Cloudflare Worker: auth, Library, files, sync, AI, admin, backups
+worker/           the Cloudflare Worker: auth, Library, files, sync, profiles, search, admin, backups
 migrations/       D1 schema
-shared/           code shared by app and Worker (paper keys, set manifest, AI prompts)
+shared/           code shared by app and Worker (paper keys, fingerprint, set manifest)
 tools/            validate-pack.mjs (CLI validator)
 scripts/          demo packs, restore-backup.mjs, migrate-supabase.mjs
 src/screens/      library, pack dashboard, question screen, results, settings

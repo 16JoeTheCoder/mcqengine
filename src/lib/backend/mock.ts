@@ -399,8 +399,21 @@ export function createMockBackend(): Backend {
         const total = s.blobs.reduce((t, b) => t + b.size, 0);
         return { freeTierBytes: 10e9, totalBytes: total, libraryBytes: total, files: s.blobs.length, databaseBackupBytes: 0, personalBackupBytes: 0, perAccount: [] } as T;
       }
-      if (path === 'moderation') return { sets: s.sets.filter((x) => x.status === 'hidden' || x.reports > 0).map((x) => ({ id: x.id, title: x.title, ownerName: x.ownerName, status: x.status, reports: x.reports, reasons: s.reports.filter((r) => r.setId === x.id).map((r) => ({ reason: r.reason })) })) } as T;
+      if (path === 'moderation') return { people: Object.values(s.profiles ?? {}).filter((p) => p.reports.length).map((p) => ({ id: p.id, handle: p.handle, name: p.name, visibility: p.visibility, reports: p.reports.length, reasons: p.reports.map((r) => ({ reason: r.split(':').slice(1).join(':') })) })), sets: s.sets.filter((x) => x.status === 'hidden' || x.reports > 0).map((x) => ({ id: x.id, title: x.title, ownerName: x.ownerName, status: x.status, reports: x.reports, reasons: s.reports.filter((r) => r.setId === x.id).map((r) => ({ reason: r.reason })) })) } as T;
       if (path === 'backups') return { daily: [], weekly: [] } as T;
+      const day = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
+      const profiles = Object.values(s.profiles ?? {});
+      if (path === 'overview') return {
+        users: { total: profiles.length, active7: profiles.length, active30: profiles.length, suspended: 0, members: profiles.filter((p) => statusOf({ id: p.id, email: p.email, emailVerified: true, name: p.name }).member).length },
+        sets: { total: s.sets.length, hidden: s.sets.filter((x) => x.status === 'hidden').length, stars: s.stars.length },
+        storage: { library: s.blobs.reduce((t, b) => t + b.size, 0), files: s.blobs.length, limit: 10e9 },
+        usage: Array.from({ length: 14 }, (_, i) => ({ day: day(13 - i), downloads: 0, downloadBytes: 0, uploads: 0, uploadBytes: 0 })),
+        errors24h: 0, openReports: s.sets.filter((x) => x.reports > 0).length + profiles.filter((p) => p.reports.length).length, lastBackup: null,
+      } as T;
+      if (path === 'users') return { users: profiles.map((p) => ({ id: p.id, email: p.email, name: p.name, handle: p.handle, createdAt: p.createdAt, lastSeenAt: p.createdAt, suspendedAt: null, quotaBytes: null, member: 1, admin: ADMINS.includes(p.email) ? 1 : 0, bytes: 0, sets: s.sets.filter((x) => x.owner === p.id).length, sessions: 1, visibility: p.visibility })), more: false } as T;
+      if (path === 'audit') return { entries: [] } as T;
+      if (path === 'duplicates') return { groups: [] } as T;
+      if (path === 'gc') return { due: { n: 0, bytes: 0 }, waiting: { n: 0, bytes: 0 } } as T;
       if (path === 'downloads') return { since: new Date().toISOString().slice(0, 10), rows: [] } as T;
       if (['allowlist', 'admins', 'domains'].includes(path)) return { items: path === 'domains' ? SCHOOL_DOMAINS.map((domain) => ({ domain })) : (path === 'admins' ? ADMINS : ALLOWLIST).map((email) => ({ email })) } as T;
       throw new BackendError('Not available in development mode', 404);
