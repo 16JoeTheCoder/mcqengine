@@ -107,7 +107,6 @@ test('post, download, PDF mode, version 2, update in place, admin and backup', a
   await expect(page.getByRole('heading', { name: /Library\s*admin/, level: 1 })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Storage' })).toBeVisible();
   await expect(page.getByText('stjbs.sch.id', { exact: true })).toBeVisible();
-  await expect(page.getByText('No key')).toBeVisible();
   await page.getByRole('button', { name: 'Run backup now' }).click();
   await expect(page.getByText('Backup finished.')).toBeVisible({ timeout: 30_000 });
   const today = new Date(Date.now() + 7 * 3_600_000).toISOString().slice(0, 10);

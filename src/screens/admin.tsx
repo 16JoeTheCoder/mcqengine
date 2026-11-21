@@ -6,12 +6,11 @@ import { Icon } from '../ui/icons';
 
 /**
  * Admin panel: storage against the free tier, downloads per account, who may use the Library,
- * moderation, AI status and backups. The server refuses every route to non-admins; this screen
+ * moderation and backups. The server refuses every route to non-admins; this screen
  * only hides itself for them.
  */
 interface Storage { freeTierBytes: number; totalBytes: number; libraryBytes: number; files: number; databaseBackupBytes: number; personalBackupBytes: number; perAccount: { user_id: string | null; email: string | null; name: string | null; bytes: number; files: number }[] }
 interface Usage { since: string; rows: { day: string; email: string | null; name: string | null; downloads: number; download_bytes: number; uploads: number; upload_bytes: number }[] }
-interface Ai { configured: boolean; model: string; minute: number; rpm: number; today: number; queue: number; dailyPerAccount?: number }
 interface Backups { daily: { date: string; bytes: number; complete: boolean }[]; weekly: { date: string; bytes: number; complete: boolean }[] }
 interface Flagged { id: string; title: string; ownerName: string; status: 'approved' | 'hidden'; reports: number; reasons: { reason: string }[] }
 
@@ -37,7 +36,6 @@ export function AdminPanel() {
         <StoragePanel />
         <AccessPanel />
         <ModerationPanel />
-        <AiPanel />
         <BackupsPanel />
         <UsagePanel />
       </div>
@@ -160,35 +158,6 @@ function ModerationPanel() {
             </li>
           ))}
         </ul>
-      )}
-    </Panel>
-  );
-}
-
-function AiPanel() {
-  const [ai, error, reload] = useAdmin<Ai>('ai');
-  const [testing, setTesting] = useState(false);
-  const test = async () => {
-    setTesting(true);
-    try {
-      const r = await backend!.admin<{ ok: boolean; error?: string; model: string }>('ai/test', { method: 'POST' });
-      toast(r.ok ? `The key works with ${r.model}.` : `Test failed: ${r.error ?? 'no answer'}`);
-      reload();
-    } catch (e) { toast((e as Error).message); }
-    setTesting(false);
-  };
-  return (
-    <Panel id="a-ai" title="AI import" error={error}>
-      {!ai ? <Skeleton h={60} /> : (
-        <>
-          <div class="row">
-            {ai.configured ? <Badge status="ok">Key set</Badge> : <Badge status="bad">No key</Badge>}
-            <span class="small">Model <code>{ai.model}</code></span>
-          </div>
-          <p class="small muted">This minute <span class="num">{ai.minute}</span> of <span class="num">{ai.rpm}</span> requests · today <span class="num">{fmtInt(ai.today)}</span> · waiting in queue <span class="num">{ai.queue}</span>{ai.dailyPerAccount ? ` · ${ai.dailyPerAccount} per account per day` : ''}.</p>
-          {!ai.configured && <p class="small">Set the Worker secret NVIDIA_API_KEY (setup.md, step 5). A new model ID goes in the NVIDIA_MODEL variable.</p>}
-          <div><Button disabled={!ai.configured || testing} onClick={() => void test()}>{testing ? 'Testing…' : 'Test key'}</Button></div>
-        </>
       )}
     </Panel>
   );

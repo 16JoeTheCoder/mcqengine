@@ -39,7 +39,7 @@ export function AccountDialog({ mode, onClose, welcome = false }: { mode: Accoun
     {welcome && <ul class="stack-s">
       <li>Keep your results, mistakes and stats safe if this browser is cleared.</li>
       <li>Pick up where you left off on another device.</li>
-      <li>Use AI import, and open the School Library with your school account.</li>
+      <li>Open the School Library with your school account.</li>
     </ul>}
     {error && <p class="notice notice--bad" role="alert">{error}</p>}
     <div class="stack-s">

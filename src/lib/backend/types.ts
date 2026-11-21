@@ -1,5 +1,4 @@
 import type { PublishedManifest, SetManifest } from '../../../shared/manifest';
-import type { AiTask, TaskInput, TaskOutput } from '../../../shared/prompts';
 
 /**
  * The backend the app talks to: the DMC Worker on Cloudflare in production, an in-browser mock
@@ -62,8 +61,6 @@ export interface SyncRecord {
 
 export interface RegistryPaper { key: string; msKey: string; qp: string | null; ms: string | null; questionCount: number | null }
 
-/** One line of the AI stream. */
-export type AiEvent = { type: 'queued'; position: number } | { type: 'repairing' };
 
 export interface Backend {
   kind: 'cloudflare' | 'mock';
@@ -102,7 +99,6 @@ export interface Backend {
   putBackup(blob: Blob, onProgress: (sent: number) => void): Promise<void>;
   getBackup(): Promise<Blob | null>;
 
-  aiRun<T extends AiTask>(task: T, input: TaskInput[T], onEvent: (e: AiEvent) => void, signal: AbortSignal): Promise<TaskOutput[T]>;
   /** Admin panel: GET a JSON route under /api/admin/. */
   admin<T = unknown>(path: string, init?: { method?: 'GET' | 'POST' | 'DELETE'; body?: unknown }): Promise<T>;
 }

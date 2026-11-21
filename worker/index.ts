@@ -1,5 +1,4 @@
 import { access, backups, downloads, moderation, storage } from './admin';
-import { aiConfig, aiRun, aiStatus, aiTest } from './ai';
 import { devLogin, finishGoogle, logout, me, need, startGoogle, updateMe } from './auth';
 import { collectGarbage, runBackup } from './backup';
 import { checkBlobs, getBlob, putBlob } from './blobs';
@@ -12,7 +11,6 @@ import type { Env, ExecutionContext, ScheduledController } from './types';
  * The DMC Worker: serves the static app (assets) and every /api route. It replaces Supabase.
  * Each route checks auth and membership itself; the app never decides access.
  */
-export { AiBudget } from './ai';
 export type { Env } from './types';
 
 type Handler = (req: Request, env: Env, ctx: ExecutionContext, ...params: string[]) => Promise<Response>;
@@ -43,10 +41,6 @@ const ROUTES: [string, RegExp, Handler][] = [
   ['HEAD', /^\/api\/blob\/([^/]+)$/, (r, e, c, h) => getBlob(r, e, c, h!)],
   ['POST', /^\/api\/sync\/push$/, push],
   ['GET', /^\/api\/sync\/pull$/, pull],
-  ['GET', /^\/api\/ai\/config$/, aiConfig],
-  ['POST', /^\/api\/ai\/run$/, aiRun],
-  ['GET', /^\/api\/admin\/ai$/, aiStatus],
-  ['POST', /^\/api\/admin\/ai\/test$/, aiTest],
   ['GET', /^\/api\/admin\/storage$/, storage],
   ['GET', /^\/api\/admin\/downloads$/, downloads],
   ['GET', /^\/api\/admin\/moderation$/, moderation],
@@ -86,12 +80,12 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
   return allowed.length ? json({ error: 'Method not allowed' }, 405, { Allow: allowed.join(', ') }) : json({ error: 'Not found' }, 404);
 }
 
-/** GET /api/health: D1, R2 and whether the AI key is set. No personal data, no auth. */
+/** GET /api/health: D1, R2 and whether sign-in is configured. No personal data, no auth. */
 async function health(_req: Request, env: Env): Promise<Response> {
   const check = async (f: () => Promise<unknown>) => { try { await f(); return true; } catch { return false; } };
   const [d1, r2] = await Promise.all([check(() => env.DB.prepare('SELECT 1').first()), check(() => env.FILES.head('health-check'))]);
   const ok = d1 && r2;
-  return json({ ok, d1, r2, ai: { configured: !!env.NVIDIA_API_KEY }, auth: { configured: !!(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET && env.SESSION_SECRET) }, environment: env.ENVIRONMENT ?? 'unknown' }, ok ? 200 : 503);
+  return json({ ok, d1, r2, auth: { configured: !!(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET && env.SESSION_SECRET) }, environment: env.ENVIRONMENT ?? 'unknown' }, ok ? 200 : 503);
 }
 
 /** POST /api/client-error: the app reports its own errors. Rate-limited; personal data scrubbed. */

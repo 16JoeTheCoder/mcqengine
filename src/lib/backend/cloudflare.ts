@@ -1,4 +1,4 @@
-import { BackendError, type Account, type AiEvent, type Backend, type Me, type SyncRecord } from './types';
+import { BackendError, type Account, type Backend, type Me, type SyncRecord } from './types';
 
 /**
  * The DMC Worker on Cloudflare, same origin (`/api/*`). Auth is an HttpOnly session cookie the
@@ -139,38 +139,6 @@ export function createCloudflareBackend(opts: { base?: string; fetchImpl?: typeo
       return r.ok ? r.blob() : null;
     },
 
-    async aiRun(task, input, onEvent, signal) {
-      let r: Response;
-      try {
-        r = await f(`${base}/api/ai/run`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-DMC': '1' }, body: JSON.stringify({ task, input }), credentials: 'same-origin', cache: 'no-store', signal });
-      } catch (e) {
-        if ((e as Error).name === 'AbortError') throw e;
-        throw new BackendError('Could not reach DMC. Check your connection.', 0);
-      }
-      if (!r.ok || !r.body) {
-        let msg = `AI request failed (${r.status})`;
-        try { msg = ((await r.json()) as { error?: string }).error ?? msg; } catch { /* keep */ }
-        throw new BackendError(msg, r.status, Number(r.headers.get('retry-after')) || undefined);
-      }
-      const reader = r.body.pipeThrough(new TextDecoderStream()).getReader();
-      let buf = '';
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (value) buf += value;
-        let nl: number;
-        while ((nl = buf.indexOf('\n')) >= 0) {
-          const line = buf.slice(0, nl).trim();
-          buf = buf.slice(nl + 1);
-          if (!line) continue;
-          const ev = JSON.parse(line) as { type: string; data?: unknown; error?: string; status?: number; retryAfter?: number; position?: number };
-          if (ev.type === 'result') return ev.data as never;
-          if (ev.type === 'error') throw new BackendError(ev.error ?? 'AI request failed', ev.status ?? 503, ev.retryAfter);
-          onEvent(ev as AiEvent);
-        }
-        if (done) break;
-      }
-      throw new BackendError('The AI answer was cut off. Retry this batch.', 503);
-    },
     admin: (path, init = {}) => call(`/admin/${path}`, { method: init.method ?? 'GET', ...(init.body !== undefined ? { json: init.body } : {}) }),
   };
 }

@@ -5,8 +5,8 @@ import { build } from 'esbuild';
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare';
 
 /**
- * Runs the real Worker in workerd (Miniflare) with real D1, R2 and the AI Durable Object.
- * Outbound fetches (Google, NVIDIA) go to `outbound`, so tests never reach the internet.
+ * Runs the real Worker in workerd (Miniflare) with real D1 and R2.
+ * Outbound fetches (Google) go to `outbound`, so tests never reach the internet.
  */
 export type Outbound = (req: Request) => Promise<Response> | Response;
 let bundled: string | null = null;
@@ -49,7 +49,6 @@ export async function startWorker(vars: Record<string, string> = {}): Promise<Ha
     compatibilityDate: '2026-10-01',
     d1Databases: { DB: 'dmc-test' },
     r2Buckets: ['FILES'],
-    durableObjects: { AI_BUDGET: { className: 'AiBudget', useSQLite: true } },
     bindings: { ENVIRONMENT: 'test', SESSION_SECRET: 'test-secret-0123456789abcdef0123456789', GOOGLE_CLIENT_ID: 'client-1.apps.googleusercontent.com', GOOGLE_CLIENT_SECRET: 'shh', ...vars },
     outboundService: (req: unknown) => outbound(req as Request) as never,
   } as never));

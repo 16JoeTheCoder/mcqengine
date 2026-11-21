@@ -11,8 +11,8 @@ export default defineConfig({
   reporter: [['list']],
   use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } },
   projects: [
-    { name: 'app', testIgnore: /(?:library|ai-import|account|worker)\.spec\.ts/, use: { baseURL: 'http://localhost:4173/' } },
-    { name: 'mock-backend', testMatch: /(?:library|ai-import|account)\.spec\.ts/, use: { baseURL: 'http://localhost:4174/' } },
+    { name: 'app', testIgnore: /(?:library|account|worker)\.spec\.ts/, use: { baseURL: 'http://localhost:4173/' } },
+    { name: 'mock-backend', testMatch: /(?:library|account)\.spec\.ts/, use: { baseURL: 'http://localhost:4174/' } },
     // The real Worker (wrangler dev, local D1 and R2, development sign-in): post, download, versions, PDF mode, admin, backup.
     { name: 'worker', testMatch: /worker\.spec\.ts/, use: { baseURL: 'http://localhost:8787/' } },
   ],

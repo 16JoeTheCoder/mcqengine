@@ -1,6 +1,5 @@
 import { openDB, type IDBPDatabase } from 'idb';
 import { validateManifest, type SetManifest } from '../../../shared/manifest';
-import { createCloudflareBackend } from './cloudflare';
 import { BackendError, SCHOOL_DOMAINS, type Account, type Backend, type LibrarySet, type LibraryStatus, type RegistryPaper, type SyncRecord } from './types';
 
 /**
@@ -285,9 +284,6 @@ export function createMockBackend(): Backend {
       return ((await (await db()).get('files', `backups/${a.id}`)) as Blob | undefined) ?? null;
     },
 
-    // The mock has no AI of its own: it calls the same route as production, so a dev server
-    // proxied to `wrangler dev` (or a test that intercepts /api/ai/run) behaves like the real app.
-    aiRun: (task, input, onEvent, signal) => createCloudflareBackend().aiRun(task, input, onEvent, signal),
     async admin<T>(path0: string): Promise<T> {
       const path = path0.split('?')[0]!;
       const a = me();
@@ -298,7 +294,6 @@ export function createMockBackend(): Backend {
         return { freeTierBytes: 10e9, totalBytes: total, libraryBytes: total, files: s.blobs.length, databaseBackupBytes: 0, personalBackupBytes: 0, perAccount: [] } as T;
       }
       if (path === 'moderation') return { sets: s.sets.filter((x) => x.status === 'hidden' || x.reports > 0).map((x) => ({ id: x.id, title: x.title, ownerName: x.ownerName, status: x.status, reports: x.reports, reasons: s.reports.filter((r) => r.setId === x.id).map((r) => ({ reason: r.reason })) })) } as T;
-      if (path === 'ai') return { configured: false, model: 'nvidia/nemotron-3.5-bolt-e4b', minute: 0, rpm: 38, today: 0, queue: 0 } as T;
       if (path === 'backups') return { daily: [], weekly: [] } as T;
       if (path === 'downloads') return { since: new Date().toISOString().slice(0, 10), rows: [] } as T;
       if (['allowlist', 'admins', 'domains'].includes(path)) return { items: path === 'domains' ? SCHOOL_DOMAINS.map((domain) => ({ domain })) : (path === 'admins' ? ADMINS : ALLOWLIST).map((email) => ({ email })) } as T;

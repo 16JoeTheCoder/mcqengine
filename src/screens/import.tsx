@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import * as store from '../lib/data/db';
 import { readFiles, type ImportSource } from '../lib/data/files';
 import { PdfImport } from './pdf-import';
-import { AiImport } from './ai-import';
 import { crossCheck, type CrossCheckIssue } from '../lib/format/crosscheck';
 import { commitImport, parseImport, planImport, type ParseOutcome } from '../lib/data/importer';
 import { readProgressJson } from '../lib/data/backup';
@@ -42,7 +41,6 @@ const onlyPdfs = (files: File[]) => files.length > 0 && files.every((f) => /\.pd
 
 export function ImportWizard({ pack, initial, pdfs, onClose }: ImportProps) {
   const [source, setSource] = useState<ImportSource | null>(initial ?? null);
-  const [ai, setAi] = useState(false);
   const [pdfFiles, setPdfFiles] = useState<File[] | null>(pdfs ?? null);
   // The pasted text survives closing the dialog (Esc, backdrop, Cancel) until an import succeeds.
   const [text, setTextState] = useState(initial?.text ?? draft.text);
@@ -88,7 +86,6 @@ export function ImportWizard({ pack, initial, pdfs, onClose }: ImportProps) {
     }
   };
 
-  if (ai) return <AiImport onBack={() => setAi(false)} onClose={onClose} onReady={(src) => { setSource(src); setText(src.text ?? ''); setAi(false); }} />;
   if (restore) return <RestoreDialog source={restore} onClose={onClose} />;
   if (pdfFiles) return <PdfImport files={pdfFiles} {...(pack ? { pack } : {})} onClose={onClose} />;
 
@@ -102,12 +99,11 @@ export function ImportWizard({ pack, initial, pdfs, onClose }: ImportProps) {
   return (
     <Modal title={pack ? `Import into ${pack.title}` : 'Upload papers'} size="wide" onClose={onClose}>
       <div class="stack">
-        <p class="small muted">Paste the AI's reply, or choose a .json file, a .zip (JSON plus images and PDFs) or a folder. Or choose question paper PDFs with their mark schemes to practise straight from the PDF. You can also drop files anywhere on the page.</p>
+        <p class="small muted">Paste your AI's reply, or choose a .json file, a .zip (JSON plus images and PDFs) or a folder. Or choose question paper PDFs with their mark schemes to practise straight from the PDF. You can also drop files anywhere on the page.</p>
         <div class="row">
           <Button onClick={() => fileRef.current?.click()}>
             <Icon name="file" size={18} /> Choose file
           </Button>
-          <Button onClick={() => setAi(true)}>Import PDF with AI</Button>
           <Button onClick={() => pdfRef.current?.click()}>
             <Icon name="upload" size={18} /> PDF papers
           </Button>
@@ -477,7 +473,7 @@ function Review({ pack, doc, warnings, source, onBack, onClose }: { pack?: Pack;
                 return (
                   <div class="jy-panel stack-s" key={`${paper.id}-${q.n}`}>
                     <div class="row small muted">
-                      <span class="num">Q{q.n}</span> · {paper.title} {q.uncertain && <Badge status="warn">Flagged by AI</Badge>}
+                      <span class="num">Q{q.n}</span> · {paper.title} {q.uncertain && <Badge status="warn">Marked uncertain</Badge>}
                     </div>
                     {q.stem && <div><Rich text={q.stem} /></div>}
                     {question.figure && <FigureView figure={question.figure} />}
