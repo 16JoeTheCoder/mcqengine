@@ -35,14 +35,16 @@ export interface ImportProps {
   initial?: ImportSource | null;
   /** Question paper and mark scheme PDFs: opens the bare PDF path. */
   pdfs?: File[];
+  /** Open straight on the DMC AI (PDF extraction) step. */
+  startWithAi?: boolean;
   onClose: () => void;
 }
 
 const onlyPdfs = (files: File[]) => files.length > 0 && files.every((f) => /\.pdf$/i.test(f.name) || f.type === 'application/pdf');
 
-export function ImportWizard({ pack, initial, pdfs, onClose }: ImportProps) {
+export function ImportWizard({ pack, initial, pdfs, startWithAi, onClose }: ImportProps) {
   const [source, setSource] = useState<ImportSource | null>(initial ?? null);
-  const [ai, setAi] = useState(false);
+  const [ai, setAi] = useState(!!startWithAi);
   const [pdfFiles, setPdfFiles] = useState<File[] | null>(pdfs ?? null);
   // The pasted text survives closing the dialog (Esc, backdrop, Cancel) until an import succeeds.
   const [text, setTextState] = useState(initial?.text ?? draft.text);

@@ -1,4 +1,4 @@
-﻿# DMC Worker: the static app plus /api/*, on the student council Cloudflare account.
+# DMC Worker: the static app plus /api/*, on the student council Cloudflare account.
 # Production is the top level; staging and local are [env.*] sections. Wrangler does not inherit
 # vars or bindings into environments, so each repeats them. IDs marked REPLACE are filled in by
 # setup.md step 3 (the output of `wrangler d1 create`). Secrets are never written here.

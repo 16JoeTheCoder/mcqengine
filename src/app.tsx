@@ -62,7 +62,7 @@ export function App() {
   const update = useStore(updateReady);
   const [ready, setReady] = useState(false);
   const [prompt, setPrompt] = useState<{ pack?: Pack } | null>(null);
-  const [importing, setImporting] = useState<{ pack?: Pack; source?: ImportSource | null; pdfs?: File[] } | null>(null);
+  const [importing, setImporting] = useState<{ pack?: Pack; source?: ImportSource | null; pdfs?: File[]; ai?: boolean } | null>(null);
   const [about, setAbout] = useState(false);
   const [resume, setResume] = useState<SessionSummary[]>([]);
   const [resumeChecked, setResumeChecked] = useState(false);
@@ -337,9 +337,14 @@ export function App() {
             setPrompt(null);
             openImport(p);
           }}
+          onUseDmcAi={() => {
+            const p = prompt.pack;
+            setPrompt(null);
+            setImporting({ ...(p ? { pack: p } : {}), ai: true });
+          }}
         />
       )}
-      {importing && <ImportWizard pack={importing.pack} initial={importing.source ?? null} {...(importing.pdfs ? { pdfs: importing.pdfs } : {})} onClose={() => setImporting(null)} />}
+      {importing && <ImportWizard pack={importing.pack} initial={importing.source ?? null} {...(importing.pdfs ? { pdfs: importing.pdfs } : {})} {...(importing.ai ? { startWithAi: true } : {})} onClose={() => setImporting(null)} />}
       {about && <AboutDialog onClose={() => setAbout(false)} />}
       {showWelcome && <AccountDialog mode="school" welcome onClose={closeWelcome} />}
       {palette && !inSession && (
