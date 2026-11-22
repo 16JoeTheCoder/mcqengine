@@ -2,8 +2,7 @@ import { useMemo, useState } from 'preact/hooks';
 import { buildAnswersPrompt, buildPrompt, type DiagramMode, type PromptOptions } from '../lib/format/prompt';
 import { slugify } from '../lib/format/validate';
 import type { Pack } from '../lib/types';
-import { toast, useStore } from '../lib/app-state';
-import { authStore, backend } from '../lib/backend';
+import { toast } from '../lib/app-state';
 import { Button, copyText, Field, Modal, Seg, Toggle } from '../ui/kit';
 import { Icon } from '../ui/icons';
 
@@ -35,13 +34,9 @@ function AnswerKeyField({ value, onChange }: { value: PromptOptions['answerKey']
 const splitGroup = (s: string) => s.split('>').map((x) => x.trim()).filter(Boolean);
 
 /** "Make a paper set with AI" / "Add papers": builds a complete, tailored prompt for any AI chat. */
-export function PromptDialog({ pack, onClose, onImport, onUseDmcAi }: { pack?: Pack; onClose: () => void; onImport: () => void; onUseDmcAi: () => void }) {
+export function PromptDialog({ pack, onClose, onImport }: { pack?: Pack; onClose: () => void; onImport: () => void }) {
   // Drafts are kept per pack, so details typed for one pack never reappear in another.
   draftScope = pack?.id ?? 'new';
-  const signedIn = !!useStore(authStore).account;
-  // DMC AI needs the Worker, so builds without a backend only offer the copy-a-prompt route.
-  const [route, setRoute] = useState<'own' | 'dmc'>('own');
-  const own = route === 'own' || !backend;
   const [tab, setTab] = useState<'paper' | 'key'>('paper');
   const [subject, setSubject] = useDraft('subject', pack?.subject ?? '');
   const [packTitle, setPackTitle] = useDraft('packTitle', '');
@@ -100,30 +95,6 @@ export function PromptDialog({ pack, onClose, onImport, onUseDmcAi }: { pack?: P
   return (
     <Modal title={pack ? `Add papers to ${pack.title}` : 'Make a paper set with AI'} size="full" onClose={onClose}>
       <div class="stack">
-        {backend && (
-          <div class="jy-field">
-            <span>How do you want to make it?</span>
-            <Seg label="How to make the paper set" value={route} onChange={setRoute} options={[{ value: 'own', label: 'Use your own AI' }, { value: 'dmc', label: 'Use DMC AI' }]} />
-            <small>{own ? 'Copy a prompt into ChatGPT, Claude, Gemini or any other chat, then import its reply.' : 'DMC reads the PDF for you with its built-in AI. No copying and pasting.'}</small>
-          </div>
-        )}
-        {!own && (
-          <div class="stack">
-            <ol class="steps">
-              <li><span>Choose the question paper PDF, and its mark scheme if you have one.</span></li>
-              <li><span>Pick the pages to read. DMC AI works through them in small batches.</span></li>
-              <li><span>Check and fix the questions it found, then save. Nothing is saved until you confirm.</span></li>
-            </ol>
-            <p class="small muted">Works on multiple-choice papers only. It has a daily limit per account, and the pages you choose are sent to NVIDIA to be read.</p>
-            {!signedIn && <div class="notice notice--warn" role="status">Sign in with Google to use DMC AI. Your own AI works without an account.</div>}
-            <div class="prompt-actions">
-              <Button variant="accent" onClick={onUseDmcAi}>
-                <Icon name="sparkles" size={18} /> Continue with DMC AI
-              </Button>
-            </div>
-          </div>
-        )}
-        {own && (<>
         <ol class="steps">
           <li><span>Fill in the details below and copy the prompt.</span></li>
           <li>
@@ -273,7 +244,6 @@ export function PromptDialog({ pack, onClose, onImport, onUseDmcAi }: { pack?: P
             <Icon name="upload" size={18} /> Import the reply
           </Button>
         </div>
-        </>)}
       </div>
     </Modal>
   );

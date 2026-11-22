@@ -77,8 +77,9 @@ export type Route =
   | { name: 'session'; id: string }
   | { name: 'results'; id: string }
   | { name: 'settings' }
-  | { name: 'school' }
+  | { name: 'school'; q?: string }
   | { name: 'admin' }
+  | { name: 'profile'; handle: string }
   | { name: 'notebook'; id: string };
 
 export function parseRoute(hash: string): Route {
@@ -90,7 +91,8 @@ export function parseRoute(hash: string): Route {
   if (parts[0] === 'session' && parts[1]) return { name: 'session', id: parts[1] };
   if (parts[0] === 'results' && parts[1]) return { name: 'results', id: parts[1] };
   if (parts[0] === 'settings') return { name: 'settings' };
-  if (parts[0] === 'library') return { name: 'school' };
+  if (parts[0] === 'library') return { name: 'school', ...(q.get('q') ? { q: q.get('q')!.slice(0, 200) } : {}) };
+  if (parts[0] === 'u' && parts[1]) return { name: 'profile', handle: parts[1].toLowerCase() };
   if (parts[0] === 'admin') return { name: 'admin' };
   return { name: 'library' };
 }
@@ -101,7 +103,8 @@ export const href = {
   session: (id: string) => `#/session/${encodeURIComponent(id)}`,
   results: (id: string) => `#/results/${encodeURIComponent(id)}`,
   settings: () => '#/settings',
-  school: () => '#/library',
+  school: (q?: string) => (q ? `#/library?q=${encodeURIComponent(q)}` : '#/library'),
+  profile: (handle: string) => `#/u/${encodeURIComponent(handle)}`,
   admin: () => '#/admin',
   notebook: (id: string) => `#/pack/${encodeURIComponent(id)}/notebook`,
 };

@@ -3,7 +3,8 @@ import * as store from '../lib/data/db';
 import { papersDone } from '../lib/stats/kpi';
 import { dataVersion, href, useStore } from '../lib/app-state';
 import type { Pack, SessionSummary } from '../lib/types';
-import { Badge, Button, plural, relDay, Ring, Skeleton } from '../ui/kit';
+import { Badge, Button, Menu, plural, relDay, Ring, Skeleton } from '../ui/kit';
+import { EditSet } from './edit-set';
 import { Icon } from '../ui/icons';
 import { AccountDialog, type AccountMode } from './account';
 import { authStore, backend } from '../lib/backend';
@@ -16,6 +17,7 @@ export function Library({ onPrompt, onImport }: { onPrompt: () => void; onImport
   const [q, setQ] = useState('');
   const [sort, setSort] = useState<'recent' | 'name' | 'progress'>('recent');
   const [account, setAccount] = useState<AccountMode | null>(null);
+  const [editing, setEditing] = useState<Pack | null>(null);
   const settings = useStore(settingsStore);
   const auth = useStore(authStore);
 
@@ -152,7 +154,8 @@ export function Library({ onPrompt, onImport }: { onPrompt: () => void; onImport
       )}
       <div class="cards">
         {rows.map(({ p, done, questions, saved, unkeyed, next }) => (
-          <a class="jy-panel jy-panel--link pack-card" href={href.pack(p.id)} key={p.id}>
+          <div class="pack-card-wrap" key={p.id}>
+          <a class="jy-panel jy-panel--link pack-card" href={href.pack(p.id)}>
             <div class="top">
               <div class="stack-s" style={{ minWidth: 0 }}>
                 <span class="label">{p.subject || 'Paper set'}</span>
@@ -172,7 +175,12 @@ export function Library({ onPrompt, onImport }: { onPrompt: () => void; onImport
               </div>
             </div>
           </a>
+          <div class="pack-card-menu">
+            <Menu label={`More for ${p.title}`} items={[{ label: 'Edit details', onSelect: () => setEditing(p) }]} />
+          </div>
+          </div>
         ))}
+        {editing && <EditSet pack={editing} onClose={() => setEditing(null)} />}
         <button type="button" class="jy-panel jy-panel--link add-card" onClick={onImport}>
           <Icon name="plus" size={28} />
           <b>Upload papers</b>

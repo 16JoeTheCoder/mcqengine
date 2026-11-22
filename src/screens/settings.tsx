@@ -152,7 +152,7 @@ export function AboutDialog({ onClose }: { onClose: () => void }) {
           </div>
           <div class="stack-s">
             <div class="label">Your data</div>
-            <span>Paper sets and progress stay on this device. Signed in, your practice progress can sync through DMC's own server on Cloudflare. PDF import sends only selected pages to NVIDIA after your confirmation. Cloud backups are optional.</span>
+            <span>Paper sets and progress stay on this device. Signed in, your practice progress can sync through DMC's own server on Cloudflare. Cloud backups are optional.</span>
           </div>
         </div>
         <div class="small muted stack-s">

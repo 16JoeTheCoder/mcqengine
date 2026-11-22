@@ -215,7 +215,24 @@ One line each: what was decided and why. Grouped by area.
 ## Phase 2: Cloudflare (full list in decision.md)
 
 - Packs and Library sets came apart for three reasons: no permanent pack identity in exports, posting never linked the local pack, and papers matched by AI-written ids. Fixed with a permanent `setId`, set versions, canonical Cambridge paper keys (`9702_s24_qp_12`) from file names or cover text, and question matching by key + number + content hash (`src/lib/format/identity.ts`).
-- One Cloudflare Worker serves the app and `/api/*`; D1 holds data, R2 holds files once by SHA-256, a Durable Object queues AI calls, a cron backs up D1 nightly and collects unreferenced files. Supabase, supabase-js and PGlite are removed; the RLS cases are Worker route tests run in workerd.
+- One Cloudflare Worker serves the app and `/api/*`; D1 holds data, R2 holds files once by SHA-256, a cron backs up D1 nightly and collects unreferenced files. Supabase, supabase-js and PGlite are removed; the RLS cases are Worker route tests run in workerd.
 - Google sign-in only (OAuth code + PKCE in the Worker, JWKS-verified ID token); sessions are hashed, rolling, HttpOnly cookies. Library membership needs the school domain and Google's `hd` claim, or the allowlist, or admin.
 - Practice per paper in DMC mode (typed) or PDF mode (printed paper and answer sheet), same grading and stats.
 - Visible copy says "paper set"; code and storage keep `pack`.
+
+## Phase 3
+
+- AI import removed entirely (screen, Worker routes, prompt registry, `AiBudget` Durable Object via a `deleted_classes` migration, NVIDIA settings). The hosted model timed out and misread papers; a student's own AI with the pack guide does better. The copy-a-prompt dialog stays (it calls no server).
+- Paper identity never depends on anyone typing a key. Order: SHA-256 of the question paper, then a MinHash text fingerprint of the first four pages (64 slots of 5-word shingles, same paper at 0.9 or more estimated Jaccard; 16 LSH bands of 4 slots for lookup), then the Cambridge code from the file name or cover, used only when the stored paper has no fingerprint to disagree. Under 60 shingles (scans, answer sheets) there is no fingerprint: hash only. Fingerprinting runs in the browser; the Worker only compares hex strings.
+- PDF metadata (`/Info`, XMP) is not used for identity: browsers and printers rewrite or drop it, while the printed text survives.
+- AI-written paper ids are never trusted (no "confirm" step); codes are labels.
+- Existing `papers` registry rows are copied into `paper_prints` (no fingerprint) so old links keep working.
+- Exam answers clear when the chosen option is picked again; practice answers lock at once. Submit lists unanswered questions with jump buttons; flags are markers and never warn.
+- Follow (PDF answer sheet) scrolls only the sheet so the next question is centred; per device, off by default; respects reduced motion.
+- Practice right and wrong use light green and red `--practice-*` tokens, always with an icon and the word, because `--status-ok` is blue for colour-blind safety.
+- Paper sets gain an optional `description`; editing a set keeps its `setId`. The owner can push name, subject and description to the Library listing (`PATCH /api/sets/<id>` takes `subject`); a downloaded copy is renamed locally only, and updates keep the local name.
+- Search is one dialog: a local in-memory index (sets, papers, first 400 characters of each question) plus Library sets and people from D1 FTS5 (`sets_fts`, `users_fts`, kept by triggers) with the same access rules as their pages. Non-members get empty server results, never an error.
+- Profiles are school-internal: members see `school` profiles of other members; `private` is owner and admins only; personal and suspended accounts have none. No messages or follower feed (most users are minors). Stats are summary numbers the owner shares, computed on their device; never answers or mistakes. Photos are 512 px WebP, at most 512 KB, in R2 under `avatars/<id>/`, served through the Worker after the visibility check.
+- Handles come from the email local part on first use, with a numeric suffix on collision; owners can change them.
+- The admin dashboard is a drawer over the Library with tabs. Suspension deletes every session in the same batch and `caller()` ignores suspended accounts, so it is immediate. Per-account quota override (`users.quota_bytes`). Every admin change writes `audit_log` in the same batch; the owner's own edits do not. Client errors are counted per day (`error_daily`); messages stay in Workers logs.
+- The Worker test harness splits migrations on `END;` for triggers.

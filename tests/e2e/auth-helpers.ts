@@ -15,10 +15,17 @@ export async function signOutAccount(page: Page, email: string) {
   await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toBeVisible();
 }
 
+/** The account dialog keeps cache tools under "Data on this device". */
+export async function openDeviceData(page: Page) {
+  const summary = page.getByRole('dialog', { name: 'Account', exact: true }).getByText('Data on this device', { exact: true });
+  if ((await summary.locator('xpath=..').getAttribute('open')) === null) await summary.click();
+}
+
 export async function importGuestProgress(page: Page, email: string, accept = true) {
   await page.getByRole('button', { name: `Account: ${email}`, exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Account', exact: true });
   page.once('dialog', (confirmation) => accept ? confirmation.accept() : confirmation.dismiss());
+  await openDeviceData(page);
   await dialog.getByRole('button', { name: 'Import guest progress', exact: true }).click();
   if (accept) await expect(page.getByText(/^Imported \d+ guest records\./)).toBeVisible();
   await dialog.getByRole('button', { name: 'Close', exact: true }).click();

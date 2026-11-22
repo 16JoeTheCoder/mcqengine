@@ -20,13 +20,6 @@ crons = ["0 17 * * *"]
 [vars]
 ENVIRONMENT = "production"
 APP_ORIGIN = "https://dmc.stjbscouncil.org"
-NVIDIA_MODEL = "nvidia/nemotron-3.5-bolt-e4b"
-AI_SHARED_RPM = "38"
-AI_USER_DAILY_REQUESTS = "100"
-AI_CONCURRENCY = "4"
-AI_MAX_PAGES = "4"
-AI_TIMEOUT_MS = "45000"
-AI_QUEUE_MAX = "60"
 
 [[d1_databases]]
 binding = "DB"
@@ -38,13 +31,14 @@ migrations_dir = "migrations"
 binding = "FILES"
 bucket_name = "dmc-files"
 
-[[durable_objects.bindings]]
-name = "AI_BUDGET"
-class_name = "AiBudget"
-
+# The AI import (and its AiBudget Durable Object) was removed in Phase 3; v2 deletes the class.
 [[migrations]]
 tag = "v1-ai-budget"
 new_sqlite_classes = ["AiBudget"]
+
+[[migrations]]
+tag = "v2-remove-ai"
+deleted_classes = ["AiBudget"]
 
 [[ratelimits]]
 name = "UPLOAD_LIMITER"
@@ -62,19 +56,12 @@ namespace_id = "2103"
 simple = { limit = 10, period = 60 }
 
 # ---------------- previews: `wrangler preview` (Workers Builds runs it for every non-main branch) ----------------
-# Previews do not inherit top-level vars or bindings. They use the staging D1 and R2 (never production)
-# and get their own Durable Object namespace automatically. APP_ORIGIN is left unset so the Worker
+# Previews do not inherit top-level vars or bindings. They use the staging D1 and R2 (never production).
+# APP_ORIGIN is left unset so the Worker
 # uses the preview's own URL for the same-origin check. Google sign-in does not work on preview URLs
 # (their redirect URIs are not registered with Google); previews are for checking the app and the API.
 [previews.vars]
 ENVIRONMENT = "preview"
-NVIDIA_MODEL = "nvidia/nemotron-3.5-bolt-e4b"
-AI_SHARED_RPM = "5"
-AI_USER_DAILY_REQUESTS = "10"
-AI_CONCURRENCY = "1"
-AI_MAX_PAGES = "4"
-AI_TIMEOUT_MS = "45000"
-AI_QUEUE_MAX = "10"
 [[previews.d1_databases]]
 binding = "DB"
 database_name = "dmc-staging"
@@ -83,9 +70,6 @@ migrations_dir = "migrations"
 [[previews.r2_buckets]]
 binding = "FILES"
 bucket_name = "dmc-files-staging"
-[[previews.durable_objects.bindings]]
-name = "AI_BUDGET"
-class_name = "AiBudget"
 [[previews.ratelimits]]
 name = "UPLOAD_LIMITER"
 namespace_id = "2301"
@@ -112,13 +96,6 @@ crons = ["0 17 * * *"]
 [env.staging.vars]
 ENVIRONMENT = "staging"
 APP_ORIGIN = "https://dmc-staging.stjbscouncil.org"
-NVIDIA_MODEL = "nvidia/nemotron-3.5-bolt-e4b"
-AI_SHARED_RPM = "10"
-AI_USER_DAILY_REQUESTS = "30"
-AI_CONCURRENCY = "2"
-AI_MAX_PAGES = "4"
-AI_TIMEOUT_MS = "45000"
-AI_QUEUE_MAX = "20"
 [[env.staging.d1_databases]]
 binding = "DB"
 database_name = "dmc-staging"
@@ -127,9 +104,6 @@ migrations_dir = "migrations"
 [[env.staging.r2_buckets]]
 binding = "FILES"
 bucket_name = "dmc-files-staging"
-[[env.staging.durable_objects.bindings]]
-name = "AI_BUDGET"
-class_name = "AiBudget"
 [[env.staging.ratelimits]]
 name = "UPLOAD_LIMITER"
 namespace_id = "2201"
@@ -155,11 +129,6 @@ assets = { directory = "./dist-worker", binding = "ASSETS", not_found_handling =
 ENVIRONMENT = "local"
 DEV_LOGIN = "1"
 SESSION_SECRET = "local-development-only-secret-0123456789abcdef"
-AI_SHARED_RPM = "38"
-AI_USER_DAILY_REQUESTS = "100"
-AI_CONCURRENCY = "2"
-AI_MAX_PAGES = "4"
-AI_TIMEOUT_MS = "45000"
 [[env.local.d1_databases]]
 binding = "DB"
 database_name = "dmc-local"
@@ -168,6 +137,3 @@ migrations_dir = "migrations"
 [[env.local.r2_buckets]]
 binding = "FILES"
 bucket_name = "dmc-files-local"
-[[env.local.durable_objects.bindings]]
-name = "AI_BUDGET"
-class_name = "AiBudget"

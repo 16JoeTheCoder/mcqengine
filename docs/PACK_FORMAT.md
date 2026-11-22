@@ -39,6 +39,8 @@ The design goals, in order: an LLM can produce it reliably, the intake forgives 
 | `papers[]` | `papers` or `answers` | One object per paper. One AI response normally holds exactly one paper. |
 | `papers[].id` | yes | Stable id: lowercase letters, digits, hyphens, at most 64 characters. Re-importing the same id merges instead of duplicating. |
 | `papers[].title` | yes | Display title. |
+| `papers[].key` | no | Canonical Cambridge key (`9702_s24_qp_12`). Optional: DMC reads it from file names or the cover, and only trusts it from its own exports. Never invent one. |
+| `papers[].fingerprint` | no | 512 hex characters, a text fingerprint of the question paper written by DMC on export and post. Do not write it by hand; it is dropped if malformed. Papers whose fingerprints match are the same paper even if the files differ. |
 | `papers[].source` | no | `{ "questionPaper": "<file>", "markScheme": "<file>" }`: the files it was transcribed from, for traceability. |
 | `papers[].group` | no | Path for the papers browser, most general first, at most 4 levels: `["2025", "Oct/Nov"]`. |
 | `papers[].questionCount` | yes | The number of questions printed on the paper. Used to detect dropped questions. |
@@ -114,7 +116,7 @@ Why not a maths library: exam MCQs need superscripts, subscripts, simple fractio
 
 ## 4a. Several papers in one go
 
-The prompt dialog's "Several papers" mode asks the AI to transcribe every attached paper. It identifies each paper by the code on its cover, not by file order, and builds stable ids from it (`9702-s25-12`: subject code, series letter m/s/w with a two-digit year, paper number). It pairs each mark scheme with its question paper by that same code.
+The prompt dialog's "Several papers" mode asks the AI to transcribe every attached paper. It identifies each paper by the code on its cover, not by file order, and builds ids from it (labels only; DMC works out paper identity itself) (`9702-s25-12`: subject code, series letter m/s/w with a two-digit year, paper number). It pairs each mark scheme with its question paper by that same code.
 
 * **Plain JSON:** one paper per code block, and the AI writes `CONTINUE` and waits if it runs out of space. Paste all the replies into Import at once; the code blocks are combined.
 * **ZIP** (needs an AI that can run code, such as ChatGPT with data analysis or Claude with code execution): the AI locates question boundaries in the PDF text, crops either the whole question (recommended) or just the diagram, and names each crop by the rule above. It checks every crop against its question, writes one file per paper so nothing is cut off, and returns `dmc-pack.zip` (`pack.json` plus `images/`).

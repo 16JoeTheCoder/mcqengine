@@ -1,6 +1,6 @@
 # Pack builder guide (for AI agents)
 
-How an AI agent, typically Claude Code in this repository, turns exam PDFs into a DMC pack that imports cleanly. The format is [PACK_FORMAT.md](PACK_FORMAT.md); this guide is the procedure. Real exam content never goes into git: work in `pilot/` (ignored) and name outputs `*.local.*` or `*.dmc.zip` (ignored).
+How an AI agent, typically Claude Code in this repository (DMC has no built-in AI import), turns exam PDFs into a DMC pack that imports cleanly. The format is [PACK_FORMAT.md](PACK_FORMAT.md); this guide is the procedure. Real exam content never goes into git: work in `pilot/` (ignored) and name outputs `*.local.*` or `*.dmc.zip` (ignored).
 
 ## Inputs and outputs
 
@@ -9,7 +9,7 @@ How an AI agent, typically Claude Code in this repository, turns exam PDFs into 
 
 ## Procedure
 
-1. **Identify each paper from its cover**, not the file order: syllabus code, series, year, paper number, number of questions, time allowed. Paper id: `<code>-<m|s|w><yy>-<paper>` (`9702-s23-12`). Title `May/June 2023 Paper 12`, group `["2023", "May/June"]`.
+1. **Identify each paper from its cover**, not the file order: syllabus code, series, year, paper number, number of questions, time allowed. Paper id: any readable slug such as `9702-s23-12`; it is a label. DMC works out paper identity itself from the files (file hash, text fingerprint, the code on the cover), so do not invent keys and do not write a `fingerprint`. Title `May/June 2023 Paper 12`, group `["2023", "May/June"]`.
 2. **Extract text with positions** (PyMuPDF `page.get_text("dict")`, or pdfplumber). Question boundaries are the question numbers at the left margin; a question ends where the next number starts or at the footer.
 3. **Transcribe every question exactly** into `stem` and `options` (or `table`). Copy every value, unit, sign and power of ten. Use the markup: `^{}` `_{}` `\\frac{}{}` `\\sqrt{}` `**bold**`, Unicode for Greek and symbols. Record `page` for each question (1-based page of the PDF file).
 4. **Diagrams:** crop the whole question (recommended) or the diagram to `images/<paper id>/q<NN>.png` at 200 dpi, and reference it with `"image"` or `"figure": { "file": … }`. The importer rejects a file whose name disagrees with the question that uses it.

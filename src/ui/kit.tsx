@@ -41,7 +41,7 @@ export function Modal({
   onClose: () => void;
   children: ComponentChildren;
   footer?: ComponentChildren;
-  size?: 'wide' | 'full';
+  size?: 'wide' | 'full' | 'drawer';
   dismissable?: boolean;
   describedBy?: string;
 }) {

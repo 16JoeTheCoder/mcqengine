@@ -1,5 +1,4 @@
 import type { PublishedManifest, SetManifest } from '../../../shared/manifest';
-import type { AiTask, TaskInput, TaskOutput } from '../../../shared/prompts';
 
 /**
  * The backend the app talks to: the DMC Worker on Cloudflare in production, an in-browser mock
@@ -11,6 +10,8 @@ export interface Account {
   email: string;
   emailVerified: boolean;
   name: string;
+  /** Profile address, `#/u/<handle>`. */
+  handle?: string;
 }
 
 export interface LibraryStatus {
@@ -61,9 +62,35 @@ export interface SyncRecord {
 }
 
 export interface RegistryPaper { key: string; msKey: string; qp: string | null; ms: string | null; questionCount: number | null }
+export interface ProfileStats { sessions?: number; questions?: number; accuracy?: number; papers?: number; streak?: number }
+export interface ProfileSet { id: string; title: string; subject: string; paperCount: number; questionCount: number; stars: number; version: number; updatedAt: number | string }
+export interface Profile {
+  handle: string;
+  name: string;
+  headline: string;
+  bio: string;
+  subjects: string[];
+  avatar: string | null;
+  joined: number | string;
+  mine: boolean;
+  /** Only for the owner and admins. */
+  visibility?: 'school' | 'private';
+  showStats: boolean;
+  stats: ProfileStats | null;
+  starsReceived: number;
+  sets: ProfileSet[];
+}
+export interface ProfilePatch { handle?: string; headline?: string; bio?: string; subjects?: string[]; visibility?: 'school' | 'private'; showStats?: boolean; stats?: ProfileStats }
+export interface SearchResults {
+  sets: { id: string; title: string; subject: string; ownerName: string; paperCount: number; version: number }[];
+  people: { handle: string; name: string; headline: string }[];
+}
 
-/** One line of the AI stream. */
-export type AiEvent = { type: 'queued'; position: number } | { type: 'repairing' };
+/** A paper to find in the Library: its question paper hash, text fingerprint, Cambridge code. */
+export interface PaperAsk { qp?: string; fp?: string; key?: string }
+/** A paper the Library already has: link these files instead of uploading. */
+export interface PaperMatch { qp: string; ms: string | null; questionCount: number | null; label: string | null; how: 'file' | 'text' | 'code'; similarity: number }
+
 
 export interface Backend {
   kind: 'cloudflare' | 'mock';
@@ -82,6 +109,15 @@ export interface Backend {
   listSets(o: { search: string; limit: number; offset: number }): Promise<LibrarySet[]>;
   getSet(id: string, version?: number): Promise<{ set: LibrarySet; manifest: PublishedManifest }>;
   lookupPapers(keys: string[]): Promise<RegistryPaper[]>;
+  /** Library sets and profiles this account may see (empty for non-members). */
+  search(q: string, signal?: AbortSignal): Promise<SearchResults>;
+  profile(handle: string): Promise<Profile>;
+  updateProfile(patch: ProfilePatch): Promise<{ handle: string }>;
+  /** A square photo (WebP, at most 512 KB), or null to remove it. */
+  setAvatar(photo: Blob | null): Promise<void>;
+  reportProfile(handle: string, reason: string): Promise<void>;
+  /** Same paper by file hash, then text fingerprint, then Cambridge code (null: not in the Library). */
+  matchPapers(papers: PaperAsk[]): Promise<(PaperMatch | null)[]>;
   /** Hashes the server does not have yet. */
   checkBlobs(hashes: string[]): Promise<string[]>;
   uploadBlob(hash: string, blob: Blob, type: string, onProgress: (sent: number) => void, signal: AbortSignal): Promise<void>;
@@ -89,7 +125,7 @@ export interface Backend {
   /** A URL an <img> can show (same-origin for the Worker; an object URL for the mock). */
   blobUrl(hash: string): Promise<string | null>;
   publishVersion(setId: string, base: number, manifest: SetManifest): Promise<{ version: number }>;
-  updateSet(id: string, patch: { title?: string; description?: string; status?: 'approved' | 'hidden' }): Promise<void>;
+  updateSet(id: string, patch: { title?: string; description?: string; subject?: string; status?: 'approved' | 'hidden' }): Promise<void>;
   deleteSet(id: string): Promise<void>;
   star(setId: string, on: boolean): Promise<void>;
   report(setId: string, reason: string): Promise<void>;
@@ -102,7 +138,6 @@ export interface Backend {
   putBackup(blob: Blob, onProgress: (sent: number) => void): Promise<void>;
   getBackup(): Promise<Blob | null>;
 
-  aiRun<T extends AiTask>(task: T, input: TaskInput[T], onEvent: (e: AiEvent) => void, signal: AbortSignal): Promise<TaskOutput[T]>;
   /** Admin panel: GET a JSON route under /api/admin/. */
   admin<T = unknown>(path: string, init?: { method?: 'GET' | 'POST' | 'DELETE'; body?: unknown }): Promise<T>;
 }

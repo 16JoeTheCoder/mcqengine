@@ -35,6 +35,7 @@ const CommandPalette = lazy(() => import('./screens/palette').then((m) => m.Comm
 const Notebook = lazy(() => import('./screens/notebook').then((m) => m.Notebook));
 const SchoolLibrary = lazy(() => import('./screens/school-library').then((m) => m.SchoolLibrary));
 const AdminPanel = lazy(() => import('./screens/admin').then((m) => m.AdminPanel));
+const ProfileScreen = lazy(() => import('./screens/profile').then((m) => m.ProfileScreen));
 
 /** Set by main.tsx when a new service worker is waiting. */
 export const updateReady = createStore<(() => void) | null>(null);
@@ -62,7 +63,7 @@ export function App() {
   const update = useStore(updateReady);
   const [ready, setReady] = useState(false);
   const [prompt, setPrompt] = useState<{ pack?: Pack } | null>(null);
-  const [importing, setImporting] = useState<{ pack?: Pack; source?: ImportSource | null; pdfs?: File[]; ai?: boolean } | null>(null);
+  const [importing, setImporting] = useState<{ pack?: Pack; source?: ImportSource | null; pdfs?: File[] } | null>(null);
   const [about, setAbout] = useState(false);
   const [resume, setResume] = useState<SessionSummary[]>([]);
   const [resumeChecked, setResumeChecked] = useState(false);
@@ -120,7 +121,7 @@ export function App() {
       if (!firstRoute.current) document.getElementById('main')?.focus({ preventScroll: true });
       firstRoute.current = false;
     });
-    const t = route.name === 'library' ? 'DMC' : route.name === 'school' ? 'Library · DMC' : route.name === 'admin' ? 'Admin · DMC' : route.name === 'settings' ? 'Settings · DMC' : route.name === 'results' ? 'Results · DMC' : route.name === 'session' ? 'Session · DMC' : 'Paper set · DMC';
+    const t = route.name === 'library' ? 'DMC' : route.name === 'school' ? 'Library · DMC' : route.name === 'admin' ? 'Admin · DMC' : route.name === 'profile' ? 'Profile · DMC' : route.name === 'settings' ? 'Settings · DMC' : route.name === 'results' ? 'Results · DMC' : route.name === 'session' ? 'Session · DMC' : 'Paper set · DMC';
     document.title = t;
   }, [route]);
 
@@ -277,6 +278,12 @@ export function App() {
                   <span aria-current="page">Admin</span>
                 </>
               )}
+              {route.name === 'profile' && (
+                <>
+                  <span aria-hidden="true">/</span>
+                  <span aria-current="page">@{route.handle}</span>
+                </>
+              )}
               {route.name === 'settings' && (
                 <>
                   <span aria-hidden="true">/</span>
@@ -291,13 +298,15 @@ export function App() {
               )}
             </nav>
             <span class="spacer" />
+            <button type="button" class="topsearch" onClick={() => setPalette(true)} onPointerEnter={() => void import('./screens/palette')} onFocus={() => void import('./screens/palette')} aria-label="Search everything (Ctrl+K)">
+              <Icon name="search" size={18} />
+              <span class="topsearch-text">Search everything</span>
+              <span class="kbd topsearch-kbd" aria-hidden="true">Ctrl K</span>
+            </button>
             {backend && route.name !== 'school' && (
               <a class="jy-btn jy-btn--ghost hide-sm" href={href.school()}>Library</a>
             )}
             <AccountButton syncLabel={syncLabel(sync)} onSync={() => { const a = authStore.get().account; if (a) void syncNow(backend, a.id); }} />
-            <button type="button" class="jy-btn jy-btn--ghost jy-btn--icon hide-sm" onClick={() => setPalette(true)} aria-label="Go to (Ctrl+K)" title="Go to (Ctrl+K)">
-              <Icon name="search" />
-            </button>
             <a class="jy-btn jy-btn--ghost jy-btn--icon" href={href.settings()} aria-label="Settings">
               <Icon name="settings" />
             </a>
@@ -313,8 +322,9 @@ export function App() {
       {route.name === 'session' && <SessionScreen id={route.id} />}
       {route.name === 'results' && <Results id={route.id} />}
       {route.name === 'settings' && <SettingsScreen onImport={() => openImport()} onAbout={() => setAbout(true)} />}
-      {route.name === 'school' && <SchoolLibrary />}
-      {route.name === 'admin' && <AdminPanel />}
+      {route.name === 'school' && <SchoolLibrary key={route.q ?? ''} initialSearch={route.q ?? ''} />}
+      {route.name === 'admin' && <><SchoolLibrary initialSearch="" /><AdminPanel /></>}
+      {route.name === 'profile' && <ProfileScreen key={route.handle} handle={route.handle} />}
       {route.name === 'notebook' && <Notebook packId={route.id} />}
 
       {!inSession && (
@@ -337,14 +347,9 @@ export function App() {
             setPrompt(null);
             openImport(p);
           }}
-          onUseDmcAi={() => {
-            const p = prompt.pack;
-            setPrompt(null);
-            setImporting({ ...(p ? { pack: p } : {}), ai: true });
-          }}
         />
       )}
-      {importing && <ImportWizard pack={importing.pack} initial={importing.source ?? null} {...(importing.pdfs ? { pdfs: importing.pdfs } : {})} {...(importing.ai ? { startWithAi: true } : {})} onClose={() => setImporting(null)} />}
+      {importing && <ImportWizard pack={importing.pack} initial={importing.source ?? null} {...(importing.pdfs ? { pdfs: importing.pdfs } : {})} onClose={() => setImporting(null)} />}
       {about && <AboutDialog onClose={() => setAbout(false)} />}
       {showWelcome && <AccountDialog mode="school" welcome onClose={closeWelcome} />}
       {palette && !inSession && (

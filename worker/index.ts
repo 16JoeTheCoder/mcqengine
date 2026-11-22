@@ -1,10 +1,11 @@
-import { access, backups, downloads, moderation, storage } from './admin';
-import { aiConfig, aiRun, aiStatus, aiTest } from './ai';
+import { access, auditLog, backups, downloads, duplicates, gcPreview, moderation, overview, storage, userAction, users } from './admin';
 import { devLogin, finishGoogle, logout, me, need, startGoogle, updateMe } from './auth';
 import { collectGarbage, runBackup } from './backup';
 import { checkBlobs, getBlob, putBlob } from './blobs';
 import { ApiError, fail, json, obj, readJson } from './http';
-import { deleteSet, getSet, listSets, lookupPapers, publishVersion, report, star, updateSet } from './library';
+import { deleteSet, getSet, listSets, lookupPapers, matchPapers, publishVersion, report, star, updateSet } from './library';
+import { getAvatar, getProfile, putAvatar, reportProfile, updateProfile } from './profiles';
+import { search } from './search';
 import { pull, push } from './sync';
 import type { Env, ExecutionContext, ScheduledController } from './types';
 
@@ -12,7 +13,6 @@ import type { Env, ExecutionContext, ScheduledController } from './types';
  * The DMC Worker: serves the static app (assets) and every /api route. It replaces Supabase.
  * Each route checks auth and membership itself; the app never decides access.
  */
-export { AiBudget } from './ai';
 export type { Env } from './types';
 
 type Handler = (req: Request, env: Env, ctx: ExecutionContext, ...params: string[]) => Promise<Response>;
@@ -25,6 +25,13 @@ const ROUTES: [string, RegExp, Handler][] = [
   ['POST', /^\/api\/auth\/dev$/, (r, e) => devLogin(r, e)],
   ['GET', /^\/api\/me$/, me],
   ['PATCH', /^\/api\/me$/, (r, e) => updateMe(r, e)],
+  ['PATCH', /^\/api\/me\/profile$/, (r, e) => updateProfile(r, e)],
+  ['PUT', /^\/api\/me\/avatar$/, (r, e) => putAvatar(r, e)],
+  ['DELETE', /^\/api\/me\/avatar$/, (r, e) => putAvatar(r, e)],
+  ['GET', /^\/api\/profiles\/([^/]+)$/, (r, e, c, h) => getProfile(r, e, c, h!)],
+  ['GET', /^\/api\/profiles\/([^/]+)\/avatar$/, (r, e, c, h) => getAvatar(r, e, c, h!)],
+  ['POST', /^\/api\/profiles\/([^/]+)\/report$/, (r, e, c, h) => reportProfile(r, e, c, h!)],
+  ['GET', /^\/api\/search$/, search],
   ['GET', /^\/api\/me\/backup$/, personalBackup],
   ['PUT', /^\/api\/me\/backup$/, personalBackup],
   ['DELETE', /^\/api\/me\/backup$/, personalBackup],
@@ -37,16 +44,19 @@ const ROUTES: [string, RegExp, Handler][] = [
   ['PUT', /^\/api\/sets\/([^/]+)\/star$/, (r, e, c, id) => star(r, e, c, id!)],
   ['POST', /^\/api\/sets\/([^/]+)\/report$/, (r, e, c, id) => report(r, e, c, id!)],
   ['POST', /^\/api\/papers\/lookup$/, lookupPapers],
+  ['POST', /^\/api\/papers\/match$/, matchPapers],
   ['POST', /^\/api\/blobs\/check$/, checkBlobs],
   ['PUT', /^\/api\/blobs\/([^/]+)$/, (r, e, c, h) => putBlob(r, e, c, h!)],
   ['GET', /^\/api\/blob\/([^/]+)$/, (r, e, c, h) => getBlob(r, e, c, h!)],
   ['HEAD', /^\/api\/blob\/([^/]+)$/, (r, e, c, h) => getBlob(r, e, c, h!)],
   ['POST', /^\/api\/sync\/push$/, push],
   ['GET', /^\/api\/sync\/pull$/, pull],
-  ['GET', /^\/api\/ai\/config$/, aiConfig],
-  ['POST', /^\/api\/ai\/run$/, aiRun],
-  ['GET', /^\/api\/admin\/ai$/, aiStatus],
-  ['POST', /^\/api\/admin\/ai\/test$/, aiTest],
+  ['GET', /^\/api\/admin\/overview$/, overview],
+  ['GET', /^\/api\/admin\/users$/, users],
+  ['POST', /^\/api\/admin\/users\/([^/]+)$/, (r, e, c, id) => userAction(r, e, c, id!)],
+  ['GET', /^\/api\/admin\/audit$/, auditLog],
+  ['GET', /^\/api\/admin\/duplicates$/, duplicates],
+  ['GET', /^\/api\/admin\/gc$/, gcPreview],
   ['GET', /^\/api\/admin\/storage$/, storage],
   ['GET', /^\/api\/admin\/downloads$/, downloads],
   ['GET', /^\/api\/admin\/moderation$/, moderation],
@@ -86,20 +96,21 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
   return allowed.length ? json({ error: 'Method not allowed' }, 405, { Allow: allowed.join(', ') }) : json({ error: 'Not found' }, 404);
 }
 
-/** GET /api/health: D1, R2 and whether the AI key is set. No personal data, no auth. */
+/** GET /api/health: D1, R2 and whether sign-in is configured. No personal data, no auth. */
 async function health(_req: Request, env: Env): Promise<Response> {
   const check = async (f: () => Promise<unknown>) => { try { await f(); return true; } catch { return false; } };
   const [d1, r2] = await Promise.all([check(() => env.DB.prepare('SELECT 1').first()), check(() => env.FILES.head('health-check'))]);
   const ok = d1 && r2;
-  return json({ ok, d1, r2, ai: { configured: !!env.NVIDIA_API_KEY }, auth: { configured: !!(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET && env.SESSION_SECRET) }, environment: env.ENVIRONMENT ?? 'unknown' }, ok ? 200 : 503);
+  return json({ ok, d1, r2, auth: { configured: !!(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET && env.SESSION_SECRET) }, environment: env.ENVIRONMENT ?? 'unknown' }, ok ? 200 : 503);
 }
 
 /** POST /api/client-error: the app reports its own errors. Rate-limited; personal data scrubbed. */
-async function clientError(req: Request, env: Env): Promise<Response> {
+async function clientError(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const key = req.headers.get('cf-connecting-ip') ?? 'unknown';
   if (env.ERROR_LIMITER && !(await env.ERROR_LIMITER.limit({ key })).success) return json({ ok: false }, 429);
   const body = obj(await readJson(req, 16_384), ['message', 'stack', 'route', 'version', 'kind']);
   const scrub = (v: unknown, max: number) => (typeof v === 'string' ? v.slice(0, max).replace(/[^\s@]+@[^\s@]+/g, '<email>').replace(/\b[0-9a-f]{32,}\b/gi, '<hash>').replace(/[?#][^\s)]*/g, '') : undefined);
+  ctx.waitUntil(env.DB.prepare('INSERT INTO error_daily (day, n) VALUES (?1, 1) ON CONFLICT (day) DO UPDATE SET n = n + 1').bind(new Date().toISOString().slice(0, 10)).run().catch(() => undefined));
   console.error(JSON.stringify({ level: 'client-error', kind: scrub(body.kind, 40), message: scrub(body.message, 500), stack: scrub(body.stack, 2000), route: scrub(body.route, 100), version: scrub(body.version, 40) }));
   return json({ ok: true }, 202);
 }

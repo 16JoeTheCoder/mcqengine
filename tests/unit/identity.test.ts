@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { fingerprintOf, similarity } from '../../shared/fingerprint';
 import { formatPaperKey, isPaperKey, msKeyOf, paperKeyFromCover, paperKeyFromName, paperKeyTitle, parsePaperKey, qpKeyOf, questionIdOf } from '../../shared/paper-key';
 import { applyPaperKeys, matchPaper, matchQuestion, resolvePaperKeys } from '../../src/lib/format/identity';
 import type { NDoc } from '../../src/lib/format/validate';
@@ -9,6 +10,10 @@ import { doc, syntheticPaper } from '../fixtures/make';
 import { importPack } from './helpers';
 
 const KEY = '9702_s24_qp_12';
+const words = (seed: number, n: number) => Array.from({ length: n }, (_, i) => `q${((i + 1) * seed * 7919) % 9973}z`).join(' ');
+const FP_A = fingerprintOf(words(3, 300))!;
+const FP_NEAR = fingerprintOf(`${words(3, 300).split(' ').slice(0, 150).join(' ')} changed words here now ${words(3, 300).split(' ').slice(156).join(' ')}`)!;
+const FP_FAR = fingerprintOf(words(11, 300))!;
 
 describe('paperKeyFromName', () => {
   it('reads the canonical Cambridge name', () => expect(paperKeyFromName('9702_s24_qp_12.pdf')).toBe(KEY));
@@ -112,9 +117,19 @@ describe('resolvePaperKeys', () => {
     expect(resolvePaperKeys(nd([{ id: KEY }]))[0]!.from).not.toBe('DMC export');
     expect(resolvePaperKeys(nd([{ id: 'legacy' }], SET))[0]!.key).toBeNull();
   });
-  it('asks to confirm an AI-written id and reports others missing', () => {
-    expect(resolvePaperKeys(nd([{ id: '9702-s24-12' }]))[0]).toMatchObject({ key: null, status: 'confirm', suggestion: KEY });
-    expect(resolvePaperKeys(nd([{ id: 'paper-one' }]))[0]).toMatchObject({ key: null, status: 'missing' });
+  it('never trusts an AI-written id: no key, status missing, no suggestion', () => {
+    for (const id of ['9702-s24-12', '9702_s24_p12', 'paper-one']) {
+      const r = resolvePaperKeys(nd([{ id }]))[0]!;
+      expect(r).toMatchObject({ key: null, status: 'missing' });
+      expect(r).not.toHaveProperty('suggestion');
+    }
+  });
+  it('carries the fingerprint from a { cover, fingerprint } text and still reads the cover code', () => {
+    const d = nd([{ id: 'x', pdf: { questionPaper: 'scan.pdf' } }, { id: 'y', pdf: { questionPaper: 'other.pdf' } }]);
+    const r = resolvePaperKeys(d, new Map([['scan.pdf', { cover: 'PHYSICS 9702/12 May/June 2024', fingerprint: FP_A }], ['other.pdf', { cover: '', fingerprint: null }]]));
+    expect(r[0]).toMatchObject({ key: KEY, status: 'found', from: 'cover page', fingerprint: FP_A });
+    expect(r[1]).toMatchObject({ key: null, status: 'missing' });
+    expect(r[1]).not.toHaveProperty('fingerprint');
   });
   it('works on a validated document', () => {
     const p = syntheticPaper('9702-s24-12', 2);
@@ -141,6 +156,24 @@ describe('applyPaperKeys', () => {
     applyPaperKeys(d, resolvePaperKeys(d), [{ id: 'legacy-1', paperKey: KEY }]);
     expect(d.papers[0]!.id).toBe('legacy-1');
     expect(d.answers[0]!.paper).toBe('legacy-1');
+  });
+  it('renames a paper without a key to an existing paper with a matching fingerprint', () => {
+    expect(similarity(FP_A, FP_NEAR)).toBeGreaterThanOrEqual(0.9);
+    const d = nd([{ id: 'scan-1' }]);
+    d.answers.push({ paper: 'scan-1', key: [0], path: 'answers[0]' });
+    const map = applyPaperKeys(d, [{ docId: 'scan-1', title: 'scan-1', key: null, status: 'missing', fingerprint: FP_NEAR }], [{ id: 'old-paper', fingerprint: FP_A }]);
+    expect(map.get('scan-1')).toBe('old-paper');
+    expect(d.papers[0]!.id).toBe('old-paper');
+    expect(d.answers[0]!.paper).toBe('old-paper');
+    expect(d.papers[0]!.fingerprint).toBe(FP_NEAR);
+    expect(d.papers[0]!.key).toBeUndefined();
+  });
+  it('does not match by fingerprint below the threshold', () => {
+    expect(similarity(FP_A, FP_FAR)).toBeLessThan(0.9);
+    const d = nd([{ id: 'scan-1' }]);
+    const map = applyPaperKeys(d, [{ docId: 'scan-1', title: 'scan-1', key: null, status: 'missing', fingerprint: FP_FAR }], [{ id: 'old-paper', fingerprint: FP_A }]);
+    expect(map.size).toBe(0);
+    expect(d.papers[0]!.id).toBe('scan-1');
   });
   it('leaves unresolved papers alone', () => {
     const d = nd([{ id: 'paper-one' }]);

@@ -1,3 +1,4 @@
+import { isFingerprint } from '../../../shared/fingerprint';
 import { LETTERS, type GradeBoundary } from '../types';
 import { sanitizeSvg } from './svg';
 import { isPaperKey } from '../../../shared/paper-key';
@@ -64,6 +65,8 @@ export interface NPaper {
   source?: { questionPaper?: string; markScheme?: string };
   /** Canonical Cambridge key (`9702_s24_qp_12`); trusted only from DMC's own exports. */
   key?: string;
+  /** Text fingerprint of the question paper (shared/fingerprint.ts), written by DMC. */
+  fingerprint?: string;
 }
 
 export interface NDoc {
@@ -145,7 +148,7 @@ const KEY_ALIASES: Record<string, string> = {
   figure: 'figure', diagram: 'figure', image: 'image', svg: 'svg', alt: 'alt', needed: 'needed', note: 'note',
   file: 'file', page: 'page', pg: 'page', snip: 'snip', bare: 'bare', pdf: 'pdf', pdfs: 'pdf', topic: 'topic',
   questionpaper: 'questionPaper', question_paper: 'questionPaper', qp: 'questionPaper',
-  markscheme: 'markScheme', mark_scheme: 'markScheme', ms: 'markScheme', explanation: 'explanation', uncertain: 'uncertain', key: 'key',
+  markscheme: 'markScheme', mark_scheme: 'markScheme', ms: 'markScheme', explanation: 'explanation', uncertain: 'uncertain', key: 'key', fingerprint: 'fingerprint',
   paperid: 'paper', paper_id: 'paper',
   gradeboundaries: 'gradeBoundaries', grade_boundaries: 'gradeBoundaries', boundaries: 'gradeBoundaries',
 };
@@ -400,6 +403,7 @@ export function validateDoc(input: unknown, files: ReadonlySet<string> = new Set
         if (source.questionPaper || source.markScheme) paper.source = source;
       }
       if (isPaperKey(p.key)) paper.key = p.key;
+      if (isFingerprint(p.fingerprint)) paper.fingerprint = p.fingerprint;
       if (p.pdf !== undefined) {
         const pd = isObj(p.pdf) ? canon(p.pdf, notes, 'other') : null;
         if (!pd) err(`${pp}.pdf`, 'Expected { "questionPaper": "pdfs/….pdf", "markScheme": "pdfs/….pdf" }');

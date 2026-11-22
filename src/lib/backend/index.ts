@@ -55,6 +55,8 @@ async function refresh(account: Account | null) {
   if (account && backend) {
     try {
       const m = await backend.me();
+      // The server's copy carries fields the session cache may lack (the profile handle).
+      if (m.account?.id === account.id) account = { ...account, ...m.account };
       status = m.status;
       syncDefault = m.syncDefault;
     } catch {

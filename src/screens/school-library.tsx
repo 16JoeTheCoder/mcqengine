@@ -9,7 +9,7 @@ import { embeddedFontCss, svgToPng } from '../lib/share/fonts';
 import { bump, href, navigate, toast, useStore } from '../lib/app-state';
 import { broadcastChange } from '../lib/tablock';
 import type { Pack } from '../lib/types';
-import { isPaperKey, paperKeyFromName, qpKeyOf } from '../../shared/paper-key';
+import { paperKeyTitle } from '../../shared/paper-key';
 import { Badge, Button, Field, Menu, Modal, Skeleton, fmtInt } from '../ui/kit';
 import { Icon } from '../ui/icons';
 import { AccountDialog } from './account';
@@ -17,7 +17,7 @@ import { AccountDialog } from './account';
 const PAGE = 24;
 const mb = (b: number) => `${(b / 1048576).toFixed(b < 10 * 1048576 ? 1 : 0)} MB`;
 
-export function SchoolLibrary() {
+export function SchoolLibrary({ initialSearch = '' }: { initialSearch?: string }) {
   const auth = useStore(authStore);
   const [dialog, setDialog] = useState<'school' | null>(null);
   const domain = SCHOOL_DOMAINS[0]!;
@@ -55,7 +55,7 @@ export function SchoolLibrary() {
         {dialog && <AccountDialog mode="school" onClose={() => setDialog(null)} />}
       </main>
     );
-  return <Members admin={auth.status.admin} />;
+  return <Members admin={auth.status.admin} initialSearch={initialSearch} />;
 }
 
 function Hero() {
@@ -66,10 +66,10 @@ function Hero() {
   );
 }
 
-function Members({ admin }: { admin: boolean }) {
+function Members({ admin, initialSearch }: { admin: boolean; initialSearch: string }) {
   const [sets, setSets] = useState<LibrarySet[] | null>(null);
   const [more, setMore] = useState(false);
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(initialSearch);
   const [posting, setPosting] = useState(false);
   const [pending, setPending] = useState<PostPlan | null>(null);
   const [reporting, setReporting] = useState<LibrarySet | null>(null);
@@ -301,23 +301,13 @@ function Stepper({ step }: { step: PostStep | null }) {
   );
 }
 
-/** One row of the matching table: the paper, its key and where the key came from. */
-function KeyRow({ k, value, onChange }: { k: Prepared['keys'][number]; value: string; onChange: (v: string) => void }) {
-  const typed = value.trim().toLowerCase();
-  const ok = !typed || isPaperKey(typed) || !!paperKeyFromName(typed);
+/** One row of the papers table: the paper and the Cambridge code DMC read, if any. Nothing to type. */
+function PaperRow({ k }: { k: Prepared['keys'][number] }) {
   return (
     <tr>
       <td>{k.title}</td>
-      <td>
-        {k.status === 'found' ? <code>{k.key}</code> : (
-          <input class="input" aria-label={`Paper key for ${k.title}`} placeholder={k.suggestion ?? '9702_s24_qp_12'} value={value} aria-invalid={!ok} onInput={(e) => onChange((e.target as HTMLInputElement).value)} />
-        )}
-      </td>
-      <td>
-        {k.status === 'found' && <Badge status="ok">Found{k.from ? ` (${k.from})` : ''}</Badge>}
-        {k.status === 'confirm' && (typed && ok ? <Badge status="ok">Confirmed</Badge> : <Badge status="warn">Confirm</Badge>)}
-        {k.status === 'missing' && (typed && ok ? <Badge status="ok">Entered</Badge> : <Badge status="neutral">Not found</Badge>)}
-      </td>
+      <td>{k.key ? <span>{paperKeyTitle(k.key)} <span class="small subtle">({k.from})</span></span> : <span class="small muted">Not printed on the file</span>}</td>
+      <td>{k.fingerprint ? <Badge status="ok">Text read</Badge> : <Badge status="neutral">File only</Badge>}</td>
     </tr>
   );
 }
@@ -325,7 +315,7 @@ function KeyRow({ k, value, onChange }: { k: Prepared['keys'][number]; value: st
 /**
  * Posting a set. Choose papers (a paper set on this device, a zip, or PDFs); everything that can
  * be worked out is filled in and checked before anything uploads; the matching table shows each
- * paper's key; Post stays disabled until something is chosen and every guessed key is confirmed.
+ * paper and what DMC read from it (nothing to type); Post stays disabled until something is chosen.
  * Progress is stepped and resumable; errors name the file.
  */
 function PostDialog({ resume, onClose }: { resume: PostPlan | null; onClose: (posted: boolean) => void }) {
@@ -335,7 +325,6 @@ function PostDialog({ resume, onClose }: { resume: PostPlan | null; onClose: (po
   const [busy, setBusy] = useState(false);
   const [title, setTitle] = useState(resume?.manifest.meta.title ?? '');
   const [desc, setDesc] = useState(resume?.manifest.meta.description ?? '');
-  const [keys, setKeys] = useState<Record<string, string>>({});
   const [cover, setCover] = useState<Blob | null>(null);
   const [coverUrl, setCoverUrl] = useState<string | null>(null);
   const [cropping, setCropping] = useState<File | null>(null);
@@ -361,19 +350,12 @@ function PostDialog({ resume, onClose }: { resume: PostPlan | null; onClose: (po
       setPrep(r);
       setTitle(r.meta.title);
       setDesc(r.meta.description);
-      setKeys({});
     } catch (e) {
       toast((e as Error).message || 'That could not be read.');
     }
     setBusy(false);
   };
 
-  const confirmedKeys = () => Object.fromEntries(Object.entries(keys).map(([id, v]) => {
-    const t = v.trim().toLowerCase();
-    return [id, isPaperKey(t) ? qpKeyOf(t) : paperKeyFromName(t) ? qpKeyOf(paperKeyFromName(t)!) : ''];
-  }).filter(([, v]) => v));
-  const unconfirmed = prep ? prep.keys.filter((k) => k.status === 'confirm' && !confirmedKeys()[k.docId]) : [];
-  const badEntry = Object.values(keys).some((v) => v.trim() && !isPaperKey(v.trim().toLowerCase()) && !paperKeyFromName(v.trim()));
   const defaultCover = async () => svgToPng(coverSvg(title, [prep?.meta.subject, prep?.meta.code].filter(Boolean).join(' '), await embeddedFontCss()), 600, 800);
 
   const run = async () => {
@@ -382,7 +364,7 @@ function PostDialog({ resume, onClose }: { resume: PostPlan | null; onClose: (po
       if (!plan.current) {
         if (!prep) return;
         setBusy(true);
-        plan.current = await buildPlan(prep, { ...prep.meta, title: title.trim() || prep.meta.title, description: desc.trim() }, confirmedKeys(), cover ?? (await defaultCover()));
+        plan.current = await buildPlan(prep, { ...prep.meta, title: title.trim() || prep.meta.title, description: desc.trim() }, cover ?? (await defaultCover()));
         setBusy(false);
       }
       abort.current = new AbortController();
@@ -401,6 +383,9 @@ function PostDialog({ resume, onClose }: { resume: PostPlan | null; onClose: (po
     return (
       <Modal title="Posted" onClose={() => onClose(true)} footer={<Button variant="primary" onClick={() => onClose(true)} autoFocus>Done</Button>}>
         <p><b>{plan.current?.manifest.meta.title}</b> is in the Library for everyone at school. Posting it again later adds a new version; copies update instead of doubling.</p>
+        {!!plan.current?.links?.some((l) => l.linked && l.linked !== 'file') && (
+          <p class="small muted">{plan.current.links.filter((l) => l.linked && l.linked !== 'file').length} paper{plan.current.links.filter((l) => l.linked && l.linked !== 'file').length === 1 ? ' was' : 's were'} already in the Library, so DMC linked to the copy there instead of uploading another.</p>
+        )}
       </Modal>
     );
   if (state !== 'edit') {
@@ -432,11 +417,10 @@ function PostDialog({ resume, onClose }: { resume: PostPlan | null; onClose: (po
     );
   }
 
-  const blocked = !prep || busy || !title.trim() || unconfirmed.length > 0 || badEntry;
+  const blocked = !prep || busy || !title.trim();
   return (
     <Modal title="Post a set" size="wide" onClose={() => onClose(false)} footer={
       <>
-        {prep && unconfirmed.length > 0 && <span class="small muted" style={{ marginRight: 'auto' }}>Confirm {unconfirmed.length} paper key{unconfirmed.length === 1 ? '' : 's'} to post</span>}
         <Button onClick={() => onClose(false)}>Cancel</Button>
         <Button variant="primary" disabled={blocked} onClick={() => void run()}><Icon name="upload" size={18} /> {busy && prep ? 'Preparing…' : 'Post'}</Button>
       </>
@@ -487,10 +471,10 @@ function PostDialog({ resume, onClose }: { resume: PostPlan | null; onClose: (po
               <div class="stack-s">
                 <h3 class="h3" style={{ fontSize: '16px' }}>Papers</h3>
                 <table class="key-table">
-                  <thead><tr><th scope="col">Paper</th><th scope="col">Paper key</th><th scope="col">Status</th></tr></thead>
-                  <tbody>{prep.keys.map((k) => <KeyRow key={k.docId} k={k} value={keys[k.docId] ?? ''} onChange={(v) => setKeys({ ...keys, [k.docId]: v })} />)}</tbody>
+                  <thead><tr><th scope="col">Paper</th><th scope="col">Cambridge code</th><th scope="col">Matching</th></tr></thead>
+                  <tbody>{prep.keys.map((k) => <PaperRow key={k.docId} k={k} />)}</tbody>
                 </table>
-                <p class="small muted">A paper key is Cambridge's file name, such as 9702_s24_qp_12. It links the same paper across sets, so nobody uploads it twice and copies never double. Keys that were not found are optional.</p>
+                <p class="small muted">DMC recognises a paper the Library already has from the file itself (the same file, or the same text saved again) and links to it instead of uploading a second copy. Nothing to type.</p>
               </div>
               <p class="small subtle">Checked: {prep.report.warnings.length ? `${prep.report.warnings.length} note${prep.report.warnings.length === 1 ? '' : 's'}, no errors` : 'no problems found'}. Posting as {auth.account?.name}{prep.base ? `, as version ${prep.base + 1}` : ''}.</p>
             </div>

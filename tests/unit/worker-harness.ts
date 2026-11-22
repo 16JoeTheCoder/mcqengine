@@ -5,8 +5,8 @@ import { build } from 'esbuild';
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare';
 
 /**
- * Runs the real Worker in workerd (Miniflare) with real D1, R2 and the AI Durable Object.
- * Outbound fetches (Google, NVIDIA) go to `outbound`, so tests never reach the internet.
+ * Runs the real Worker in workerd (Miniflare) with real D1 and R2.
+ * Outbound fetches (Google) go to `outbound`, so tests never reach the internet.
  */
 export type Outbound = (req: Request) => Promise<Response> | Response;
 let bundled: string | null = null;
@@ -23,11 +23,19 @@ async function bundle(): Promise<string> {
 
 export function migrationStatements(): string[] {
   const files = readdirSync('migrations').filter((f) => f.endsWith('.sql')).sort();
-  return files.flatMap((f) =>
-    readFileSync(join('migrations', f), 'utf8')
-      .split('\n').filter((l) => !l.trim().startsWith('--')).join('\n')
-      .split(/;\s*\n/).map((s) => s.trim()).filter(Boolean),
-  );
+  return files.flatMap((f) => {
+    const out: string[] = [];
+    let cur = '';
+    const lines = readFileSync(join('migrations', f), 'utf8').split('\n').filter((l) => !l.trim().startsWith('--'));
+    for (const line of lines) {
+      cur += `${line}\n`;
+      // A trigger body holds semicolons: it ends at END;, any other statement at the first semicolon.
+      const inTrigger = /^\s*CREATE\s+TRIGGER/im.test(cur);
+      if (inTrigger ? /\bEND;\s*$/i.test(cur) : /;\s*$/.test(cur)) { out.push(cur.trim()); cur = ''; }
+    }
+    if (cur.trim()) out.push(cur.trim());
+    return out;
+  });
 }
 
 export interface Harness {
@@ -49,7 +57,6 @@ export async function startWorker(vars: Record<string, string> = {}): Promise<Ha
     compatibilityDate: '2026-10-01',
     d1Databases: { DB: 'dmc-test' },
     r2Buckets: ['FILES'],
-    durableObjects: { AI_BUDGET: { className: 'AiBudget', useSQLite: true } },
     bindings: { ENVIRONMENT: 'test', SESSION_SECRET: 'test-secret-0123456789abcdef0123456789', GOOGLE_CLIENT_ID: 'client-1.apps.googleusercontent.com', GOOGLE_CLIENT_SECRET: 'shh', ...vars },
     outboundService: (req: unknown) => outbound(req as Request) as never,
   } as never));

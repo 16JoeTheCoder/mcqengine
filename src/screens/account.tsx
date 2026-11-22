@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'preact/hooks';
 import { authStore, backend } from '../lib/backend';
 import { href, navigate, toast, useStore } from '../lib/app-state';
-import { Button, Field, Modal } from '../ui/kit';
+import { Badge, Button, Field, Modal } from '../ui/kit';
+import { initials } from './profile';
 import { SCHOOL_DOMAINS } from '../lib/backend/types';
 import { adoptGuest, adoptLegacy, removeWorkspace } from '../lib/data/workspace';
 import { createBackup } from '../lib/data/backup';
@@ -39,7 +40,7 @@ export function AccountDialog({ mode, onClose, welcome = false }: { mode: Accoun
     {welcome && <ul class="stack-s">
       <li>Keep your results, mistakes and stats safe if this browser is cleared.</li>
       <li>Pick up where you left off on another device.</li>
-      <li>Use AI import, and open the School Library with your school account.</li>
+      <li>Open the School Library with your school account.</li>
     </ul>}
     {error && <p class="notice notice--bad" role="alert">{error}</p>}
     <div class="stack-s">
@@ -104,17 +105,28 @@ export function AccountButton({ onSync, syncLabel }: { onSync?: () => void; sync
     <>
       {syncLabel && <span class="small subtle hide-sm sync-label" aria-live="polite">{syncLabel}</span>}
       <button type="button" class="jy-btn jy-btn--ghost jy-btn--icon account-chip" aria-label={`Account: ${a.email}`} aria-haspopup="dialog" title={syncLabel} onClick={() => setMenu(true)}>
-        <span aria-hidden="true">{(a.name || a.email).charAt(0).toUpperCase()}</span>
+        <span aria-hidden="true">{initials(a.name || a.email)}</span>
       </button>
-      <span class="small subtle hide-sm account-email">{a.email}</span>
       {menu && (
         <Modal title="Account" onClose={() => setMenu(false)}>
           <div class="stack">
-            <div>
-              <b>{a.name}</b> <span class="small muted">{a.email}</span>
-              <div class="small muted">{auth.status.member ? (auth.status.admin ? 'School Library: member, admin' : 'School Library: member') : 'School Library: locked (needs a school email)'}</div>
+            <div class="account-card">
+              <span class="avatar avatar--empty" aria-hidden="true" style={{ width: '56px', height: '56px', fontSize: '20px' }}>{initials(a.name || a.email)}</span>
+              <div class="stack-s" style={{ minWidth: 0 }}>
+                <b style={{ overflowWrap: 'anywhere' }}>{a.name}</b>
+                <span class="small muted" style={{ overflowWrap: 'anywhere' }}>{a.handle ? `@${a.handle} · ` : ''}{a.email}</span>
+                <div class="row" style={{ gap: 'var(--space-1)' }}>
+                  {auth.status.member ? <Badge status="ok">School Library member</Badge> : <Badge status="neutral">Library locked: needs a school account</Badge>}
+                  {auth.status.admin && <Badge status="ink">Admin</Badge>}
+                </div>
+              </div>
             </div>
-            <NameEditor name={a.name} />
+            <div class="row">
+              {auth.status.member && a.handle && <Button variant="primary" onClick={() => { setMenu(false); navigate(href.profile(a.handle!)); }}>View profile</Button>}
+              {auth.status.member && <Button onClick={() => { setMenu(false); navigate(href.school()); }}>Open Library</Button>}
+              {auth.status.admin && <Button onClick={() => { setMenu(false); navigate(href.admin()); }}>Admin dashboard</Button>}
+            </div>
+            {!auth.status.member && <NameEditor name={a.name} />}
             {syncLabel && (
               <div class="row">
                 <span class="small muted" style={{ flex: 1 }}>{syncLabel}</span>
@@ -129,6 +141,9 @@ export function AccountButton({ onSync, syncLabel }: { onSync?: () => void; sync
                 if (confirm('Keep the downloaded conflict file safe. Acknowledge these conflicts and keep the current server versions?')) { await d.delete('meta', 'syncConflicts'); setConflicts(0); }
               }}>Export and acknowledge conflicts</Button>
             </div></div>}
+            <details class="account-data">
+              <summary>Data on this device</summary>
+              <div class="stack-s" style={{ marginTop: 'var(--space-2)' }}>
             <p class="small muted">Your personal cache is separate from guest practice and other accounts on this browser.</p>
             <Button disabled={working} onClick={async () => {
               if (!confirm('Import the preserved cache from the previous app version? Only continue if these were your records. A known different account cache is refused.')) return;
@@ -150,8 +165,9 @@ export function AccountButton({ onSync, syncLabel }: { onSync?: () => void; sync
                 await backend!.signOut();
               } catch (e) { toast((e as Error).message); setWorking(false); }
             }}>Back up, remove cache and sign out</Button>
+              </div>
+            </details>
             <div class="row">
-              {auth.status.member && <Button onClick={() => { setMenu(false); navigate(href.school()); }}>Open Library</Button>}
               <span class="spacer" />
               <Button variant="ghost" onClick={() => { void backend!.signOut().catch((e: Error) => toast(e.message)); setMenu(false); }}>Sign out</Button>
             </div>

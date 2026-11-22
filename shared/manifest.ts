@@ -1,3 +1,4 @@
+import { isFingerprint } from './fingerprint';
 import { isPaperKey } from './paper-key';
 
 /**
@@ -11,7 +12,7 @@ export const MANIFEST_LIMITS = { papers: 200, files: 3000, titleChars: 120, desc
 export interface ManifestPaper {
   /** Paper id inside the pack document. */
   id: string;
-  /** Canonical key (`9702_s24_qp_12`) or null when it could not be worked out. */
+  /** Cambridge code (`9702_s24_qp_12`) read automatically, or null. A label, not the identity. */
   key: string | null;
   title: string;
   questionCount: number;
@@ -19,6 +20,8 @@ export interface ManifestPaper {
   qp?: string;
   ms?: string;
   bare?: boolean;
+  /** Text fingerprint of the question paper (shared/fingerprint.ts). */
+  fp?: string;
 }
 export interface SetMeta { title: string; description: string; subject: string; code: string }
 export interface SetManifest {
@@ -56,7 +59,7 @@ export function validateManifest(v: unknown): { manifest: SetManifest; hashes: S
   for (const p of m.papers as unknown[]) {
     if (!isObj(p)) fail('Invalid paper');
     const pp = p as Record<string, unknown>;
-    for (const k of Object.keys(pp)) if (!['id', 'key', 'title', 'questionCount', 'keyed', 'qp', 'ms', 'bare'].includes(k)) fail(`Unexpected paper field "${k.slice(0, 40)}"`);
+    for (const k of Object.keys(pp)) if (!['id', 'key', 'title', 'questionCount', 'keyed', 'qp', 'ms', 'bare', 'fp'].includes(k)) fail(`Unexpected paper field "${k.slice(0, 40)}"`);
     const id = text(pp.id, 'Paper id', 64, 1);
     if (ids.has(id)) fail(`Paper "${id}" appears twice`);
     ids.add(id);
@@ -67,6 +70,7 @@ export function validateManifest(v: unknown): { manifest: SetManifest; hashes: S
     if (pp.qp !== undefined) h(pp.qp, 'qp');
     if (pp.ms !== undefined) h(pp.ms, 'ms');
     if (pp.bare !== undefined && typeof pp.bare !== 'boolean') fail('bare must be true or false');
+    if (pp.fp !== undefined && !isFingerprint(pp.fp)) fail('fp must be a text fingerprint');
   }
   if (!isObj(m.meta)) fail('Missing meta');
   const meta = m.meta as Record<string, unknown>;
