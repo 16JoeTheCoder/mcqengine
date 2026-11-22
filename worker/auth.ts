@@ -24,7 +24,7 @@ const ISSUERS = ['accounts.google.com', 'https://accounts.google.com'];
 export const MEMBER_QUOTA = 300 * 1024 * 1024;
 export const STAFF_QUOTA = 2 * 1024 * 1024 * 1024;
 
-export interface User { id: string; email: string; email_verified: number; hd: string | null; display_name: string; role: string | null }
+export interface User { id: string; email: string; email_verified: number; hd: string | null; display_name: string; role: string | null; handle?: string | null; quota_bytes?: number | null }
 export interface Access { member: boolean; admin: boolean; allowlisted: boolean; school: boolean }
 export interface Caller { user: User; access: Access; tokenHash: string }
 
@@ -194,6 +194,7 @@ export async function finishGoogle(req: Request, env: Env): Promise<Response> {
     if (!tok.id_token) throw new ApiError('Google returned no identity', 401);
     const claims = await verifyIdToken(tok.id_token, env.GOOGLE_CLIENT_ID!, st.n);
     const user = await upsertUser(env, claims);
+    if ((user as User & { suspended_at?: number | null }).suspended_at) return back('#/?signin=suspended');
     return back(safeReturn(st.r), [await createSession(env, user.id)]);
   } catch (e) {
     console.warn(JSON.stringify({ level: 'warn', route: 'auth/callback', message: (e as Error).message.slice(0, 200) }));
@@ -217,7 +218,27 @@ export async function accessOf(env: Env, u: Pick<User, 'email' | 'email_verified
   return { member: school || allowlisted || admin, admin, allowlisted, school };
 }
 
-export const quotaOf = (a: Access) => (a.admin || a.allowlisted ? STAFF_QUOTA : MEMBER_QUOTA);
+export const quotaOf = (a: Access, override?: number | null) => override ?? (a.admin || a.allowlisted ? STAFF_QUOTA : MEMBER_QUOTA);
+
+/** Profile handles: 3 to 30 of a-z, 0-9, dot, dash, underscore; starting with a letter or digit. */
+export const HANDLE_RE = /^[a-z0-9][a-z0-9._-]{2,29}$/;
+export function handleBase(email: string): string {
+  const local = (email.split('@')[0] ?? '').toLowerCase().replace(/[^a-z0-9._-]+/g, '').replace(/^[._-]+/, '').slice(0, 24);
+  return local.length >= 3 ? local : `user${local}`.slice(0, 24);
+}
+/** Gives an account a unique handle from its email the first time it is needed. */
+export async function ensureHandle(env: Env, u: Pick<User, 'id' | 'email' | 'handle'>): Promise<string> {
+  if (u.handle) return u.handle;
+  const base = handleBase(u.email);
+  for (let n = 0; n < 6; n++) {
+    const h = n === 0 ? base : n < 5 ? `${base}${n + 1}` : `${base}-${u.id.slice(0, 6)}`;
+    const r = await env.DB.prepare('UPDATE users SET handle = ?2 WHERE id = ?1 AND handle IS NULL AND NOT EXISTS (SELECT 1 FROM users WHERE handle = ?2)').bind(u.id, h).run();
+    if (r.meta.changes) return h;
+    const now = await env.DB.prepare('SELECT handle FROM users WHERE id = ?1').bind(u.id).first<{ handle: string | null }>();
+    if (now?.handle) return now.handle;
+  }
+  throw new ApiError('Could not give this account a profile name', 500);
+}
 
 /** The signed-in caller, or null. Rolls the session forward at most once an hour. */
 export async function caller(req: Request, env: Env, ctx?: ExecutionContext, now = Date.now()): Promise<Caller | null> {
@@ -225,9 +246,9 @@ export async function caller(req: Request, env: Env, ctx?: ExecutionContext, now
   if (!token || !/^[A-Za-z0-9_-]{43}$/.test(token)) return null;
   const tokenHash = await sha256Hex(token);
   const row = await env.DB.prepare(
-    `SELECT u.id, u.email, u.email_verified, u.hd, u.display_name, u.role, s.last_used_at, s.absolute_expires_at
+    `SELECT u.id, u.email, u.email_verified, u.hd, u.display_name, u.role, u.handle, u.quota_bytes, s.last_used_at, s.absolute_expires_at
        FROM sessions s JOIN users u ON u.id = s.user_id
-      WHERE s.token_hash = ?1 AND s.expires_at > ?2 AND s.absolute_expires_at > ?2`,
+      WHERE s.token_hash = ?1 AND s.expires_at > ?2 AND s.absolute_expires_at > ?2 AND u.suspended_at IS NULL`,
   ).bind(tokenHash, now).first<User & { last_used_at: number; absolute_expires_at: number }>();
   if (!row) return null;
   if (now - row.last_used_at > ROLL_AFTER_MS) {
@@ -265,12 +286,13 @@ export async function me(req: Request, env: Env, ctx: ExecutionContext): Promise
   const c = await caller(req, env, ctx);
   if (!c) return json({ account: null, status: { member: false, admin: false } });
   const used = await env.DB.prepare('SELECT COALESCE(SUM(size), 0) AS b FROM blobs WHERE first_uploader = ?1').bind(c.user.id).first<{ b: number }>();
+  const handle = await ensureHandle(env, c.user);
   return json({
-    account: { id: c.user.id, email: c.user.email, emailVerified: !!c.user.email_verified, name: c.user.display_name },
+    account: { id: c.user.id, email: c.user.email, emailVerified: !!c.user.email_verified, name: c.user.display_name, handle },
     status: { member: c.access.member, admin: c.access.admin },
     // Sync is on by default for school accounts; anyone can turn it off in Settings.
     syncDefault: c.access.school,
-    quota: { used: used?.b ?? 0, limit: quotaOf(c.access) },
+    quota: { used: used?.b ?? 0, limit: quotaOf(c.access, c.user.quota_bytes) },
   });
 }
 

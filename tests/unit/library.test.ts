@@ -4,6 +4,7 @@ import * as store from '../../src/lib/data/db';
 import { backend } from '../../src/lib/backend';
 import { buildPlan, loadPending, postSet, prepareFromFiles, prepareFromPack, type PostStep } from '../../src/lib/library/post';
 import { downloadSet, updateAvailable } from '../../src/lib/library/download';
+import { fingerprintOf } from '../../shared/fingerprint';
 import { coverSvg, wrap } from '../../src/lib/library/cover';
 import { doc, syntheticPaper } from '../fixtures/make';
 import { importPack } from './helpers';
@@ -40,13 +41,14 @@ describe('preparing a set validates before anything uploads', () => {
     await expect(prepareFromFiles([zipFile({ 'pack.json': strToU8('{}'), '../x.png': new Uint8Array(1) })])).rejects.toThrow(/Unsafe path/);
     await expect(prepareFromFiles([zipFile({ 'dmc-backup.json': strToU8('{}'), 'data.json': strToU8('{}') })])).rejects.toThrow(/personal backup/);
   });
-  it('a guessed key must be confirmed before a plan can be built', async () => {
+  it('an AI-written id is never trusted: no key, nothing to confirm, and a plan still builds', async () => {
     const p = await prepareFromFiles([zipFile({ 'pack.json': strToU8(JSON.stringify(doc(syntheticPaper('9701-s23-12', 4)))) })]);
-    expect(p.keys[0]).toMatchObject({ status: 'confirm', suggestion: '9701_s23_qp_12' });
+    expect(p.keys[0]).toMatchObject({ key: null, status: 'missing' });
+    expect(p.keys[0]).not.toHaveProperty('suggestion');
     await backend!.signInDev!('ana@stjbs.sch.id');
-    await expect(buildPlan(p, meta('X'), {}, null)).rejects.toThrow(/Confirm the paper key/);
-    const plan = await buildPlan(p, meta('X'), { '9701-s23-12': '9701_s23_qp_12' }, null);
-    expect(plan.manifest.papers[0]!.key).toBe('9701_s23_qp_12');
+    const plan = await buildPlan(p, meta('X'), null);
+    expect(plan.manifest.papers[0]!.key).toBeNull();
+    expect(plan.links).toEqual([{ docId: '9701-s23-12', title: expect.any(String), label: null, linked: null }]);
   });
 });
 
@@ -54,11 +56,11 @@ describe('posting', () => {
   it('a personal account cannot post or list', async () => {
     await backend!.signInDev!('ana.home@gmail.com');
     await expect(backend!.listSets({ search: '', limit: 10, offset: 0 })).rejects.toThrow(/school accounts/);
-    await expect(prepareFromFiles([goodZip()]).then((p) => buildPlan(p, meta('X'), {}, null))).rejects.toThrow(/school accounts/);
+    await expect(prepareFromFiles([goodZip()]).then((p) => buildPlan(p, meta('X'), null))).rejects.toThrow(/school accounts/);
   });
   it('steps through checking, uploading and publishing; cancel keeps finished files; resume completes once', async () => {
     await backend!.signInDev!('ana@stjbs.sch.id');
-    const plan = await buildPlan(await prepareFromFiles([goodZip()]), meta('Chemistry 9701'), {}, cover());
+    const plan = await buildPlan(await prepareFromFiles([goodZip()]), meta('Chemistry 9701'), cover());
     expect(plan.files.map((f) => f.label)).toEqual(['Typed questions', '9701_s23_qp_12.pdf', 'Cover']);
     const ac = new AbortController();
     const steps: PostStep[] = [];
@@ -77,22 +79,67 @@ describe('posting', () => {
   });
   it('files already in the Library are never uploaded again', async () => {
     await backend!.signInDev!('ana@stjbs.sch.id');
-    await postSet(await buildPlan(await prepareFromFiles([goodZip()]), meta('First'), {}, null), quiet, new AbortController().signal);
+    await postSet(await buildPlan(await prepareFromFiles([goodZip()]), meta('First'), null), quiet, new AbortController().signal);
     // A second set with the same PDF: only its own typed questions are new.
     const other = zipFile({ 'pack.json': strToU8(JSON.stringify(doc(paperWithPdf('x1', '9701_s23_qp_12.pdf')))), 'pdfs/9701_s23_qp_12.pdf': pdf('chem 12') }, 'other.zip');
-    const plan = await buildPlan(await prepareFromFiles([other]), meta('Second'), {}, null);
+    const plan = await buildPlan(await prepareFromFiles([other]), meta('Second'), null);
     const uploaded: string[] = [];
     await postSet(plan, (s) => { if (s.step === 'uploading' && !uploaded.includes(s.label)) uploaded.push(s.label); }, new AbortController().signal);
     expect(uploaded).toEqual(['Typed questions']);
   });
   it('a second set with the same paper key links to the stored files instead of uploading its own copy', async () => {
     await backend!.signInDev!('ana@stjbs.sch.id');
-    await postSet(await buildPlan(await prepareFromFiles([goodZip()]), meta('First'), {}, null), quiet, new AbortController().signal);
+    await postSet(await buildPlan(await prepareFromFiles([goodZip()]), meta('First'), null), quiet, new AbortController().signal);
     const rescan = zipFile({ 'pack.json': strToU8(JSON.stringify(doc(paperWithPdf('y1', '9701_s23_qp_12.pdf')))), 'pdfs/9701_s23_qp_12.pdf': pdf('a different scan') }, 'rescan.zip');
-    const plan = await buildPlan(await prepareFromFiles([rescan]), meta('Rescan'), {}, null);
+    const plan = await buildPlan(await prepareFromFiles([rescan]), meta('Rescan'), null);
     const [first] = (await backend!.lookupPapers(['9701_s23_qp_12']));
     expect(plan.manifest.papers[0]!.qp).toBe(first!.qp);
     expect(plan.files.map((f) => f.label)).toEqual(['Typed questions']);
+  });
+});
+
+describe('linking by text fingerprint', () => {
+  const FP = fingerprintOf(Array.from({ length: 300 }, (_, i) => `syn${(i * 7919) % 9973}w`).join(' '))!;
+  /** A set with one paper whose PDF is `label` (different label = different bytes), named so no Cambridge code is read. */
+  const setZip = (id: string, label: string) => zipFile({ 'pack.json': strToU8(JSON.stringify(doc(paperWithPdf(id, 'scan.pdf')))), 'pdfs/scan.pdf': pdf(label) }, `${id}.zip`);
+  const withFp = (p: Awaited<ReturnType<typeof prepareFromFiles>>, fp?: string) => ({ ...p, keys: p.keys.map((k) => ({ ...k, ...(fp ? { fingerprint: fp } : {}) })) });
+  const post = async (title: string, label: string, fp?: string) => {
+    const plan = await buildPlan(withFp(await prepareFromFiles([setZip(`s-${title}`, label)]), fp), meta(title), null);
+    await postSet(plan, quiet, new AbortController().signal);
+    return plan;
+  };
+
+  it('a second set whose PDF has different bytes but the same fingerprint links to the first set\'s file', async () => {
+    await backend!.signInDev!('ana@stjbs.sch.id');
+    const a = await post('A', 'scan one', FP);
+    const plan = await buildPlan(withFp(await prepareFromFiles([setZip('s-B', 'scan two, other bytes')]), FP), meta('B'), null);
+    expect(plan.links).toEqual([{ docId: 's-b', title: expect.any(String), label: null, linked: 'text' }]);
+    expect(plan.manifest.papers[0]!.qp).toBe(a.manifest.papers[0]!.qp);
+    expect(plan.manifest.papers[0]!.fp).toBe(FP);
+    expect(plan.files.map((f) => f.label)).toEqual(['Typed questions']);
+  });
+  it('the same bytes link as file', async () => {
+    await backend!.signInDev!('ana@stjbs.sch.id');
+    const a = await post('A', 'same scan', FP);
+    const plan = await buildPlan(withFp(await prepareFromFiles([setZip('s-B', 'same scan')]), FP), meta('B'), null);
+    expect(plan.links![0]!.linked).toBe('file');
+    expect(plan.manifest.papers[0]!.qp).toBe(a.manifest.papers[0]!.qp);
+  });
+  it('without a fingerprint or a code, different bytes are not linked', async () => {
+    await backend!.signInDev!('ana@stjbs.sch.id');
+    const a = await post('A', 'scan one', FP);
+    const plan = await buildPlan(await prepareFromFiles([setZip('s-B', 'scan two, other bytes')]), meta('B'), null);
+    expect(plan.links![0]!.linked).toBeNull();
+    expect(plan.manifest.papers[0]!.qp).not.toBe(a.manifest.papers[0]!.qp);
+    expect(plan.manifest.papers[0]!.fp).toBeUndefined();
+    expect(plan.files.map((f) => f.label)).toContain('scan.pdf');
+  });
+  it('a different fingerprint is not linked', async () => {
+    await backend!.signInDev!('ana@stjbs.sch.id');
+    await post('A', 'scan one', FP);
+    const other = fingerprintOf(Array.from({ length: 300 }, (_, i) => `other${(i * 104729) % 9967}v`).join(' '))!;
+    const plan = await buildPlan(withFp(await prepareFromFiles([setZip('s-B', 'scan two, other bytes')]), other), meta('B'), null);
+    expect(plan.links![0]!.linked).toBeNull();
   });
 });
 
@@ -101,12 +148,12 @@ describe('one set across post, download, update and devices', () => {
     await backend!.signInDev!('ana@stjbs.sch.id');
     const id = await importPack(doc(syntheticPaper('p1', 4)));
     const pack = (await store.getPack(id))!;
-    await postSet(await buildPlan(await prepareFromPack(pack), meta('Mine'), {}, null), quiet, new AbortController().signal);
+    await postSet(await buildPlan(await prepareFromPack(pack), meta('Mine'), null), quiet, new AbortController().signal);
     const linked = (await store.getPack(id))!;
     expect(linked.libraryVersion).toBe(1);
     const again = await prepareFromPack(linked);
     expect([again.setId, again.base]).toEqual([linked.setId, 1]);
-    expect(await postSet(await buildPlan(again, meta('Mine'), {}, null), quiet, new AbortController().signal)).toEqual({ version: 2 });
+    expect(await postSet(await buildPlan(again, meta('Mine'), null), quiet, new AbortController().signal)).toEqual({ version: 2 });
     const sets = await backend!.listSets({ search: '', limit: 10, offset: 0 });
     expect(sets.map((s) => [s.id, s.version])).toEqual([[linked.setId, 2]]);
     // Downloading my own set on this device updates my pack in place.
@@ -116,7 +163,7 @@ describe('one set across post, download, update and devices', () => {
   });
   it('another student downloads once, sees "Update available" after a new version, and updates the same copy', async () => {
     await backend!.signInDev!('ana@stjbs.sch.id');
-    const plan = await buildPlan(await prepareFromFiles([goodZip()]), meta('Chemistry 9701'), {}, null);
+    const plan = await buildPlan(await prepareFromFiles([goodZip()]), meta('Chemistry 9701'), null);
     await postSet(plan, quiet, new AbortController().signal);
     await backend!.signInDev!('budi@stjbs.sch.id');
     device('B');
@@ -134,7 +181,7 @@ describe('one set across post, download, update and devices', () => {
     const v2 = zipFile({ 'pack.json': strToU8(JSON.stringify({ ...doc(paperWithPdf('p1', '9701_s23_qp_12.pdf'), syntheticPaper('p2', 4), syntheticPaper('p3', 4)), pack: { title: 'Chemistry 9701', setId: plan.setId } })), 'pdfs/9701_s23_qp_12.pdf': pdf('chem 12') }, 'v2.zip');
     const prep = await prepareFromFiles([v2]);
     expect(prep.setId).toBe(plan.setId);
-    await postSet(await buildPlan({ ...prep, base: 1 }, meta('Chemistry 9701'), {}, null), quiet, new AbortController().signal);
+    await postSet(await buildPlan({ ...prep, base: 1 }, meta('Chemistry 9701'), null), quiet, new AbortController().signal);
     await backend!.signInDev!('budi@stjbs.sch.id');
     device('B');
     [set] = await backend!.listSets({ search: '', limit: 10, offset: 0 });
@@ -145,7 +192,7 @@ describe('one set across post, download, update and devices', () => {
   });
   it('an edited question asks "keep mine or use the Library\'s"', async () => {
     await backend!.signInDev!('ana@stjbs.sch.id');
-    const plan = await buildPlan(await prepareFromFiles([goodZip()]), meta('Chemistry 9701'), {}, null);
+    const plan = await buildPlan(await prepareFromFiles([goodZip()]), meta('Chemistry 9701'), null);
     await postSet(plan, quiet, new AbortController().signal);
     const edited = doc(paperWithPdf('p1', '9701_s23_qp_12.pdf'), syntheticPaper('p2', 4));
     (edited.papers[1] as { questions: { stem: string }[] }).questions[0]!.stem = 'An edited stem';
@@ -156,7 +203,7 @@ describe('one set across post, download, update and devices', () => {
     const r1 = await downloadSet(set!);
     expect('packId' in r1).toBe(true);
     await backend!.signInDev!('ana@stjbs.sch.id');
-    await postSet(await buildPlan({ ...(await prepareFromFiles([v2])), base: 1 }, meta('Chemistry 9701'), {}, null), quiet, new AbortController().signal);
+    await postSet(await buildPlan({ ...(await prepareFromFiles([v2])), base: 1 }, meta('Chemistry 9701'), null), quiet, new AbortController().signal);
     await backend!.signInDev!('budi@stjbs.sch.id');
     expect(await downloadSet(set!)).toEqual({ needsChoice: 1 });
     const packId = (r1 as { packId: string }).packId;
@@ -169,7 +216,7 @@ describe('one set across post, download, update and devices', () => {
   });
   it("someone else's set cannot be posted as a new version", async () => {
     await backend!.signInDev!('ana@stjbs.sch.id');
-    const plan = await buildPlan(await prepareFromFiles([goodZip()]), meta('Chemistry 9701'), {}, null);
+    const plan = await buildPlan(await prepareFromFiles([goodZip()]), meta('Chemistry 9701'), null);
     await postSet(plan, quiet, new AbortController().signal);
     await backend!.signInDev!('budi@stjbs.sch.id');
     device('B');

@@ -1,5 +1,7 @@
+import { bandsOf, FP_SAME, isFingerprint, similarity } from '../shared/fingerprint';
 import { isPaperKey, msKeyOf } from '../shared/paper-key';
 import { MANIFEST_LIMITS, validateManifest, type SetManifest } from '../shared/manifest';
+import { audit } from './admin';
 import { needMember, type Caller } from './auth';
 import { ApiError, int, json, obj, readJson, str, uuid } from './http';
 import type { D1PreparedStatement, Env, ExecutionContext } from './types';
@@ -75,6 +77,55 @@ export async function lookupPapers(req: Request, env: Env, ctx: ExecutionContext
 }
 
 /**
+ * POST /api/papers/match { papers: [{ qp?, fp?, key? }] }
+ * Finds each paper already in the Library, without anyone typing a code: by the question paper's
+ * bytes (SHA-256), then by text fingerprint (the same paper saved again), then by the Cambridge
+ * code read from the file name or cover. Returns the stored files to link instead of uploading.
+ */
+export async function matchPapers(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  await needMember(req, env, ctx);
+  const body = obj(await readJson(req, 300_000), ['papers']);
+  if (!Array.isArray(body.papers) || body.papers.length > MANIFEST_LIMITS.papers) throw new ApiError(`Send at most ${MANIFEST_LIMITS.papers} papers`);
+  const HASH = /^[0-9a-f]{64}$/;
+  const asks = body.papers.map((x, i) => {
+    const o = obj(x, ['qp', 'fp', 'key']);
+    if (o.qp !== undefined && !(typeof o.qp === 'string' && HASH.test(o.qp))) throw new ApiError(`Paper ${i + 1}: qp must be a file hash`);
+    if (o.fp !== undefined && !isFingerprint(o.fp)) throw new ApiError(`Paper ${i + 1}: fp must be a text fingerprint`);
+    if (o.key !== undefined && !isPaperKey(o.key)) throw new ApiError(`Paper ${i + 1}: key must be a Cambridge code`);
+    return o as { qp?: string; fp?: string; key?: string };
+  });
+  type Print = { qp_hash: string; ms_hash: string | null; fingerprint: string | null; label: string | null; question_count: number | null };
+  const cols = 'p.qp_hash, p.ms_hash, p.fingerprint, p.label, p.question_count';
+  const hashes = asks.map((a) => a.qp).filter(Boolean);
+  const bands = [...new Set(asks.flatMap((a) => (a.fp ? bandsOf(a.fp) : [])))];
+  const keys = [...new Set(asks.map((a) => a.key).filter(Boolean))];
+  const [byHash, byBand, byKey] = await env.DB.batch<Print & { band?: string }>([
+    env.DB.prepare(`SELECT ${cols} FROM paper_prints p WHERE p.qp_hash IN (SELECT value FROM json_each(?1))`).bind(JSON.stringify(hashes)),
+    env.DB.prepare(`SELECT DISTINCT ${cols} FROM paper_bands b JOIN paper_prints p ON p.qp_hash = b.qp_hash WHERE b.band IN (SELECT value FROM json_each(?1)) LIMIT 2000`).bind(JSON.stringify(bands)),
+    env.DB.prepare(`SELECT ${cols} FROM paper_prints p WHERE p.label IN (SELECT value FROM json_each(?1)) ORDER BY p.created_at`).bind(JSON.stringify(keys)),
+  ]);
+  const out = asks.map((a) => {
+    const exact = a.qp ? byHash!.results.find((r) => r.qp_hash === a.qp) : undefined;
+    let hit: Print | undefined = exact;
+    let how: 'file' | 'text' | 'code' = 'file';
+    let score = exact ? 1 : 0;
+    if (!hit && a.fp) {
+      for (const r of byBand!.results) {
+        const sim = r.fingerprint ? similarity(a.fp, r.fingerprint) : 0;
+        if (sim >= FP_SAME && sim > score) { hit = r; score = sim; how = 'text'; }
+      }
+    }
+    // A code alone links only when the stored paper has no fingerprint to disagree with.
+    if (!hit && a.key) {
+      const r = byKey!.results.find((x) => x.label === a.key && (!a.fp || !x.fingerprint));
+      if (r) { hit = r; how = 'code'; }
+    }
+    return hit ? { qp: hit.qp_hash, ms: hit.ms_hash, questionCount: hit.question_count, label: hit.label, how, similarity: Math.round(score * 100) / 100 } : null;
+  });
+  return json({ matches: out });
+}
+
+/**
  * POST /api/sets/<id>/versions { base, manifest }
  * Creates the set on its first version (the client's permanent set ID becomes the Library ID) or
  * adds a version. `base` is the version the poster built on: if someone else's post landed first
@@ -131,7 +182,13 @@ export async function publishVersion(req: Request, env: Env, ctx: ExecutionConte
     .bind(id, meta.title.trim(), meta.description.trim(), meta.subject.trim(), code.slice(0, 20), manifest.papers.length, questions, keyed, version, bytes, manifest.cover ?? null, now));
   // The paper registry: the first set to bring a paper's files is where later sets link to.
   for (const p of manifest.papers) {
-    if (!p.key || !p.qp) continue;
+    if (!p.qp) continue;
+    // Paper identity: the question paper's bytes, its text fingerprint and bands for lookup.
+    stmts.push(db.prepare(`INSERT INTO paper_prints (qp_hash, ms_hash, fingerprint, label, title, question_count, first_set_id, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8)
+      ON CONFLICT (qp_hash) DO UPDATE SET ms_hash = COALESCE(paper_prints.ms_hash, excluded.ms_hash), fingerprint = COALESCE(paper_prints.fingerprint, excluded.fingerprint), label = COALESCE(paper_prints.label, excluded.label), updated_at = excluded.updated_at`)
+      .bind(p.qp, p.ms ?? null, p.fp ?? null, p.key, p.title.slice(0, 120), p.questionCount, id, now));
+    if (p.fp) stmts.push(db.prepare(`INSERT OR IGNORE INTO paper_bands (band, qp_hash) SELECT value, ?1 FROM json_each(?2)`).bind(p.qp, JSON.stringify(bandsOf(p.fp))));
+    if (!p.key) continue;
     stmts.push(db.prepare(`INSERT INTO papers (paper_key, qp_hash, ms_hash, question_count, first_set_id, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)
       ON CONFLICT (paper_key) DO UPDATE SET ms_hash = COALESCE(papers.ms_hash, excluded.ms_hash), qp_hash = COALESCE(papers.qp_hash, excluded.qp_hash), updated_at = excluded.updated_at`)
       .bind(p.key, p.qp, p.ms ?? null, p.questionCount, id, now));
@@ -159,7 +216,7 @@ function pruneVersions(env: Env, setId: string, upTo: number, now: number): D1Pr
 export async function updateSet(req: Request, env: Env, ctx: ExecutionContext, id0: string): Promise<Response> {
   const c = await needMember(req, env, ctx);
   const id = uuid(id0, 'Set ID');
-  const body = obj(await readJson(req, 8192), ['title', 'description', 'status']);
+  const body = obj(await readJson(req, 8192), ['title', 'description', 'subject', 'status']);
   const row = await env.DB.prepare('SELECT * FROM sets WHERE id = ?1').bind(id).first<SetRow>();
   if (!row || !(row.owner === c.user.id || c.access.admin)) throw new ApiError('Not allowed', 403);
   if (body.status !== undefined) {
@@ -168,10 +225,12 @@ export async function updateSet(req: Request, env: Env, ctx: ExecutionContext, i
   }
   const title = body.title === undefined ? row.title : str(body.title, 'Name', 120, 1).trim();
   const description = body.description === undefined ? row.description : str(body.description, 'Description', 1000).trim();
+  const subject = body.subject === undefined ? row.subject : str(body.subject, 'Subject', 80).trim();
   const status = (body.status as string | undefined) ?? row.status;
   // Restoring a set clears its report count, so three new reports are needed to hide it again.
-  await env.DB.prepare('UPDATE sets SET title = ?2, description = ?3, status = ?4, report_count = CASE WHEN ?4 = \'approved\' AND status = \'hidden\' THEN 0 ELSE report_count END, updated_at = ?5 WHERE id = ?1')
-    .bind(id, title, description, status, Date.now()).run();
+  const upd = env.DB.prepare('UPDATE sets SET title = ?2, description = ?3, subject = ?6, status = ?4, report_count = CASE WHEN ?4 = \'approved\' AND status = \'hidden\' THEN 0 ELSE report_count END, updated_at = ?5 WHERE id = ?1')
+    .bind(id, title, description, status, Date.now(), subject);
+  await env.DB.batch(row.owner === c.user.id && body.status === undefined ? [upd] : [upd, audit(env, c.user.email, body.status !== undefined ? `set.${status}` : 'set.edit', id, { title })]);
   if (status === 'approved' && row.status === 'hidden') await env.DB.prepare('DELETE FROM reports WHERE set_id = ?1').bind(id).run();
   return json({ ok: true });
 }
@@ -187,6 +246,7 @@ export async function deleteSet(req: Request, env: Env, ctx: ExecutionContext, i
   await env.DB.batch([
     env.DB.prepare('DELETE FROM sets WHERE id = ?1').bind(id),
     env.DB.prepare(`UPDATE blobs SET orphaned_at = ?1 WHERE orphaned_at IS NULL AND NOT EXISTS (SELECT 1 FROM blob_refs r WHERE r.hash = blobs.hash)`).bind(now),
+    ...(row.owner !== c.user.id ? [audit(env, c.user.email, 'set.delete', id)] : []),
   ]);
   return json({ ok: true });
 }

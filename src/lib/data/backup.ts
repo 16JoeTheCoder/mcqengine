@@ -511,6 +511,7 @@ export async function exportPackZip(pack0: Pack, papers: Paper[], overrides: Que
     papers: sorted.map((p) => ({
         id: p.id,
         ...(p.paperKey ? { key: p.paperKey } : {}),
+        ...(p.fingerprint ? { fingerprint: p.fingerprint } : {}),
         title: p.title,
         group: p.group,
         questionCount: p.questionCount,

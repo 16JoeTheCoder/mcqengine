@@ -8,6 +8,7 @@
 export const BACKUP_TABLES = [
   'library_domains', 'library_allowlist', 'library_admins', 'users', 'blobs', 'sets', 'set_versions',
   'blob_refs', 'papers', 'stars', 'reports', 'sync_records', 'counters', 'usage_daily', 'user_backups',
+  'paper_prints', 'paper_bands', 'profile_reports', 'audit_log', 'error_daily',
 ] as const;
 export type BackupTable = (typeof BACKUP_TABLES)[number];
 export interface BackupManifest { format: 'dmc-backup/1'; date: string; createdAt: number; tables: Record<string, { rows: number; bytes: number }> }
@@ -70,6 +71,11 @@ export function primaryKey(t: BackupTable): string[] {
     case 'counters': return ['name'];
     case 'usage_daily': return ['day', 'user_id'];
     case 'user_backups': return ['user_id'];
+    case 'paper_prints': return ['qp_hash'];
+    case 'paper_bands': return ['band', 'qp_hash'];
+    case 'profile_reports': return ['user_id', 'reporter'];
+    case 'audit_log': return ['id'];
+    case 'error_daily': return ['day'];
   }
 }
 

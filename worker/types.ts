@@ -43,7 +43,6 @@ export interface ScheduledController { cron: string; scheduledTime: number }
 export interface Env {
   DB: D1Database;
   FILES: R2Bucket;
-  AI_BUDGET: DurableObjectNamespace;
   ASSETS?: Fetcher;
   /** Workers Rate Limiting bindings (wrangler.toml [[ratelimits]]). Absent locally: no limit. */
   UPLOAD_LIMITER?: RateLimit;
@@ -56,15 +55,6 @@ export interface Env {
   SESSION_SECRET?: string;
   /** Local development only: enables POST /api/auth/dev. Refused unless ENVIRONMENT is "local". */
   DEV_LOGIN?: string;
-  NVIDIA_API_KEY?: string;
-  NVIDIA_MODEL?: string;
-  AI_SHARED_RPM?: string;
-  AI_USER_DAILY_REQUESTS?: string;
-  AI_CONCURRENCY?: string;
-  AI_MAX_PAGES?: string;
-  AI_TIMEOUT_MS?: string;
-  AI_MAX_RETRIES?: string;
-  AI_QUEUE_MAX?: string;
 }
 
 declare global {

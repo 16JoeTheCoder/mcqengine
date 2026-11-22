@@ -202,7 +202,10 @@ describe('restore', () => {
       const db = await fresh.mf.getD1Database('DB');
       for (const s of stmts) await db.prepare(s).run();
       for (const t of BACKUP_TABLES) {
-        expect(await dump(fresh, t), t).toEqual(await dump(h, t));
+        const live = await dump(h, t);
+        // The admin's own "backup.run" audit row is written after the dump it describes.
+        const expected = t === 'audit_log' ? live.filter((r) => r.action !== 'backup.run') : live;
+        expect(t === 'audit_log' ? (await dump(fresh, t)).filter((r) => r.action !== 'backup.run') : await dump(fresh, t), t).toEqual(expected);
       }
       const big = await fresh.sql<{ data: string }>("SELECT data FROM sync_records WHERE id = 'big'");
       expect(big[0]!.data.length).toBe(BIG.length);

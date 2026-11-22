@@ -59,3 +59,17 @@ Not measured yet: the pilot's files live in Supabase storage, which this session
 - Live staging and production (needs the council account token and the Google OAuth clients; setup.md is ready).
 - Pilot file sizes (printed by the migration dry run; paste above).
 - Workers Rate Limiting bindings and the Cache API path run only on Cloudflare; locally they are no-ops.
+
+## Phase 3 (branch `phase-3`)
+
+Plan: [docs/PHASE3_PLAN.md](docs/PHASE3_PLAN.md). Decisions: decision.md, section "Phase 3". The AI import described under Phase 2 (milestone 7 above) was removed in M1.
+
+- M1 removed AI import, `worker/ai.ts`, the prompt registry, the NVIDIA settings and the `AiBudget` Durable Object (wrangler migration `v2-remove-ai`).
+- M2 paper identity: file hash, then MinHash text fingerprint (`shared/fingerprint.ts`, `src/lib/pdf/identity.ts`), then the Cambridge code. `paper_prints` table; `POST /api/papers/match`. No typed keys.
+- M3 and M4 answering and practice: `src/lib/engine/answer.ts`, Follow, flags, unanswered warnings, practice colours and accuracy.
+- M5 edit a set (`src/screens/edit-set.tsx`); `PATCH /api/sets/<id>` takes `subject`.
+- M6 search: local index plus D1 FTS5 (`worker/search.ts`, `src/lib/search.ts`, palette).
+- M7 profiles: `worker/profiles.ts`, `src/screens/profile.tsx`, avatars in R2.
+- M8 admin dashboard: overview, users, audit log, duplicates, file collection dry run (`worker/admin.ts`, `src/screens/admin.tsx`).
+- Tests added: unit `answer`, `fingerprint`, `set-patch`, `worker-papers`, `worker-profiles`, `worker-admin-search` (plus updates to `identity`, `library`); Playwright Phase 3 specs. Removed the AI unit and e2e tests. Test harness splits migrations on `END;` so trigger bodies apply.
+- Not verified live: migration 0003, FTS5 on real D1, avatar upload and serving, and the Durable Object deletion all need the staging deploy (setup.md, "Upgrading an existing deployment to Phase 3"). Profiles need school sign-off before release.

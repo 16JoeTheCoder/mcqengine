@@ -76,6 +76,8 @@ Check: `npx wrangler r2 bucket list` shows both. The buckets stay private: never
 
 `migrations/0002_seed.sql` makes `josef.yang@stjbs.sch.id` the first admin. If the owner's school address is different, change it there **before** this step.
 
+One command applies every migration that is not yet applied, including `0003_phase3.sql` (paper identity, profiles, search indexes, audit log). Staging first:
+
 ```powershell
 npx wrangler d1 migrations apply dmc-staging --remote --env staging
 ```
@@ -116,10 +118,6 @@ npx wrangler secret put GOOGLE_CLIENT_ID --env staging
 npx wrangler secret put GOOGLE_CLIENT_SECRET --env staging
 ```
 
-```powershell
-npx wrangler secret put NVIDIA_API_KEY --env staging
-```
-
 Production:
 
 ```powershell
@@ -134,11 +132,7 @@ npx wrangler secret put GOOGLE_CLIENT_ID
 npx wrangler secret put GOOGLE_CLIENT_SECRET
 ```
 
-```powershell
-npx wrangler secret put NVIDIA_API_KEY
-```
-
-`NVIDIA_API_KEY` is the key from build.nvidia.com (40 requests a minute; the Worker caps itself at 38). Check: `npx wrangler secret list --env staging` and `npx wrangler secret list` each show the four names (never values). The first `secret put` before a first deploy may ask to create the Worker: answer yes.
+There are three secrets: `SESSION_SECRET`, `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`. Check: `npx wrangler secret list --env staging` and `npx wrangler secret list` each show the three names (never values). The first `secret put` before a first deploy may ask to create the Worker: answer yes.
 
 ### 7. Build and deploy staging
 
@@ -158,7 +152,7 @@ Check, after a minute for the certificate:
 Invoke-RestMethod https://dmc-staging.stjbscouncil.org/api/health
 ```
 
-It shows `ok: True`, `d1: True`, `r2: True`, `ai.configured: True`, `auth.configured: True`, `environment: staging`. Also check the cron: Cloudflare dashboard > Workers & Pages > `dmc-staging` > Settings > Trigger events shows `0 17 * * *`.
+It shows `ok: True`, `d1: True`, `r2: True`, `auth.configured: True`, `environment: staging`. Also check the cron: Cloudflare dashboard > Workers & Pages > `dmc-staging` > Settings > Trigger events shows `0 17 * * *`.
 
 ### 8. Check every flow on staging, in a browser
 
@@ -168,11 +162,22 @@ Open `https://dmc-staging.stjbscouncil.org`. Tick each:
 2. Sign in with a **personal** Google account in another browser profile: the Library says it is locked; Settings shows Sync off by default.
 3. School account: Library > Post a set > choose a question paper and mark scheme PDF named like `9702_s24_qp_12.pdf` / `9702_s24_ms_12.pdf`. The papers table shows the key as Found. Post. The stepped progress runs Checking, Uploading file x of y, Publishing.
 4. Second school account (or the same in another profile): Download. The paper set opens; start a paper with "PDF and answer sheet". Answer, submit, see results.
-5. A typed set (from AI import or a paper-set zip): start with "Typed questions" (DMC mode); Random and Mistakes drill work.
+5. A typed set (from a paper-set zip): start with "Typed questions" (DMC mode); Random and Mistakes drill work.
 6. Owner: change something and post again: the card says version 2. The second account sees "Update available", updates, and still has one copy.
-7. AI import: Upload papers > AI import with a short PDF; the queue position or progress shows; the draft validates.
-8. Admin (the seeded address): Library > Admin. Storage, Downloads, access lists, moderation and AI status load. Press **Test key**: "The key works". Press **Run backup now**: a dated backup appears under Daily.
+7. Profiles and search: open your profile (account menu), set a handle and visibility, upload a photo (it shows); from a second school account, search for the name and open the profile; a personal account finds nothing in the Library.
+8. Admin (the seeded address): Library > Admin. Storage, Downloads, access lists, moderation, users and the audit log load. Suspend and restore a test account (its sessions end at once). Press **Run backup now**: a dated backup appears under Daily.
 9. Report a set three times from three accounts: it hides; Admin > Restore brings it back.
+
+### Upgrading an existing deployment to Phase 3
+
+For a deployment that already runs Phase 2. In PowerShell, in the repository root:
+
+1. Staging: `npx wrangler d1 migrations apply dmc-staging --remote --env staging` (applies `0003_phase3.sql`).
+2. Staging: `npm run build`, then `npx wrangler deploy --env staging`. The deploy also deletes the old `AiBudget` Durable Object (wrangler migration `v2-remove-ai`); nothing to do by hand. You can delete the leftover secret: `npx wrangler secret delete NVIDIA_API_KEY --env staging`.
+3. Check staging: `/api/health` is `ok`, then step 8 (sign in, post, download, profile, search, admin).
+4. Production, the same three steps without `--env staging` and with `dmc-prod`: `npx wrangler d1 migrations apply dmc-prod --remote`, `npm run build`, `npx wrangler deploy`, check, and `npx wrangler secret delete NVIDIA_API_KEY`.
+
+Migrations only add, so a code rollback is safe.
 
 ### 9. Copy the pilot from Supabase (once)
 

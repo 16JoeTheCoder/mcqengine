@@ -109,8 +109,8 @@ test('no serious accessibility violations on the v2 screens, light and dark', as
   await page.goto('./');
   await bothThemes(page, 'home');
   await page.keyboard.press('Control+k');
-  await expect(page.getByRole('dialog', { name: 'Go to' })).toBeVisible();
-  await bothThemes(page, 'command palette');
+  await expect(page.getByRole('dialog', { name: 'Search' })).toBeVisible();
+  await bothThemes(page, 'search everything');
   await page.keyboard.press('Escape');
   await page.locator('.pack-card').first().click();
   await page.locator('.paper-card').first().click();

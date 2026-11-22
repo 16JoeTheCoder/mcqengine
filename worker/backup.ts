@@ -92,6 +92,8 @@ export async function collectGarbage(env: Env, now = Date.now()): Promise<{ dele
   await env.DB.batch([
     env.DB.prepare(`DELETE FROM papers WHERE qp_hash IS NOT NULL AND NOT EXISTS (SELECT 1 FROM blobs b WHERE b.hash = papers.qp_hash)`),
     env.DB.prepare(`UPDATE papers SET ms_hash = NULL WHERE ms_hash IS NOT NULL AND NOT EXISTS (SELECT 1 FROM blobs b WHERE b.hash = papers.ms_hash)`),
+    env.DB.prepare(`DELETE FROM paper_prints WHERE NOT EXISTS (SELECT 1 FROM blobs b WHERE b.hash = paper_prints.qp_hash)`),
+    env.DB.prepare(`UPDATE paper_prints SET ms_hash = NULL WHERE ms_hash IS NOT NULL AND NOT EXISTS (SELECT 1 FROM blobs b WHERE b.hash = paper_prints.ms_hash)`),
     env.DB.prepare(`DELETE FROM sessions WHERE expires_at < ?1 OR absolute_expires_at < ?1`).bind(now),
   ]);
   return { deleted: hashes.length };

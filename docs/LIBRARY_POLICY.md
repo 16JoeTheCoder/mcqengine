@@ -34,12 +34,21 @@ DMC is a practice app for multiple-choice exam papers. The Library is a place in
 * **Takedown requests** (from the school, Cambridge, or anyone with a reason) go to the owner, Josef Yang, at school or through the Head of Cambridge. The owner removes the set the same day.
 * If the school withdraws its agreement, the owner switches the Library off (Admin > School domains > remove `stjbs.sch.id`, and empty the allowlist, which locks it for everyone at once) and deletes the stored sets.
 
+## Profiles
+
+* Profiles are for school members only. They are never public and carry `noindex`; people outside the school cannot open them. Personal accounts and suspended accounts have none.
+* Each person chooses visibility: `school` (other members can see it) or `private` (only the owner and admins).
+* A profile shows a name, optional photo, short bio, year or role, subjects, posted sets and, if the owner chooses, summary stats. It never shows answers or mistakes.
+* There are no messages and no follower feed, because most users are minors and that needs moderation staff.
+* Anyone can report a profile; reports go to the admin queue. Admins can make a profile private or suspend the account at once.
+* Release to students needs the school's sign-off on this section.
+
 ## What is stored, and where
 
-* Accounts: email address, display name (from the email, editable), Google account ID, and whether Google says it belongs to the school. No passwords: Google handles sign-in.
+* Accounts: email address, display name (from the email, editable), a handle, optional profile photo and bio, Google account ID, and whether Google says it belongs to the school. No passwords: Google handles sign-in.
 * Library: each set's files (question papers, mark schemes, typed questions, images, an optional cover; each file stored once), its name, description, subject, paper and question counts, version, the poster's display name, star counts and reports.
 * Sync (any signed-in account; on by default for school accounts, off for personal ones, and anyone can switch it off in Settings): session results, question statistics, small settings and fixes. Never PDFs.
-* Daily download and upload counts per account, so admins can see storage and bandwidth use. AI import sends only the pages a person chooses, with their consent, to NVIDIA's API; nothing is kept.
+* Daily download and upload counts per account, so admins can see storage and bandwidth use.
 * Hosted on Cloudflare, in the student council's account: the app and its server run on Cloudflare Workers, the database on Cloudflare D1 and the files on Cloudflare R2, both created with an Asia-Pacific location hint. Cloudflare's terms and data processing addendum apply (cloudflare.com/terms, cloudflare.com/cloudflare-customer-dpa). Every access rule is part of the app's source code (`worker/`) and tested automatically.
 * The database is backed up every night (kept 7 days, plus 4 weekly copies) into the same private storage.
 * No analytics, tracking or advertising.
